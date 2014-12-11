@@ -1,0 +1,4 @@
+etc/odn-solr/tomcat7 usr/share/odn-solr/conf
+var/log/odn-solr usr/share/odn-solr/logs
+var/tmp usr/share/odn-solr/temp
+var/cache/odn-solr usr/share/odn-solr/work

@@ -1,0 +1,31 @@
+#!/bin/sh
+set -e
+
+create_user() {
+  if ! id odn-solr > /dev/null 2>&1 ; then
+    adduser --system --no-create-home --disabled-password --home /usr/share/odn-solr odn-solr
+  fi
+}
+
+fix_perms() {
+  chown -R odn-solr /var/log/odn-solr /var/lib/odn-solr /var/cache/odn-solr
+}
+
+case "$1" in
+  configure)
+    create_user
+    fix_perms
+  ;;
+
+  abort-upgrade|abort-remove|abort-deconfigure)
+  ;;
+
+  *)
+    echo "$0 called with unknown argument \`$1'" >&2
+    exit 1
+  ;;
+esac
+
+#DEBHELPER#
+
+exit 0

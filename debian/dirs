@@ -1,0 +1,5 @@
+usr/share/odn-solr/webapps
+var/share/odn-solr
+var/lib/odn-solr
+var/log/odn-solr
+var/cache/odn-solr

@@ -1,0 +1,13 @@
+Source: lucene-solr
+Maintainer: Someone FIXME <dev@opendata.sk>
+Standards-Version: 3.9.3
+Build-Depends: ant, debhelper (>= 9), openjdk-7-jdk
+Homepage: http://opendata.sk
+Vcs-Git: https://vcs.eea.sk/scm/odsk/lucene-solr.git
+
+Package: odn-solr
+Architecture: all
+Priority: extra
+Section: web
+Depends: openjdk-7-jre-headless, tomcat7-user
+Description: OpenData Node - SOLR engine
