@@ -118,8 +118,6 @@ if [ ! -f "$CATALINA_HOME/bin/bootstrap.jar" ]; then
 	exit 1
 fi
 
-POLICY_CACHE="$CATALINA_BASE/work/catalina.policy"
-
 if [ -z "$CATALINA_TMPDIR" ]; then
 	CATALINA_TMPDIR="$JVM_TMP"
 fi
@@ -196,14 +194,6 @@ case "$1" in
 	if start-stop-daemon --test --start --pidfile "$CATALINA_PID" \
 		--user $TOMCAT7_USER --exec "$JAVA_HOME/bin/java" \
 		>/dev/null; then
-
-		# Regenerate POLICY_CACHE file
-		umask 022
-		echo "// AUTO-GENERATED FILE from /etc/tomcat7/policy.d/" \
-			> "$POLICY_CACHE"
-		echo ""  >> "$POLICY_CACHE"
-		cat $CATALINA_BASE/conf/policy.d/*.policy \
-			>> "$POLICY_CACHE"
 
 		# Remove / recreate JVM_TMP directory
 		rm -rf "$JVM_TMP"
