@@ -1,4 +1,4 @@
-lucene-solr (4.10.2-2-SNAPSHOT) unstable; urgency=low
+odn-solr (4.10.2-2-SNAPSHOT) unstable; urgency=low
   * create develop release 4.10.2-2-SNAPSHOT
  
  -- Jan Marcek <jmc@wheezy.marcek.local>  Fri, 12 Jan 2014 09:05:18 +0100
