@@ -1,4 +1,4 @@
-Source: lucene-solr
+Source: odn-solr
 Maintainer: Someone FIXME <dev@opendata.sk>
 Standards-Version: 3.9.3
 Build-Depends: ant, debhelper (>= 9), openjdk-7-jdk
