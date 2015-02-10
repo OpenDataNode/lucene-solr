@@ -1,4 +1,4 @@
-odn-solr (4.10.2-odn:0.10.0) stable; urgency=low
+odn-solr (4.10.2-odn0.10.0) stable; urgency=low
   * create release 0.10.0 for SOLR 4.10.2
  
  -- Jan Marcek <jmc@wheezy.marcek.local>  Tue, 10 Feb 2014 09:05:18 +0100
