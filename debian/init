@@ -58,7 +58,7 @@ TOMCAT7_GROUP=nogroup
 # this function sets the variable JDK_DIRS
 find_jdks()
 {
-    for java_version in 9 8 7 6
+    for java_version in 9 8 7
     do
         for jvmdir in /usr/lib/jvm/java-${java_version}-openjdk-* \
                       /usr/lib/jvm/jdk-${java_version}-oracle-* \
@@ -77,7 +77,7 @@ find_jdks()
 
 # The first existing directory is used for JAVA_HOME (if JAVA_HOME is not
 # defined in $DEFAULT)
-JDK_DIRS="/usr/lib/jvm/default-java"
+JDK_DIRS=""
 find_jdks
 
 # Look for the right JVM to use
