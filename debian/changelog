@@ -1,7 +1,12 @@
+odn-solr (4.10.2-odn0.10.1) stable; urgency=low
+  * create release 0.10.1 for SOLR 4.10.2
+ 
+ -- Jan Marcek <jmc@wheezy.marcek.local>  Tue, 11 Feb 2015 09:05:18 +0100
+
 odn-solr (4.10.2-odn0.10.0) stable; urgency=low
   * create release 0.10.0 for SOLR 4.10.2
  
- -- Jan Marcek <jmc@wheezy.marcek.local>  Tue, 10 Feb 2014 09:05:18 +0100
+ -- Jan Marcek <jmc@wheezy.marcek.local>  Tue, 10 Feb 2015 09:05:18 +0100
  
 lucene-solr (4.10.2-1) unstable; urgency=low
 
