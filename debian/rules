@@ -1,0 +1,17 @@
+#!/usr/bin/make -f
+
+export JAVA_HOME=/usr/lib/jvm/java-7-openjdk-amd64
+
+%:
+	dh $@
+
+override_dh_auto_build: build
+
+build: 
+	ant -buildfile build.xml -lib /usr/share/java/ivy.jar compile
+	ant -buildfile solr/build.xml -lib /usr/share/java/ivy.jar -propertyfile debian/ant.properties dist-war 
+	touch build
+
+override_dh_auto_install:
+	mkdir -p debian/odn-solr/usr/share/odn-solr/solr
+	unzip -x solr/dist/solr-*.war -d debian/odn-solr/usr/share/odn-solr/solr

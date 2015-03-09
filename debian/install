@@ -1,0 +1,3 @@
+debian/solr/solr.xml etc/odn-solr/solr/
+debian/tomcat7/* etc/odn-solr/tomcat7/
+solr/example/lib/ext/*.jar usr/share/odn-solr/lib/
