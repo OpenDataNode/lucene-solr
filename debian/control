@@ -1,9 +1,10 @@
-Source: lucene-solr
+Source: odn-solr
 Maintainer: Someone FIXME <dev@opendata.sk>
 Standards-Version: 3.9.3
 Build-Depends: ant, debhelper (>= 9), openjdk-7-jdk
 Homepage: http://opendata.sk
 Vcs-Git: https://vcs.eea.sk/scm/odsk/lucene-solr.git
+Version: 4.10.2
 
 Package: odn-solr
 Architecture: all
