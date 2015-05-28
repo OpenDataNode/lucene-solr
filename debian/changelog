@@ -1,3 +1,8 @@
+odn-solr (4.10.2-odn1.0.1) stable; urgency=low
+  * create snapshot 1.0.1 for SOLR 4.10.2
+
+  -- Jan Marcek <jmc@wheezy.marcek.local>  Thu, 28 Mar 2015 09:00:00 +0100
+
 odn-solr (4.10.2-odn1.0.0) stable; urgency=low
   * create release 1.0.0 for SOLR 4.10.2
 
