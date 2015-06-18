@@ -24,6 +24,7 @@ case "$1" in
         # remove directories
         rm -rf /var/cache/odn-solr
         rm -rf /var/log/odn-solr
+        rm -rf /var/lib/odn-solr
         # delete user 
         deluser odn-solr || true
     
