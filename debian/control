@@ -1,8 +1,8 @@
 Source: odn-solr
-Maintainer: Someone FIXME <dev@opendata.sk>
+Maintainer: jan.marcek@eea.sk
 Standards-Version: 3.9.3
 Build-Depends: ant, debhelper (>= 9), openjdk-7-jdk
-Homepage: http://opendata.sk
+Homepage: http://opendatanode.org/
 Vcs-Git: https://vcs.eea.sk/scm/odsk/lucene-solr.git
 Version: 4.10.2
 
