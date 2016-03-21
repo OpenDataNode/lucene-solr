@@ -1,3 +1,8 @@
+odn-solr (4.10.2-odn1.1.3) stable; urgency=low
+  * minor clean up
+  
+  -- Jan Marcek <jmc@eea.sk>  Mon, 21 Feb 2015 15:44:00 +0100
+
 odn-solr (4.10.2-odn1.1.2) stable; urgency=low
   * create snapshot 1.1.2 for SOLR 4.10.2
   
