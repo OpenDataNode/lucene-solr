@@ -1,5 +1,3 @@
-package org.apache.solr.schema;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,19 +14,23 @@ package org.apache.solr.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.schema;
 
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
+import org.apache.commons.io.FileUtils;
 import org.apache.solr.SolrTestCaseJ4;
 import org.junit.BeforeClass;
+
+import java.io.File;
 
 /**
  * Tests expert options of {@link ICUCollationField}.
  */
-@SuppressCodecs("Lucene3x")
 public class TestICUCollationFieldOptions extends SolrTestCaseJ4 {
   @BeforeClass
   public static void beforeClass() throws Exception {
-    initCore("solrconfig-icucollate.xml","schema-icucollateoptions.xml", "analysis-extras/solr");
+    File testHome = createTempDir().toFile();
+    FileUtils.copyDirectory(getFile("analysis-extras/solr"), testHome);
+    initCore("solrconfig-icucollate.xml","schema-icucollateoptions.xml", testHome.getAbsolutePath());
     // add some docs
     assertU(adoc("id", "1", "text", "foo-bar"));
     assertU(adoc("id", "2", "text", "foo bar"));

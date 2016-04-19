@@ -1,5 +1,3 @@
-package org.apache.lucene.search.suggest.fst;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.suggest.fst;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.suggest.fst;
 
 import java.util.*;
 
@@ -162,10 +161,10 @@ public class WFSTCompletionTest extends LuceneTestCase {
       final int topN = TestUtil.nextInt(random, 1, 10);
       List<LookupResult> r = suggester.lookup(TestUtil.stringToCharSequence(prefix, random), false, topN);
 
-      // 2. go thru whole treemap (slowCompletor) and check its actually the best suggestion
+      // 2. go thru whole treemap (slowCompletor) and check it's actually the best suggestion
       final List<LookupResult> matches = new ArrayList<>();
 
-      // TODO: could be faster... but its slowCompletor for a reason
+      // TODO: could be faster... but it's slowCompletor for a reason
       for (Map.Entry<String,Long> e : slowCompletor.entrySet()) {
         if (e.getKey().startsWith(prefix)) {
           matches.add(new LookupResult(e.getKey(), e.getValue().longValue()));

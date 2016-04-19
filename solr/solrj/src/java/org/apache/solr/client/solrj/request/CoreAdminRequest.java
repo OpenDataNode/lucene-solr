@@ -14,13 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.client.solrj.request;
 
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrRequest;
-import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.response.CoreAdminResponse;
+import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.CoreAdminParams;
 import org.apache.solr.common.params.CoreAdminParams.CoreAdminAction;
@@ -32,15 +32,14 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 /**
  * This class is experimental and subject to change.
  *
  * @since solr 1.3
  */
-public class CoreAdminRequest extends SolrRequest
-{
+public class CoreAdminRequest extends SolrRequest<CoreAdminResponse> {
+
   protected String core = null;
   protected String other = null;
   protected boolean isIndexInfoNeeded = true;
@@ -48,6 +47,7 @@ public class CoreAdminRequest extends SolrRequest
   
   //a create core request
   public static class Create extends CoreAdminRequest {
+
     protected String instanceDir;
     protected String configName = null;
     protected String schemaName = null;
@@ -164,7 +164,7 @@ public class CoreAdminRequest extends SolrRequest
   public static class WaitForState extends CoreAdminRequest {
     protected String nodeName;
     protected String coreNodeName;
-    protected String state;
+    protected Replica.State state;
     protected Boolean checkLive;
     protected Boolean onlyIfLeader;
     protected Boolean onlyIfLeaderActive;
@@ -189,11 +189,11 @@ public class CoreAdminRequest extends SolrRequest
       this.coreNodeName = coreNodeName;
     }
 
-    public String getState() {
+    public Replica.State getState() {
       return state;
     }
 
-    public void setState(String state) {
+    public void setState(Replica.State state) {
       this.state = state;
     }
 
@@ -236,7 +236,7 @@ public class CoreAdminRequest extends SolrRequest
       }
       
       if (state != null) {
-        params.set( "state", state);
+        params.set(ZkStateReader.STATE_PROP, state.toString());
       }
       
       if (checkLive != null) {
@@ -321,34 +321,34 @@ public class CoreAdminRequest extends SolrRequest
     }
   }
   
-    //a persist core request
-  public static class Persist extends CoreAdminRequest {
-    protected String fileName = null;
-    
-    public Persist() {
-      action = CoreAdminAction.PERSIST;
+  public static class OverrideLastPublished extends CoreAdminRequest {
+    protected String state;
+
+    public OverrideLastPublished() {
+      action = CoreAdminAction.FORCEPREPAREFORLEADERSHIP;
     }
-    
-    public void setFileName(String name) {
-      fileName = name;
-    }
-    public String getFileName() {
-      return fileName;
-    }
+
     @Override
     public SolrParams getParams() {
       if( action == null ) {
         throw new RuntimeException( "no action specified!" );
       }
       ModifiableSolrParams params = new ModifiableSolrParams();
-      params.set( CoreAdminParams.ACTION, action.toString() );
-      if (fileName != null) {
-        params.set( CoreAdminParams.FILE, fileName);
-      }
+      params.set(CoreAdminParams.ACTION, action.toString());
+      params.set(CoreAdminParams.CORE, core);
+      params.set(ZkStateReader.STATE_PROP, state);
       return params;
     }
+
+    public String getState() {
+      return state;
+    }
+
+    public void setState(String state) {
+      this.state = state;
+    }
   }
-  
+
   public static class MergeIndexes extends CoreAdminRequest {
     protected List<String> indexDirs;
     protected List<String> srcCores;
@@ -503,71 +503,65 @@ public class CoreAdminRequest extends SolrRequest
   }
 
   @Override
-  public CoreAdminResponse process(SolrServer server) throws SolrServerException, IOException 
-  {
-    long startTime = TimeUnit.MILLISECONDS.convert(System.nanoTime(), TimeUnit.NANOSECONDS);
-    CoreAdminResponse res = new CoreAdminResponse();
-    res.setResponse( server.request( this ) );
-    long endTime = TimeUnit.MILLISECONDS.convert(System.nanoTime(), TimeUnit.NANOSECONDS);
-    res.setElapsedTime(endTime - startTime);
-    return res;
+  protected CoreAdminResponse createResponse(SolrClient client) {
+    return new CoreAdminResponse();
   }
 
   //---------------------------------------------------------------------------------------
   //
   //---------------------------------------------------------------------------------------
 
-  public static CoreAdminResponse reloadCore( String name, SolrServer server ) throws SolrServerException, IOException
+  public static CoreAdminResponse reloadCore(String name, SolrClient client) throws SolrServerException, IOException
   {
     CoreAdminRequest req = new CoreAdminRequest();
-    req.setCoreName( name );
-    req.setAction( CoreAdminAction.RELOAD );
-    return req.process( server );
+    req.setCoreName(name);
+    req.setAction(CoreAdminAction.RELOAD);
+    return req.process(client);
   }
 
-  public static CoreAdminResponse unloadCore( String name, SolrServer server ) throws SolrServerException, IOException
+  public static CoreAdminResponse unloadCore(String name, SolrClient client) throws SolrServerException, IOException
   {
-    return unloadCore(name, false, server);
+    return unloadCore(name, false, client);
   }
 
-  public static CoreAdminResponse unloadCore(String name, boolean deleteIndex, SolrServer server) throws SolrServerException, IOException {
-    return unloadCore(name, deleteIndex, false, server);
+  public static CoreAdminResponse unloadCore(String name, boolean deleteIndex, SolrClient client) throws SolrServerException, IOException {
+    return unloadCore(name, deleteIndex, false, client);
   }
 
-  public static CoreAdminResponse unloadCore(String name, boolean deleteIndex, boolean deleteInstanceDir, SolrServer server) throws SolrServerException, IOException {
+  public static CoreAdminResponse unloadCore(String name, boolean deleteIndex, boolean deleteInstanceDir, SolrClient client) throws SolrServerException, IOException {
     Unload req = new Unload(deleteIndex);
     req.setCoreName(name);
     req.setDeleteInstanceDir(deleteInstanceDir);
-    return req.process(server);
+    return req.process(client);
   }
 
-  public static CoreAdminResponse renameCore(String coreName, String newName, SolrServer server ) throws SolrServerException, IOException
+  public static CoreAdminResponse renameCore(String coreName, String newName, SolrClient client ) throws SolrServerException, IOException
   {
     CoreAdminRequest req = new CoreAdminRequest();
     req.setCoreName(coreName);
     req.setOtherCoreName(newName);
     req.setAction( CoreAdminAction.RENAME );
-    return req.process( server );
+    return req.process( client );
   }
 
-  public static CoreAdminResponse getStatus( String name, SolrServer server ) throws SolrServerException, IOException
+  public static CoreAdminResponse getStatus( String name, SolrClient client ) throws SolrServerException, IOException
   {
     CoreAdminRequest req = new CoreAdminRequest();
     req.setCoreName( name );
     req.setAction( CoreAdminAction.STATUS );
-    return req.process( server );
+    return req.process( client );
   }
   
-  public static CoreAdminResponse createCore( String name, String instanceDir, SolrServer server ) throws SolrServerException, IOException 
+  public static CoreAdminResponse createCore( String name, String instanceDir, SolrClient client ) throws SolrServerException, IOException
   {
-    return CoreAdminRequest.createCore(name, instanceDir, server, null, null);
+    return CoreAdminRequest.createCore(name, instanceDir, client, null, null);
   }
   
-  public static CoreAdminResponse createCore( String name, String instanceDir, SolrServer server, String configFile, String schemaFile ) throws SolrServerException, IOException { 
-    return createCore(name, instanceDir, server, configFile, schemaFile, null, null);
+  public static CoreAdminResponse createCore( String name, String instanceDir, SolrClient client, String configFile, String schemaFile ) throws SolrServerException, IOException {
+    return createCore(name, instanceDir, client, configFile, schemaFile, null, null);
   }
   
-  public static CoreAdminResponse createCore( String name, String instanceDir, SolrServer server, String configFile, String schemaFile, String dataDir, String tlogDir ) throws SolrServerException, IOException 
+  public static CoreAdminResponse createCore( String name, String instanceDir, SolrClient client, String configFile, String schemaFile, String dataDir, String tlogDir ) throws SolrServerException, IOException
   {
     CoreAdminRequest.Create req = new CoreAdminRequest.Create();
     req.setCoreName( name );
@@ -584,24 +578,16 @@ public class CoreAdminRequest extends SolrRequest
     if(schemaFile != null){
       req.setSchemaName(schemaFile);
     }
-    return req.process( server );
-  }
-
-  @Deprecated
-  public static CoreAdminResponse persist(String fileName, SolrServer server) throws SolrServerException, IOException 
-  {
-    CoreAdminRequest.Persist req = new CoreAdminRequest.Persist();
-    req.setFileName(fileName);
-    return req.process(server);
+    return req.process( client );
   }
 
   public static CoreAdminResponse mergeIndexes(String name,
-      String[] indexDirs, String[] srcCores, SolrServer server) throws SolrServerException,
+      String[] indexDirs, String[] srcCores, SolrClient client) throws SolrServerException,
       IOException {
     CoreAdminRequest.MergeIndexes req = new CoreAdminRequest.MergeIndexes();
     req.setCoreName(name);
     req.setIndexDirs(Arrays.asList(indexDirs));
     req.setSrcCores(Arrays.asList(srcCores));
-    return req.process(server);
+    return req.process(client);
   }
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -228,9 +227,10 @@ public abstract class ShardSearchingTestBase extends LuceneTestCase {
 
       @Override
       public Query rewrite(Query original) throws IOException {
-        final Query rewritten = super.rewrite(original);
+        final IndexSearcher localSearcher = new IndexSearcher(getIndexReader());
+        final Weight weight = localSearcher.createNormalizedWeight(original, true);
         final Set<Term> terms = new HashSet<>();
-        rewritten.extractTerms(terms);
+        weight.extractTerms(terms);
 
         // Make a single request to remote nodes for term
         // stats:
@@ -254,7 +254,7 @@ public abstract class ShardSearchingTestBase extends LuceneTestCase {
           }
         }
 
-        return rewritten;
+        return weight.getQuery();
       }
 
       @Override
@@ -360,7 +360,7 @@ public abstract class ShardSearchingTestBase extends LuceneTestCase {
         }
 
         // Merge:
-        return TopDocs.merge(null, numHits, shardHits);
+        return TopDocs.merge(numHits, shardHits);
       }
 
       public TopDocs localSearch(Query query, int numHits) throws IOException {
@@ -369,6 +369,9 @@ public abstract class ShardSearchingTestBase extends LuceneTestCase {
 
       @Override
       public TopDocs searchAfter(ScoreDoc after, Query query, int numHits) throws IOException {
+        if (after == null) {
+          return super.searchAfter(after, query, numHits);
+        }
         final TopDocs[] shardHits = new TopDocs[nodeVersions.length];
         // results are merged in that order: score, shardIndex, doc. therefore we set
         // after to after.score and depending on the nodeID we set doc to either:
@@ -412,7 +415,7 @@ public abstract class ShardSearchingTestBase extends LuceneTestCase {
         }
 
         // Merge:
-        return TopDocs.merge(null, numHits, shardHits);
+        return TopDocs.merge(numHits, shardHits);
       }
 
       public TopDocs localSearchAfter(ScoreDoc after, Query query, int numHits) throws IOException {
@@ -422,19 +425,19 @@ public abstract class ShardSearchingTestBase extends LuceneTestCase {
       @Override
       public TopFieldDocs search(Query query, int numHits, Sort sort) throws IOException {
         assert sort != null;
-        final TopDocs[] shardHits = new TopDocs[nodeVersions.length];
+        final TopFieldDocs[] shardHits = new TopFieldDocs[nodeVersions.length];
         for(int nodeID=0;nodeID<nodeVersions.length;nodeID++) {
           if (nodeID == myNodeID) {
             // My node; run using local shard searcher we
             // already aquired:
             shardHits[nodeID] = localSearch(query, numHits, sort);
           } else {
-            shardHits[nodeID] = searchNode(nodeID, nodeVersions, query, sort, numHits, null);
+            shardHits[nodeID] = (TopFieldDocs) searchNode(nodeID, nodeVersions, query, sort, numHits, null);
           }
         }
 
         // Merge:
-        return (TopFieldDocs) TopDocs.merge(sort, numHits, shardHits);
+        return TopDocs.merge(sort, numHits, shardHits);
       }
 
       public TopFieldDocs localSearch(Query query, int numHits, Sort sort) throws IOException {
@@ -451,13 +454,13 @@ public abstract class ShardSearchingTestBase extends LuceneTestCase {
       // TODO: set warmer
       MockAnalyzer analyzer = new MockAnalyzer(random());
       analyzer.setMaxTokenLength(TestUtil.nextInt(random(), 1, IndexWriter.MAX_TERM_LENGTH));
-      IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+      IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
       iwc.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
       if (VERBOSE) {
         iwc.setInfoStream(new PrintStreamInfoStream(System.out));
       }
       writer = new IndexWriter(dir, iwc);
-      mgr = new SearcherManager(writer, true, null);
+      mgr = new SearcherManager(writer, null);
       searchers = new SearcherLifetimeManager();
 
       // Init w/ 0s... caller above will do initial
@@ -549,7 +552,7 @@ public abstract class ShardSearchingTestBase extends LuceneTestCase {
     @Override
     public void run() {
       try {
-        final LineFileDocs docs = new LineFileDocs(random(), defaultCodecSupportsDocValues());
+        final LineFileDocs docs = new LineFileDocs(random(), true);
         int numDocs = 0;
         while (System.nanoTime() < endTimeNanos) {
           final int what = random().nextInt(3);

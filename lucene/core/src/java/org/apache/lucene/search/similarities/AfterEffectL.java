@@ -1,5 +1,3 @@
-package org.apache.lucene.search.similarities;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.similarities;
+
 
 import org.apache.lucene.search.Explanation;
 
@@ -35,11 +35,10 @@ public class AfterEffectL extends AfterEffect {
   
   @Override
   public final Explanation explain(BasicStats stats, float tfn) {
-    Explanation result = new Explanation();
-    result.setDescription(getClass().getSimpleName() + ", computed from: ");
-    result.setValue(score(stats, tfn));
-    result.addDetail(new Explanation(tfn, "tfn"));
-    return result;
+    return Explanation.match(
+        score(stats, tfn),
+        getClass().getSimpleName() + ", computed from: ",
+        Explanation.match(tfn, "tfn"));
   }
   
   @Override

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.common.params;
 
 import java.util.Locale;
@@ -62,9 +61,11 @@ public interface CommonParams {
   
   /** zero based offset of matching documents to retrieve */
   public static final String START ="start";
+  public static final int START_DEFAULT = 0;
   
   /** number of documents to return starting at "start" */
   public static final String ROWS ="rows";
+  public static final int ROWS_DEFAULT = 10;
 
   // SOLR-4228 start
   /** handler value for SolrPing */
@@ -151,7 +152,7 @@ public interface CommonParams {
   public static final String STREAM_CONTENTTYPE = "stream.contentType";
   
   /**
-   * Timeout value in milliseconds.  If not set, or the value is <= 0, there is no timeout.
+   * Timeout value in milliseconds.  If not set, or the value is &gt;= 0, there is no timeout.
    */
   public static final String TIME_ALLOWED = "timeAllowed";
   
@@ -163,6 +164,13 @@ public interface CommonParams {
 
   /** include header in the response */
   public static final String OMIT_HEADER = "omitHeader";
+  public static final String CORES_HANDLER_PATH = "/admin/cores";
+  public static final String COLLECTIONS_HANDLER_PATH = "/admin/collections";
+  public static final String INFO_HANDLER_PATH = "/admin/info";
+  public static final String CONFIGSETS_HANDLER_PATH = "/admin/configs";
+  public static final String AUTHZ_PATH = "/admin/authorization";
+  public static final String AUTHC_PATH = "/admin/authentication";
+  public static final String ZK_PATH = "/admin/zookeeper";
 
   /** valid values for: <code>echoParams</code> */
   public enum EchoParamStyle {
@@ -206,7 +214,7 @@ public interface CommonParams {
   public static final String CACHE = "cache";
 
   /** Used as a local param on filter queries in conjunction with cache=false.  Filters are checked in order, from
-   * smallest cost to largest. If cost>=100 and the query implements PostFilter, then that interface will be used to do post query filtering.
+   * smallest cost to largest. If cost&gt;=100 and the query implements PostFilter, then that interface will be used to do post query filtering.
    */
   public static final String COST = "cost";
 
@@ -220,5 +228,18 @@ public interface CommonParams {
    */
   public static final String REQUEST_PURPOSE = "requestPurpose";
 
+  /**
+   * When querying a node, prefer local node's cores for distributed queries.
+   */
+  public static final String PREFER_LOCAL_SHARDS = "preferLocalShards";
+
+  public static final String JAVABIN = "javabin";
+
+  public static final String JSON = "json";
+
+  public static final String PATH = "path";
+
+  public static final String NAME = "name";
+  public static final String VALUE_LONG = "val";
 }
 

@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
+
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -31,11 +31,16 @@ import java.io.IOException;
  */
 public abstract class IndexOutput extends DataOutput implements Closeable {
 
-  /** Forces any buffered output to be written. 
-   * @deprecated Lucene never calls this method.
-   */
-  @Deprecated
-  public abstract void flush() throws IOException;
+  private final String resourceDescription;
+
+  /** Sole constructor.  resourceDescription should be non-null, opaque string
+   *  describing this resource; it's returned from {@link #toString}. */
+  protected IndexOutput(String resourceDescription) {
+    if (resourceDescription == null) {
+      throw new IllegalArgumentException("resourceDescription must not be null");
+    }
+    this.resourceDescription = resourceDescription;
+  }
 
   /** Closes this stream to further operations. */
   @Override
@@ -49,14 +54,8 @@ public abstract class IndexOutput extends DataOutput implements Closeable {
   /** Returns the current checksum of bytes written so far */
   public abstract long getChecksum() throws IOException;
 
-  /** The number of bytes in the file.
-   * 
-   * @deprecated Use {@link #getFilePointer} instead; this
-   * method will be removed in Lucene5.0.
-   */
-  @Deprecated
-  public long length() throws IOException {
-    return getFilePointer();
+  @Override
+  public String toString() {
+    return resourceDescription;
   }
-
 }

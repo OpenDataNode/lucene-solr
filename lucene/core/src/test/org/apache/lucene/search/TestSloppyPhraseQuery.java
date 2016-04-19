@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,21 +14,24 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 
-import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.MockDirectoryWrapper;
+import org.apache.lucene.store.RAMDirectory;
+import org.apache.lucene.util.LuceneTestCase;
 
 public class TestSloppyPhraseQuery extends LuceneTestCase {
 
@@ -54,7 +55,7 @@ public class TestSloppyPhraseQuery extends LuceneTestCase {
 
   /**
    * Test DOC_4 and QUERY_4.
-   * QUERY_4 has a fuzzy (len=1) match to DOC_4, so all slop values > 0 should succeed.
+   * QUERY_4 has a fuzzy (len=1) match to DOC_4, so all slop values &gt; 0 should succeed.
    * But only the 3rd sequence of A's in DOC_4 will do.
    */
   public void testDoc4_Query4_All_Slops_Should_match() throws Exception {
@@ -134,9 +135,16 @@ public class TestSloppyPhraseQuery extends LuceneTestCase {
   }
   
   private float  checkPhraseQuery(Document doc, PhraseQuery query, int slop, int expectedNumResults) throws Exception {
-    query.setSlop(slop);
+    PhraseQuery.Builder builder = new PhraseQuery.Builder();
+    Term[] terms = query.getTerms();
+    int[] positions = query.getPositions();
+    for (int i = 0; i < terms.length; ++i) {
+      builder.add(terms[i], positions[i]);
+    }
+    builder.setSlop(slop);
+    query = builder.build();
 
-    Directory ramDir = newDirectory();
+    MockDirectoryWrapper ramDir = new MockDirectoryWrapper(random(), new RAMDirectory());
     RandomIndexWriter writer = new RandomIndexWriter(random(), ramDir, new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false));
     writer.addDocument(doc);
 
@@ -167,15 +175,11 @@ public class TestSloppyPhraseQuery extends LuceneTestCase {
   }
 
   private static PhraseQuery makePhraseQuery(String terms) {
-    PhraseQuery query = new PhraseQuery();
     String[] t = terms.split(" +");
-    for (int i=0; i<t.length; i++) {
-      query.add(new Term("f", t[i]));
-    }
-    return query;
+    return new PhraseQuery("f", t);
   }
 
-  static class MaxFreqCollector extends Collector {
+  static class MaxFreqCollector extends SimpleCollector {
     float max;
     int totalHits;
     Scorer scorer;
@@ -190,20 +194,16 @@ public class TestSloppyPhraseQuery extends LuceneTestCase {
       totalHits++;
       max = Math.max(max, scorer.freq());
     }
-
+    
     @Override
-    public void setNextReader(AtomicReaderContext context) throws IOException {      
-    }
-
-    @Override
-    public boolean acceptsDocsOutOfOrder() {
-      return false;
+    public boolean needsScores() {
+      return true;
     }
   }
   
   /** checks that no scores or freqs are infinite */
   private void assertSaneScoring(PhraseQuery pq, IndexSearcher searcher) throws Exception {
-    searcher.search(pq, new Collector() {
+    searcher.search(pq, new SimpleCollector() {
       Scorer scorer;
       
       @Override
@@ -218,13 +218,8 @@ public class TestSloppyPhraseQuery extends LuceneTestCase {
       }
       
       @Override
-      public void setNextReader(AtomicReaderContext context) {
-        // do nothing
-      }
-      
-      @Override
-      public boolean acceptsDocsOutOfOrder() {
-        return false;
+      public boolean needsScores() {
+        return true;
       }
     });
     QueryUtils.check(random(), pq, searcher);
@@ -250,16 +245,18 @@ public class TestSloppyPhraseQuery extends LuceneTestCase {
     IndexReader ir = iw.getReader();
     iw.close();
     IndexSearcher is = newSearcher(ir);
-    
-    PhraseQuery pq = new PhraseQuery();
+
+    PhraseQuery.Builder builder = new PhraseQuery.Builder();
+    builder.add(new Term("lyrics", "drug"), 1);
+    builder.add(new Term("lyrics", "drug"), 4);
+    PhraseQuery pq = builder.build();
     // "drug the drug"~1
-    pq.add(new Term("lyrics", "drug"), 1);
-    pq.add(new Term("lyrics", "drug"), 4);
-    pq.setSlop(0);
-    assertEquals(0, is.search(pq, 4).totalHits);
-    pq.setSlop(1);
+    assertEquals(1, is.search(pq, 4).totalHits);
+    builder.setSlop(1);
+    pq = builder.build();
     assertEquals(3, is.search(pq, 4).totalHits);
-    pq.setSlop(2);
+    builder.setSlop(2);
+    pq = builder.build();
     assertEquals(4, is.search(pq, 4).totalHits);
     ir.close();
     dir.close();
@@ -278,11 +275,12 @@ public class TestSloppyPhraseQuery extends LuceneTestCase {
     iw.close();
     
     IndexSearcher is = newSearcher(ir);
-    PhraseQuery pq = new PhraseQuery();
+    PhraseQuery.Builder builder = new PhraseQuery.Builder();
+    builder.add(new Term("lyrics", "drug"), 1);
+    builder.add(new Term("lyrics", "drug"), 3);
+    builder.setSlop(1);
+    PhraseQuery pq = builder.build();
     // "drug the drug"~1
-    pq.add(new Term("lyrics", "drug"), 1);
-    pq.add(new Term("lyrics", "drug"), 3);
-    pq.setSlop(1);
     assertSaneScoring(pq, is);
     ir.close();
     dir.close();
@@ -332,11 +330,12 @@ public class TestSloppyPhraseQuery extends LuceneTestCase {
         
      IndexSearcher is = newSearcher(ir);
      
-     PhraseQuery pq = new PhraseQuery();
+     PhraseQuery.Builder builder = new PhraseQuery.Builder();
+     builder.add(new Term("lyrics", "drug"), 1);
+     builder.add(new Term("lyrics", "drug"), 4);
+     builder.setSlop(5);
+     PhraseQuery pq = builder.build();
      // "drug the drug"~5
-     pq.add(new Term("lyrics", "drug"), 1);
-     pq.add(new Term("lyrics", "drug"), 3);
-     pq.setSlop(5);
      assertSaneScoring(pq, is);
      ir.close();
      dir.close();

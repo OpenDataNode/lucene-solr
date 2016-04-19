@@ -14,19 +14,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.search;
 
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.IndexReader;
+import java.io.IOException;
+import java.util.Map;
+
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.ValueSourceScorer;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.solr.search.function.ValueSourceRangeFilter;
-
-import java.io.IOException;
-import java.util.Map;
 
 // This class works as either a normal constant score query, or as a PostFilter using a collector
 public class FunctionRangeQuery extends SolrConstantScoreQuery implements PostFilter {
@@ -54,17 +52,18 @@ public class FunctionRangeQuery extends SolrConstantScoreQuery implements PostFi
 
     @Override
     public void collect(int doc) throws IOException {
-      if (doc<maxdoc && scorer.matches(doc)) {
-        delegate.collect(doc);
+      assert doc < maxdoc;
+      if (scorer.matches(doc)) {
+        leafDelegate.collect(doc);
       }
     }
 
     @Override
-    public void setNextReader(AtomicReaderContext context) throws IOException {
+    protected void doSetNextReader(LeafReaderContext context) throws IOException {
+      super.doSetNextReader(context);
       maxdoc = context.reader().maxDoc();
       FunctionValues dv = rangeFilt.getValueSource().getValues(fcontext, context);
       scorer = dv.getRangeScorer(context.reader(), rangeFilt.getLowerVal(), rangeFilt.getUpperVal(), rangeFilt.isIncludeLower(), rangeFilt.isIncludeUpper());
-      super.setNextReader(context);
     }
   }
 }

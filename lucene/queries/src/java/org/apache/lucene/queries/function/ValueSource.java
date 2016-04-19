@@ -1,5 +1,3 @@
-package org.apache.lucene.queries.function;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,16 +14,18 @@ package org.apache.lucene.queries.function;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.search.FieldComparator;
-import org.apache.lucene.search.FieldComparatorSource;
-import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.SortField;
+package org.apache.lucene.queries.function;
 
 import java.io.IOException;
 import java.util.IdentityHashMap;
 import java.util.Map;
+
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.search.FieldComparator;
+import org.apache.lucene.search.FieldComparatorSource;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.SimpleFieldComparator;
+import org.apache.lucene.search.SortField;
 
 /**
  * Instantiates {@link FunctionValues} for a particular reader.
@@ -40,7 +40,7 @@ public abstract class ValueSource {
    * Gets the values for this reader and the context that was previously
    * passed to createWeight()
    */
-  public abstract FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException;
+  public abstract FunctionValues getValues(Map context, LeafReaderContext readerContext) throws IOException;
 
   @Override
   public abstract boolean equals(Object o);
@@ -84,7 +84,7 @@ public abstract class ValueSource {
   /**
    * EXPERIMENTAL: This method is subject to change.
    * <p>
-   * Get the SortField for this ValueSource.  Uses the {@link #getValues(java.util.Map, AtomicReaderContext)}
+   * Get the SortField for this ValueSource.  Uses the {@link #getValues(java.util.Map, org.apache.lucene.index.LeafReaderContext)}
    * to populate the SortField.
    *
    * @param reverse true if this is a reverse sort.
@@ -126,7 +126,7 @@ public abstract class ValueSource {
    * off of the {@link FunctionValues} for a ValueSource
    * instead of the normal Lucene FieldComparator that works off of a FieldCache.
    */
-  class ValueSourceComparator extends FieldComparator<Double> {
+  class ValueSourceComparator extends SimpleFieldComparator<Double> {
     private final double[] values;
     private FunctionValues docVals;
     private double bottom;
@@ -154,9 +154,8 @@ public abstract class ValueSource {
     }
 
     @Override
-    public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
+    public void doSetNextReader(LeafReaderContext context) throws IOException {
       docVals = getValues(fcontext, context);
-      return this;
     }
 
     @Override

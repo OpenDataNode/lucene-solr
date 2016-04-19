@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,16 @@ package org.apache.lucene.codecs;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs;
+
 
 import java.io.IOException;
 import java.util.ServiceLoader;
 import java.util.Set;
 
 import org.apache.lucene.codecs.perfield.PerFieldPostingsFormat; // javadocs
-import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.SegmentReadState;
+import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.util.NamedSPILoader;
 
 /** 
@@ -41,8 +41,23 @@ import org.apache.lucene.util.NamedSPILoader;
  * @lucene.experimental */
 public abstract class PostingsFormat implements NamedSPILoader.NamedSPI {
 
-  private static final NamedSPILoader<PostingsFormat> loader =
-    new NamedSPILoader<>(PostingsFormat.class);
+  /**
+   * This static holder class prevents classloading deadlock by delaying
+   * init of postings formats until needed.
+   */
+  private static final class Holder {
+    private static final NamedSPILoader<PostingsFormat> LOADER = new NamedSPILoader<>(PostingsFormat.class);
+    
+    private Holder() {}
+    
+    static NamedSPILoader<PostingsFormat> getLoader() {
+      if (LOADER == null) {
+        throw new IllegalStateException("You tried to lookup a PostingsFormat by name before all formats could be initialized. "+
+          "This likely happens if you call PostingsFormat#forName from a PostingsFormat's ctor.");
+      }
+      return LOADER;
+    }
+  }
 
   /** Zero-length {@code PostingsFormat} array. */
   public static final PostingsFormat[] EMPTY = new PostingsFormat[0];
@@ -62,6 +77,7 @@ public abstract class PostingsFormat implements NamedSPILoader.NamedSPI {
    * @param name must be all ascii alphanumeric, and less than 128 characters in length.
    */
   protected PostingsFormat(String name) {
+    // TODO: can we somehow detect name conflicts here?  Two different classes trying to claim the same name?  Otherwise you see confusing errors...
     NamedSPILoader.checkServiceName(name);
     this.name = name;
   }
@@ -93,20 +109,12 @@ public abstract class PostingsFormat implements NamedSPILoader.NamedSPI {
   
   /** looks up a format by name */
   public static PostingsFormat forName(String name) {
-    if (loader == null) {
-      throw new IllegalStateException("You called PostingsFormat.forName() before all formats could be initialized. "+
-          "This likely happens if you call it from a PostingsFormat's ctor.");
-    }
-    return loader.lookup(name);
+    return Holder.getLoader().lookup(name);
   }
   
   /** returns a list of all available format names */
   public static Set<String> availablePostingsFormats() {
-    if (loader == null) {
-      throw new IllegalStateException("You called PostingsFormat.availablePostingsFormats() before all formats could be initialized. "+
-          "This likely happens if you call it from a PostingsFormat's ctor.");
-    }
-    return loader.availableServices();
+    return Holder.getLoader().availableServices();
   }
   
   /** 
@@ -121,6 +129,6 @@ public abstract class PostingsFormat implements NamedSPILoader.NamedSPI {
    * of new postings formats on the given classpath/classloader!</em>
    */
   public static void reloadPostingsFormats(ClassLoader classloader) {
-    loader.reload(classloader);
+    Holder.getLoader().reload(classloader);
   }
 }

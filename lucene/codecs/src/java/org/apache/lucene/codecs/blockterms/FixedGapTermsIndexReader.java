@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.blockterms;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,26 +14,28 @@ package org.apache.lucene.codecs.blockterms;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.blockterms;
 
-import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.IOContext;
-import org.apache.lucene.store.IndexInput;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.index.CorruptIndexException;
-import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.IndexFileNames;
+import org.apache.lucene.index.SegmentReadState;
+import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.Accountable;
+import org.apache.lucene.util.Accountables;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.PagedBytes;
-import org.apache.lucene.util.RamUsageEstimator;
-import org.apache.lucene.util.packed.PackedInts;
-
-import java.util.HashMap;
-import java.util.Comparator;
-import java.io.IOException;
-
-import org.apache.lucene.index.IndexFileNames;
+import org.apache.lucene.util.packed.MonotonicBlockPackedReader;
 
 /** 
  * TermsIndexReader for simple every Nth terms indexes.
@@ -45,136 +45,93 @@ import org.apache.lucene.index.IndexFileNames;
  */
 public class FixedGapTermsIndexReader extends TermsIndexReaderBase {
 
-  private static final long BASE_RAM_BYTES_USED = RamUsageEstimator.shallowSizeOfInstance(FixedGapTermsIndexReader.class);
-
-  // NOTE: long is overkill here, since this number is 128
-  // by default and only indexDivisor * 128 if you change
-  // the indexDivisor at search time.  But, we use this in a
+  // NOTE: long is overkill here, but we use this in a
   // number of places to multiply out the actual ord, and we
   // will overflow int during those multiplies.  So to avoid
   // having to upgrade each multiple to long in multiple
   // places (error prone), we use long here:
-  private long totalIndexInterval;
-
-  private int indexDivisor;
-  final private int indexInterval;
-
-  // Closed if indexLoaded is true:
-  private IndexInput in;
-  private volatile boolean indexLoaded;
-
-  private final Comparator<BytesRef> termComp;
+  private final long indexInterval;
+  
+  private final int packedIntsVersion;
+  private final int blocksize;
 
   private final static int PAGED_BYTES_BITS = 15;
 
   // all fields share this single logical byte[]
   private final PagedBytes.Reader termBytesReader;
 
-  final HashMap<FieldInfo,FieldIndexData> fields = new HashMap<>();
+  final HashMap<String,FieldIndexData> fields = new HashMap<>();
   
-  // start of the field info data
-  private long dirOffset;
-  
-  private final int version;
-
-  public FixedGapTermsIndexReader(Directory dir, FieldInfos fieldInfos, String segment, int indexDivisor, Comparator<BytesRef> termComp, String segmentSuffix, IOContext context)
-    throws IOException {
-
-    this.termComp = termComp;
-
-    assert indexDivisor == -1 || indexDivisor > 0;
-
-    in = dir.openInput(IndexFileNames.segmentFileName(segment, segmentSuffix, FixedGapTermsIndexWriter.TERMS_INDEX_EXTENSION), context);
+  public FixedGapTermsIndexReader(SegmentReadState state) throws IOException {
     final PagedBytes termBytes = new PagedBytes(PAGED_BYTES_BITS);
-
+    
+    String fileName = IndexFileNames.segmentFileName(state.segmentInfo.name, 
+                                                     state.segmentSuffix, 
+                                                     FixedGapTermsIndexWriter.TERMS_INDEX_EXTENSION);
+    final IndexInput in = state.directory.openInput(fileName, state.context);
+    
     boolean success = false;
+
     try {
       
-      version = readHeader(in);
+      CodecUtil.checkIndexHeader(in, FixedGapTermsIndexWriter.CODEC_NAME,
+                                       FixedGapTermsIndexWriter.VERSION_CURRENT, 
+                                       FixedGapTermsIndexWriter.VERSION_CURRENT,
+                                       state.segmentInfo.getId(), state.segmentSuffix);
       
-      if (version >= FixedGapTermsIndexWriter.VERSION_CHECKSUM) {
-        CodecUtil.checksumEntireFile(in);
-      }
+      CodecUtil.checksumEntireFile(in);
       
-      indexInterval = in.readInt();
+      indexInterval = in.readVInt();
       if (indexInterval < 1) {
-        throw new CorruptIndexException("invalid indexInterval: " + indexInterval + " (resource=" + in + ")");
+        throw new CorruptIndexException("invalid indexInterval: " + indexInterval, in);
       }
-      this.indexDivisor = indexDivisor;
-
-      if (indexDivisor < 0) {
-        totalIndexInterval = indexInterval;
-      } else {
-        // In case terms index gets loaded, later, on demand
-        totalIndexInterval = indexInterval * indexDivisor;
-      }
-      assert totalIndexInterval > 0;
+      packedIntsVersion = in.readVInt();
+      blocksize = in.readVInt();
       
-      seekDir(in, dirOffset);
+      seekDir(in);
 
       // Read directory
       final int numFields = in.readVInt();     
       if (numFields < 0) {
-        throw new CorruptIndexException("invalid numFields: " + numFields + " (resource=" + in + ")");
+        throw new CorruptIndexException("invalid numFields: " + numFields, in);
       }
       //System.out.println("FGR: init seg=" + segment + " div=" + indexDivisor + " nF=" + numFields);
       for(int i=0;i<numFields;i++) {
         final int field = in.readVInt();
-        final int numIndexTerms = in.readVInt();
+        final long numIndexTerms = in.readVInt(); // TODO: change this to a vLong if we fix writer to support > 2B index terms
         if (numIndexTerms < 0) {
-          throw new CorruptIndexException("invalid numIndexTerms: " + numIndexTerms + " (resource=" + in + ")");
+          throw new CorruptIndexException("invalid numIndexTerms: " + numIndexTerms, in);
         }
         final long termsStart = in.readVLong();
         final long indexStart = in.readVLong();
         final long packedIndexStart = in.readVLong();
         final long packedOffsetsStart = in.readVLong();
         if (packedIndexStart < indexStart) {
-          throw new CorruptIndexException("invalid packedIndexStart: " + packedIndexStart + " indexStart: " + indexStart + "numIndexTerms: " + numIndexTerms + " (resource=" + in + ")");
+          throw new CorruptIndexException("invalid packedIndexStart: " + packedIndexStart + " indexStart: " + indexStart + "numIndexTerms: " + numIndexTerms, in);
         }
-        final FieldInfo fieldInfo = fieldInfos.fieldInfo(field);
-        FieldIndexData previous = fields.put(fieldInfo, new FieldIndexData(fieldInfo, termBytes, numIndexTerms, indexStart, termsStart, packedIndexStart, packedOffsetsStart));
+        final FieldInfo fieldInfo = state.fieldInfos.fieldInfo(field);
+        FieldIndexData previous = fields.put(fieldInfo.name, new FieldIndexData(in, termBytes, indexStart, termsStart, packedIndexStart, packedOffsetsStart, numIndexTerms));
         if (previous != null) {
-          throw new CorruptIndexException("duplicate field: " + fieldInfo.name + " (resource=" + in + ")");
+          throw new CorruptIndexException("duplicate field: " + fieldInfo.name, in);
         }
       }
       success = true;
     } finally {
-      if (!success) {
+      if (success) {
+        IOUtils.close(in);
+      } else {
         IOUtils.closeWhileHandlingException(in);
       }
-      if (indexDivisor > 0) {
-        in.close();
-        in = null;
-        if (success) {
-          indexLoaded = true;
-        }
-        termBytesReader = termBytes.freeze(true);
-      } else {
-        termBytesReader = null;
-      }
+      termBytesReader = termBytes.freeze(true);
     }
-  }
-  
-  @Override
-  public int getDivisor() {
-    return indexDivisor;
-  }
-
-  private int readHeader(IndexInput input) throws IOException {
-    int version = CodecUtil.checkHeader(input, FixedGapTermsIndexWriter.CODEC_NAME,
-      FixedGapTermsIndexWriter.VERSION_START, FixedGapTermsIndexWriter.VERSION_CURRENT);
-    if (version < FixedGapTermsIndexWriter.VERSION_APPEND_ONLY) {
-      dirOffset = input.readLong();
-    }
-    return version;
   }
 
   private class IndexEnum extends FieldIndexEnum {
-    private final FieldIndexData.CoreFieldIndex fieldIndex;
+    private final FieldIndexData fieldIndex;
     private final BytesRef term = new BytesRef();
     private long ord;
 
-    public IndexEnum(FieldIndexData.CoreFieldIndex fieldIndex) {
+    public IndexEnum(FieldIndexData fieldIndex) {
       this.fieldIndex = fieldIndex;
     }
 
@@ -185,25 +142,24 @@ public class FixedGapTermsIndexReader extends TermsIndexReaderBase {
 
     @Override
     public long seek(BytesRef target) {
-      int lo = 0;          // binary search
-      int hi = fieldIndex.numIndexTerms - 1;
-      assert totalIndexInterval > 0 : "totalIndexInterval=" + totalIndexInterval;
+      long lo = 0;          // binary search
+      long hi = fieldIndex.numIndexTerms - 1;
 
       while (hi >= lo) {
-        int mid = (lo + hi) >>> 1;
+        long mid = (lo + hi) >>> 1;
 
         final long offset = fieldIndex.termOffsets.get(mid);
         final int length = (int) (fieldIndex.termOffsets.get(1+mid) - offset);
         termBytesReader.fillSlice(term, fieldIndex.termBytesStart + offset, length);
 
-        int delta = termComp.compare(target, term);
+        int delta = target.compareTo(term);
         if (delta < 0) {
           hi = mid - 1;
         } else if (delta > 0) {
           lo = mid + 1;
         } else {
           assert mid >= 0;
-          ord = mid*totalIndexInterval;
+          ord = mid*indexInterval;
           return fieldIndex.termsStart + fieldIndex.termsDictOffsets.get(mid);
         }
       }
@@ -217,17 +173,17 @@ public class FixedGapTermsIndexReader extends TermsIndexReaderBase {
       final int length = (int) (fieldIndex.termOffsets.get(1+hi) - offset);
       termBytesReader.fillSlice(term, fieldIndex.termBytesStart + offset, length);
 
-      ord = hi*totalIndexInterval;
+      ord = hi*indexInterval;
       return fieldIndex.termsStart + fieldIndex.termsDictOffsets.get(hi);
     }
 
     @Override
     public long next() {
-      final int idx = 1 + (int) (ord / totalIndexInterval);
+      final long idx = 1 + (ord / indexInterval);
       if (idx >= fieldIndex.numIndexTerms) {
         return -1;
       }
-      ord += totalIndexInterval;
+      ord += indexInterval;
 
       final long offset = fieldIndex.termOffsets.get(idx);
       final int length = (int) (fieldIndex.termOffsets.get(1+idx) - offset);
@@ -242,13 +198,13 @@ public class FixedGapTermsIndexReader extends TermsIndexReaderBase {
 
     @Override
     public long seek(long ord) {
-      int idx = (int) (ord / totalIndexInterval);
+      long idx = ord / indexInterval;
       // caller must ensure ord is in bounds
       assert idx < fieldIndex.numIndexTerms;
       final long offset = fieldIndex.termOffsets.get(idx);
       final int length = (int) (fieldIndex.termOffsets.get(1+idx) - offset);
       termBytesReader.fillSlice(term, fieldIndex.termBytesStart + offset, length);
-      this.ord = idx * totalIndexInterval;
+      this.ord = idx * indexInterval;
       return fieldIndex.termsStart + fieldIndex.termsDictOffsets.get(idx);
     }
   }
@@ -258,203 +214,101 @@ public class FixedGapTermsIndexReader extends TermsIndexReaderBase {
     return true;
   }
 
-  private static final long FIELD_INDEX_DATA_BASE_RAM_BYTES_USED = RamUsageEstimator.shallowSizeOfInstance(FieldIndexData.class);
   private final class FieldIndexData implements Accountable {
-
-    volatile CoreFieldIndex coreIndex;
-
-    private final long indexStart;
-    private final long termsStart;
-    private final long packedIndexStart;
-    private final long packedOffsetsStart;
-
-    private final int numIndexTerms;
-
-    public FieldIndexData(FieldInfo fieldInfo, PagedBytes termBytes, int numIndexTerms, long indexStart, long termsStart, long packedIndexStart,
-                          long packedOffsetsStart) throws IOException {
-
+    // where this field's terms begin in the packed byte[]
+    // data
+    final long termBytesStart;
+    
+    // offset into index termBytes
+    final MonotonicBlockPackedReader termOffsets;
+    
+    // index pointers into main terms dict
+    final MonotonicBlockPackedReader termsDictOffsets;
+    
+    final long numIndexTerms;
+    final long termsStart;
+    
+    public FieldIndexData(IndexInput in, PagedBytes termBytes, long indexStart, long termsStart, long packedIndexStart, long packedOffsetsStart, long numIndexTerms) throws IOException {
+      
       this.termsStart = termsStart;
-      this.indexStart = indexStart;
-      this.packedIndexStart = packedIndexStart;
-      this.packedOffsetsStart = packedOffsetsStart;
+      termBytesStart = termBytes.getPointer();
+      
+      IndexInput clone = in.clone();
+      clone.seek(indexStart);
+      
       this.numIndexTerms = numIndexTerms;
-
-      if (indexDivisor > 0) {
-        loadTermsIndex(termBytes);
+      assert this.numIndexTerms  > 0: "numIndexTerms=" + numIndexTerms;
+      
+      // slurp in the images from disk:
+      
+      try {
+        final long numTermBytes = packedIndexStart - indexStart;
+        termBytes.copy(clone, numTermBytes);
+        
+        // records offsets into main terms dict file
+        termsDictOffsets = MonotonicBlockPackedReader.of(clone, packedIntsVersion, blocksize, numIndexTerms, false);
+        
+        // records offsets into byte[] term data
+        termOffsets = MonotonicBlockPackedReader.of(clone, packedIntsVersion, blocksize, 1+numIndexTerms, false);
+      } finally {
+        clone.close();
       }
+    }
+    
+    @Override
+    public long ramBytesUsed() {
+      return ((termOffsets!=null)? termOffsets.ramBytesUsed() : 0) + 
+          ((termsDictOffsets!=null)? termsDictOffsets.ramBytesUsed() : 0);
     }
 
     @Override
-    public long ramBytesUsed() {
-      return FIELD_INDEX_DATA_BASE_RAM_BYTES_USED + coreIndex.ramBytesUsed();
+    public Collection<Accountable> getChildResources() {
+      List<Accountable> resources = new ArrayList<>();
+      if (termOffsets != null) {
+        resources.add(Accountables.namedAccountable("term lengths", termOffsets));
+      }
+      if (termsDictOffsets != null) {
+        resources.add(Accountables.namedAccountable("offsets", termsDictOffsets));
+      }
+      return Collections.unmodifiableList(resources);
     }
 
-    private void loadTermsIndex(PagedBytes termBytes) throws IOException {
-      if (coreIndex == null) {
-        coreIndex = new CoreFieldIndex(termBytes, indexStart, termsStart, packedIndexStart, packedOffsetsStart, numIndexTerms);
-      }
-    }
-
-    private final class CoreFieldIndex implements Accountable {
-
-      // where this field's terms begin in the packed byte[]
-      // data
-      final long termBytesStart;
-
-      // offset into index termBytes
-      final PackedInts.Reader termOffsets;
-
-      // index pointers into main terms dict
-      final PackedInts.Reader termsDictOffsets;
-
-      final int numIndexTerms;
-      final long termsStart;
-
-      public CoreFieldIndex(PagedBytes termBytes, long indexStart, long termsStart, long packedIndexStart, long packedOffsetsStart, int numIndexTerms) throws IOException {
-
-        this.termsStart = termsStart;
-        termBytesStart = termBytes.getPointer();
-
-        IndexInput clone = in.clone();
-        clone.seek(indexStart);
-
-        // -1 is passed to mean "don't load term index", but
-        // if we are then later loaded it's overwritten with
-        // a real value
-        assert indexDivisor > 0;
-
-        this.numIndexTerms = 1+(numIndexTerms-1) / indexDivisor;
-
-        assert this.numIndexTerms  > 0: "numIndexTerms=" + numIndexTerms + " indexDivisor=" + indexDivisor;
-
-        if (indexDivisor == 1) {
-          // Default (load all index terms) is fast -- slurp in the images from disk:
-          
-          try {
-            final long numTermBytes = packedIndexStart - indexStart;
-            termBytes.copy(clone, numTermBytes);
-
-            // records offsets into main terms dict file
-            termsDictOffsets = PackedInts.getReader(clone);
-            assert termsDictOffsets.size() == numIndexTerms;
-
-            // records offsets into byte[] term data
-            termOffsets = PackedInts.getReader(clone);
-            assert termOffsets.size() == 1+numIndexTerms;
-          } finally {
-            clone.close();
-          }
-        } else {
-          // Get packed iterators
-          final IndexInput clone1 = in.clone();
-          final IndexInput clone2 = in.clone();
-
-          try {
-            // Subsample the index terms
-            clone1.seek(packedIndexStart);
-            final PackedInts.ReaderIterator termsDictOffsetsIter = PackedInts.getReaderIterator(clone1, PackedInts.DEFAULT_BUFFER_SIZE);
-
-            clone2.seek(packedOffsetsStart);
-            final PackedInts.ReaderIterator termOffsetsIter = PackedInts.getReaderIterator(clone2,  PackedInts.DEFAULT_BUFFER_SIZE);
-
-            // TODO: often we can get by w/ fewer bits per
-            // value, below.. .but this'd be more complex:
-            // we'd have to try @ fewer bits and then grow
-            // if we overflowed it.
-
-            PackedInts.Mutable termsDictOffsetsM = PackedInts.getMutable(this.numIndexTerms, termsDictOffsetsIter.getBitsPerValue(), PackedInts.DEFAULT);
-            PackedInts.Mutable termOffsetsM = PackedInts.getMutable(this.numIndexTerms+1, termOffsetsIter.getBitsPerValue(), PackedInts.DEFAULT);
-
-            termsDictOffsets = termsDictOffsetsM;
-            termOffsets = termOffsetsM;
-
-            int upto = 0;
-
-            long termOffsetUpto = 0;
-
-            while(upto < this.numIndexTerms) {
-              // main file offset copies straight over
-              termsDictOffsetsM.set(upto, termsDictOffsetsIter.next());
-
-              termOffsetsM.set(upto, termOffsetUpto);
-
-              long termOffset = termOffsetsIter.next();
-              long nextTermOffset = termOffsetsIter.next();
-              final int numTermBytes = (int) (nextTermOffset - termOffset);
-
-              clone.seek(indexStart + termOffset);
-              assert indexStart + termOffset < clone.length() : "indexStart=" + indexStart + " termOffset=" + termOffset + " len=" + clone.length();
-              assert indexStart + termOffset + numTermBytes < clone.length();
-
-              termBytes.copy(clone, numTermBytes);
-              termOffsetUpto += numTermBytes;
-
-              upto++;
-              if (upto == this.numIndexTerms) {
-                break;
-              }
-
-              // skip terms:
-              termsDictOffsetsIter.next();
-              for(int i=0;i<indexDivisor-2;i++) {
-                termOffsetsIter.next();
-                termsDictOffsetsIter.next();
-              }
-            }
-            termOffsetsM.set(upto, termOffsetUpto);
-
-          } finally {
-            clone1.close();
-            clone2.close();
-            clone.close();
-          }
-        }
-      }
-      
-      @Override
-      public long ramBytesUsed() {
-        return ((termOffsets!=null)? termOffsets.ramBytesUsed() : 0) +
-            ((termsDictOffsets!=null)? termsDictOffsets.ramBytesUsed() : 0);
-      }
+    @Override
+    public String toString() {
+      return "FixedGapTermIndex(indexterms=" + numIndexTerms + ")";
     }
   }
 
   @Override
   public FieldIndexEnum getFieldEnum(FieldInfo fieldInfo) {
-    final FieldIndexData fieldData = fields.get(fieldInfo);
-    if (fieldData.coreIndex == null) {
-      return null;
-    } else {
-      return new IndexEnum(fieldData.coreIndex);
-    }
+    return new IndexEnum(fields.get(fieldInfo.name));
   }
 
   @Override
-  public void close() throws IOException {
-    if (in != null && !indexLoaded) {
-      in.close();
-    }
-  }
+  public void close() throws IOException {}
 
-  private void seekDir(IndexInput input, long dirOffset) throws IOException {
-    if (version >= FixedGapTermsIndexWriter.VERSION_CHECKSUM) {
-      input.seek(input.length() - CodecUtil.footerLength() - 8);
-      dirOffset = input.readLong();
-    } else if (version >= FixedGapTermsIndexWriter.VERSION_APPEND_ONLY) {
-      input.seek(input.length() - 8);
-      dirOffset = input.readLong();
-    }
+  private void seekDir(IndexInput input) throws IOException {
+    input.seek(input.length() - CodecUtil.footerLength() - 8);
+    long dirOffset = input.readLong();
     input.seek(dirOffset);
   }
-  
+
   @Override
   public long ramBytesUsed() {
-    long sizeInBytes = BASE_RAM_BYTES_USED
-        + fields.size() * 2L * RamUsageEstimator.NUM_BYTES_OBJECT_REF
-        + ((termBytesReader!=null)? termBytesReader.ramBytesUsed() : 0);
+    long sizeInBytes = ((termBytesReader!=null)? termBytesReader.ramBytesUsed() : 0);
     for(FieldIndexData entry : fields.values()) {
       sizeInBytes += entry.ramBytesUsed();
     }
     return sizeInBytes;
+  }
+
+  @Override
+  public Collection<Accountable> getChildResources() {
+    return Accountables.namedAccountables("field", fields);
+  }
+
+  @Override
+  public String toString() {
+    return getClass().getSimpleName() + "(fields=" + fields.size() + ",interval=" + indexInterval + ")";
   }
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -38,8 +38,7 @@ public class TestPerSegmentDeletes extends LuceneTestCase {
   public void testDeletes1() throws Exception {
     //IndexWriter.debug2 = System.out;
     Directory dir = new MockDirectoryWrapper(new Random(random().nextLong()), new RAMDirectory());
-    IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT,
-        new MockAnalyzer(random()));
+    IndexWriterConfig iwc = new IndexWriterConfig(new MockAnalyzer(random()));
     iwc.setMergeScheduler(new SerialMergeScheduler());
     iwc.setMaxBufferedDocs(5000);
     iwc.setRAMBufferSizeMB(100);
@@ -225,18 +224,18 @@ public class TestPerSegmentDeletes extends LuceneTestCase {
       throws IOException {
     Fields fields = MultiFields.getFields(reader);
     Terms cterms = fields.terms(term.field);
-    TermsEnum ctermsEnum = cterms.iterator(null);
+    TermsEnum ctermsEnum = cterms.iterator();
     if (ctermsEnum.seekExact(new BytesRef(term.text()))) {
-      DocsEnum docsEnum = TestUtil.docs(random(), ctermsEnum, bits, null, DocsEnum.FLAG_NONE);
-      return toArray(docsEnum);
+      PostingsEnum postingsEnum = TestUtil.docs(random(), ctermsEnum, null, PostingsEnum.NONE);
+      return toArray(postingsEnum);
     }
     return null;
   }
 
-  public static int[] toArray(DocsEnum docsEnum) throws IOException {
+  public static int[] toArray(PostingsEnum postingsEnum) throws IOException {
     List<Integer> docs = new ArrayList<>();
-    while (docsEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
-      int docID = docsEnum.docID();
+    while (postingsEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
+      int docID = postingsEnum.docID();
       docs.add(docID);
     }
     return ArrayUtil.toIntArray(docs);

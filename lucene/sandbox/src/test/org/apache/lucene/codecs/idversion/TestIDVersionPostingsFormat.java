@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.idversion;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,9 @@ package org.apache.lucene.codecs.idversion;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.idversion;
 
 import java.io.IOException;
-import java.io.Reader;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -30,7 +28,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.apache.lucene.analysis.Analyzer.TokenStreamComponents;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenFilter;
@@ -40,7 +37,7 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.index.ConcurrentMergeScheduler;
-import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -53,6 +50,7 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.LiveFieldValues;
 import org.apache.lucene.search.SearcherFactory;
 import org.apache.lucene.search.SearcherManager;
+import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
@@ -77,7 +75,7 @@ public class TestIDVersionPostingsFormat extends LuceneTestCase {
     doc.add(makeIDField("id1", 110));
     w.addDocument(doc);
     IndexReader r = w.getReader();
-    IDVersionSegmentTermsEnum termsEnum = (IDVersionSegmentTermsEnum) r.leaves().get(0).reader().fields().terms("id").iterator(null);
+    IDVersionSegmentTermsEnum termsEnum = (IDVersionSegmentTermsEnum) r.leaves().get(0).reader().fields().terms("id").iterator();
     assertTrue(termsEnum.seekExact(new BytesRef("id0"), 50));
     assertTrue(termsEnum.seekExact(new BytesRef("id0"), 100));
     assertFalse(termsEnum.seekExact(new BytesRef("id0"), 101));
@@ -141,7 +139,7 @@ public class TestIDVersionPostingsFormat extends LuceneTestCase {
       }
       ids = new IDSource() {
           final int radix = TestUtil.nextInt(random(), Character.MIN_RADIX, Character.MAX_RADIX);
-          final String zeroPad = String.format(Locale.ROOT, "%0" + TestUtil.nextInt(random(), 4, 20) + "d", 0);
+          final String zeroPad = String.format(Locale.ROOT, "%0" + TestUtil.nextInt(random(), 5, 20) + "d", 0);
           int upto;
           @Override
           public String next() {
@@ -270,7 +268,7 @@ public class TestIDVersionPostingsFormat extends LuceneTestCase {
     }
 
     IndexReader r = w.getReader();
-    //IndexReader r = DirectoryReader.open(w, true);
+    //IndexReader r = DirectoryReader.open(w);
     PerThreadVersionPKLookup lookup = new PerThreadVersionPKLookup(r, "id");
 
     List<Map.Entry<String,Long>> idValuesList = new ArrayList<>(idValues.entrySet());
@@ -331,9 +329,9 @@ public class TestIDVersionPostingsFormat extends LuceneTestCase {
           if (VERBOSE) {
             System.out.println("  found in seg=" + termsEnums[seg]);
           }
-          docsEnums[seg] = termsEnums[seg].docs(liveDocs[seg], docsEnums[seg], 0);
-          int docID = docsEnums[seg].nextDoc();
-          if (docID != DocsEnum.NO_MORE_DOCS) {
+          postingsEnums[seg] = termsEnums[seg].postings(postingsEnums[seg], 0);
+          int docID = postingsEnums[seg].nextDoc();
+          if (docID != PostingsEnum.NO_MORE_DOCS && (liveDocs[seg] == null || liveDocs[seg].get(docID))) {
             lastVersion = ((IDVersionSegmentTermsEnum) termsEnums[seg]).getVersion();
             return docBases[seg] + docID;
           }
@@ -357,8 +355,6 @@ public class TestIDVersionPostingsFormat extends LuceneTestCase {
     return new StringAndPayloadField("id", id, payload);
   }
 
-  // In 4.x we cannot detect this case (IW doesn't tell us deleted docs):
-  /*
   public void testMoreThanOneDocPerIDOneSegment() throws Exception {
     Directory dir = newDirectory();
     IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random()));
@@ -389,7 +385,7 @@ public class TestIDVersionPostingsFormat extends LuceneTestCase {
     if (ms instanceof ConcurrentMergeScheduler) {
       iwc.setMergeScheduler(new ConcurrentMergeScheduler() {
           @Override
-          protected void handleMergeException(Throwable exc) {
+          protected void handleMergeException(Directory dir, Throwable exc) {
             assertTrue(exc instanceof IllegalArgumentException);
           }
         });
@@ -408,14 +404,13 @@ public class TestIDVersionPostingsFormat extends LuceneTestCase {
       fail("didn't hit exception");
     } catch (IllegalArgumentException iae) {
       // expected: SMS will hit this
-    } catch (IOException ioe) {
+    } catch (IOException | IllegalStateException exc) {
       // expected
-      assertTrue(ioe.getCause() instanceof IllegalArgumentException);
+      assertTrue(exc.getCause() instanceof IllegalArgumentException);
     }
-    w.close();
+    w.rollback();
     dir.close();
   }
-  */
 
   public void testMoreThanOneDocPerIDWithUpdates() throws Exception {
     Directory dir = newDirectory();
@@ -457,8 +452,8 @@ public class TestIDVersionPostingsFormat extends LuceneTestCase {
     // MockAnalyzer minus maybePayload else it sometimes stuffs in an 8-byte payload!
     Analyzer a = new Analyzer() {
         @Override
-        public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-          MockTokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, true, 100);
+        public TokenStreamComponents createComponents(String fieldName) {
+          MockTokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, true, 100);
           tokenizer.setEnableChecks(true);
           MockTokenFilter filt = new MockTokenFilter(tokenizer, MockTokenFilter.EMPTY_STOPSET);
           return new TokenStreamComponents(tokenizer, filt);
@@ -601,8 +596,21 @@ public class TestIDVersionPostingsFormat extends LuceneTestCase {
     } catch (IllegalArgumentException iae) {
       // expected
     }
+    try {
+      w.addDocument(doc);
+      fail("should have hit exc");
+    } catch (AlreadyClosedException ace) {
+      // expected
+    }
+    dir.close();
+  }
 
-    doc = new Document();
+  public void testInvalidVersions2() throws IOException {
+    Directory dir = newDirectory();
+    IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random()));
+    iwc.setCodec(TestUtil.alwaysPostingsFormat(new IDVersionPostingsFormat()));
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir, iwc);
+    Document doc = new Document();
     // Long.MAX_VALUE:
     doc.add(new StringAndPayloadField("id", "id", new BytesRef(new byte[] {(byte)0x7f, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff})));
     try {
@@ -612,7 +620,12 @@ public class TestIDVersionPostingsFormat extends LuceneTestCase {
     } catch (IllegalArgumentException iae) {
       // expected
     }
-    w.close();
+    try {
+      w.addDocument(doc);
+      fail("should have hit exc");
+    } catch (AlreadyClosedException ace) {
+      // expected
+    }
     dir.close();
   }
 
@@ -641,7 +654,7 @@ public class TestIDVersionPostingsFormat extends LuceneTestCase {
 
     final AtomicLong nextVersion = new AtomicLong();
 
-    final SearcherManager mgr = new SearcherManager(w.w, true, new SearcherFactory());
+    final SearcherManager mgr = new SearcherManager(w.w, new SearcherFactory());
 
     final Long missingValue = -1L;
 

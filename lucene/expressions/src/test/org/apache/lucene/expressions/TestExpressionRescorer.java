@@ -1,5 +1,3 @@
-package org.apache.lucene.expressions;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.expressions;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.expressions;
+
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -32,10 +32,8 @@ import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.LuceneTestCase;
 
-@SuppressCodecs("Lucene3x")
 public class TestExpressionRescorer extends LuceneTestCase {
   IndexSearcher searcher;
   DirectoryReader reader;

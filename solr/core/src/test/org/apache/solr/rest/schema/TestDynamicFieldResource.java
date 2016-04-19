@@ -1,4 +1,3 @@
-package org.apache.solr.rest.schema;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.rest.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.rest.schema;
 import org.apache.solr.rest.SolrRestletTestBase;
 import org.junit.Test;
 
@@ -67,5 +66,12 @@ public class TestDynamicFieldResource extends SolrRestletTestBase {
              "/dynamicField/multiValued==false",
              "/dynamicField/required==false",
              "/dynamicField/tokenized==false");
+  }
+
+  @Test
+  public void testJsonPutFieldToNonMutableIndexSchema() throws Exception {
+    assertJPut("/schema/dynamicfields/newfield_*",
+        "{\"type\":\"text_general\", \"stored\":\"false\"}",
+        "/error/msg=='This IndexSchema is not mutable.'");
   }
 }

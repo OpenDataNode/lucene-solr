@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,10 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
+
+import java.io.IOException;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -24,10 +26,8 @@ import org.apache.lucene.document.FieldType;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
-import java.io.IOException;
-
-import org.junit.Before;
 import org.junit.After;
+import org.junit.Before;
 
 /**
  * Tests that a useful exception is thrown when attempting to index a term that is 
@@ -55,12 +55,10 @@ public class TestExceedMaxTermLength extends LuceneTestCase {
   public void test() throws Exception {
     
     IndexWriter w = new IndexWriter
-      (dir, newIndexWriterConfig(random(), 
-                                 TEST_VERSION_CURRENT,
-                                 new MockAnalyzer(random())));
+      (dir, newIndexWriterConfig(random(), new MockAnalyzer(random())));
     try {
       final FieldType ft = new FieldType();
-      ft.setIndexed(true);
+      ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
       ft.setStored(random().nextBoolean());
       ft.freeze();
       

@@ -14,18 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.client.solrj.response;
-
-import junit.framework.Assert;
-
-import org.apache.lucene.util.LuceneTestCase;
-import org.apache.solr.client.solrj.impl.XMLResponseParser;
-import org.apache.solr.common.SolrDocumentList;
-import org.apache.solr.common.util.DateUtil;
-import org.apache.solr.common.util.NamedList;
-import org.apache.solr.core.SolrResourceLoader;
-import org.junit.Test;
 
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -33,16 +22,27 @@ import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
+import junit.framework.Assert;
+import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.TestRuleLimitSysouts.Limit;
+import org.apache.solr.client.solrj.impl.XMLResponseParser;
+import org.apache.solr.common.SolrDocumentList;
+import org.apache.solr.common.util.DateUtil;
+import org.apache.solr.common.util.NamedList;
+import org.apache.solr.core.SolrResourceLoader;
+import org.junit.Test;
+
 /**
  * A few tests for parsing Solr response in QueryResponse
  * 
  * @since solr 1.3
  */
+@Limit(bytes=20000)
 public class QueryResponseTest extends LuceneTestCase {
   @Test
   public void testDateFacets() throws Exception   {
     XMLResponseParser parser = new XMLResponseParser();
-    InputStream is = new SolrResourceLoader(null, null).openResource("solrj/sampleDateFacetResponse.xml");
+    InputStream is = new SolrResourceLoader().openResource("solrj/sampleDateFacetResponse.xml");
     assertNotNull(is);
     Reader in = new InputStreamReader(is, StandardCharsets.UTF_8);
     NamedList<Object> response = parser.processResponse(in);
@@ -66,7 +66,7 @@ public class QueryResponseTest extends LuceneTestCase {
   @Test
   public void testRangeFacets() throws Exception {
     XMLResponseParser parser = new XMLResponseParser();
-    InputStream is = new SolrResourceLoader(null, null).openResource("solrj/sampleDateFacetResponse.xml");
+    InputStream is = new SolrResourceLoader().openResource("solrj/sampleDateFacetResponse.xml");
     assertNotNull(is);
     Reader in = new InputStreamReader(is, StandardCharsets.UTF_8);
     NamedList<Object> response = parser.processResponse(in);
@@ -123,7 +123,7 @@ public class QueryResponseTest extends LuceneTestCase {
   @Test
   public void testGroupResponse() throws Exception {
     XMLResponseParser parser = new XMLResponseParser();
-    InputStream is = new SolrResourceLoader(null, null).openResource("solrj/sampleGroupResponse.xml");
+    InputStream is = new SolrResourceLoader().openResource("solrj/sampleGroupResponse.xml");
     assertNotNull(is);
     Reader in = new InputStreamReader(is, StandardCharsets.UTF_8);
     NamedList<Object> response = parser.processResponse(in);
@@ -225,7 +225,7 @@ public class QueryResponseTest extends LuceneTestCase {
   @Test
   public void testSimpleGroupResponse() throws Exception {
     XMLResponseParser parser = new XMLResponseParser();
-    InputStream is = new SolrResourceLoader(null, null).openResource("solrj/sampleSimpleGroupResponse.xml");
+    InputStream is = new SolrResourceLoader().openResource("solrj/sampleSimpleGroupResponse.xml");
     assertNotNull(is);
     Reader in = new InputStreamReader(is, StandardCharsets.UTF_8);
     NamedList<Object> response = parser.processResponse(in);
@@ -266,7 +266,7 @@ public class QueryResponseTest extends LuceneTestCase {
   
   public void testIntervalFacetsResponse() throws Exception {
     XMLResponseParser parser = new XMLResponseParser();
-    try(SolrResourceLoader loader = new SolrResourceLoader(null, null)) {
+    try(SolrResourceLoader loader = new SolrResourceLoader()) {
       InputStream is = loader.openResource("solrj/sampleIntervalFacetsResponse.xml");
       assertNotNull(is);
       Reader in = new InputStreamReader(is, StandardCharsets.UTF_8);

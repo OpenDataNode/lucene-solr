@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 import java.util.Iterator;
@@ -31,8 +31,8 @@ import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
 
 public class TestParallelTermEnum extends LuceneTestCase {
-  private AtomicReader ir1;
-  private AtomicReader ir2;
+  private LeafReader ir1;
+  private LeafReader ir2;
   private Directory rd1;
   private Directory rd2;
   
@@ -72,15 +72,15 @@ public class TestParallelTermEnum extends LuceneTestCase {
     super.tearDown();
   }
   
-  private void checkTerms(Terms terms, Bits liveDocs, String... termsList) throws IOException {
+  private void checkTerms(Terms terms, String... termsList) throws IOException {
     assertNotNull(terms);
-    final TermsEnum te = terms.iterator(null);
+    final TermsEnum te = terms.iterator();
     
     for (String t : termsList) {
       BytesRef b = te.next();
       assertNotNull(b);
       assertEquals(t, b.utf8ToString());
-      DocsEnum td = TestUtil.docs(random(), te, liveDocs, null, DocsEnum.FLAG_NONE);
+      PostingsEnum td = TestUtil.docs(random(), te, null, PostingsEnum.NONE);
       assertTrue(td.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
       assertEquals(0, td.docID());
       assertEquals(td.nextDoc(), DocIdSetIterator.NO_MORE_DOCS);
@@ -89,24 +89,22 @@ public class TestParallelTermEnum extends LuceneTestCase {
   }
 
   public void test1() throws IOException {
-    ParallelAtomicReader pr = new ParallelAtomicReader(ir1, ir2);
-
-    Bits liveDocs = pr.getLiveDocs();
+    ParallelLeafReader pr = new ParallelLeafReader(ir1, ir2);
 
     Fields fields = pr.fields();
     Iterator<String> fe = fields.iterator();
 
     String f = fe.next();
     assertEquals("field1", f);
-    checkTerms(fields.terms(f), liveDocs, "brown", "fox", "jumps", "quick", "the");
+    checkTerms(fields.terms(f), "brown", "fox", "jumps", "quick", "the");
 
     f = fe.next();
     assertEquals("field2", f);
-    checkTerms(fields.terms(f), liveDocs, "brown", "fox", "jumps", "quick", "the");
+    checkTerms(fields.terms(f), "brown", "fox", "jumps", "quick", "the");
 
     f = fe.next();
     assertEquals("field3", f);
-    checkTerms(fields.terms(f), liveDocs, "dog", "fox", "jumps", "lazy", "over", "the");
+    checkTerms(fields.terms(f), "dog", "fox", "jumps", "lazy", "over", "the");
 
     assertFalse(fe.hasNext());
   }

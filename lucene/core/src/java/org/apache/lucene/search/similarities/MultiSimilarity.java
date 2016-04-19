@@ -1,5 +1,3 @@
-package org.apache.lucene.search.similarities;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,15 @@ package org.apache.lucene.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.similarities;
+
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.FieldInvertState;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.search.CollectionStatistics;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.TermStatistics;
@@ -48,16 +50,16 @@ public class MultiSimilarity extends Similarity {
   }
 
   @Override
-  public SimWeight computeWeight(float queryBoost, CollectionStatistics collectionStats, TermStatistics... termStats) {
+  public SimWeight computeWeight(CollectionStatistics collectionStats, TermStatistics... termStats) {
     SimWeight subStats[] = new SimWeight[sims.length];
     for (int i = 0; i < subStats.length; i++) {
-      subStats[i] = sims[i].computeWeight(queryBoost, collectionStats, termStats);
+      subStats[i] = sims[i].computeWeight(collectionStats, termStats);
     }
     return new MultiStats(subStats);
   }
 
   @Override
-  public SimScorer simScorer(SimWeight stats, AtomicReaderContext context) throws IOException {
+  public SimScorer simScorer(SimWeight stats, LeafReaderContext context) throws IOException {
     SimScorer subScorers[] = new SimScorer[sims.length];
     for (int i = 0; i < subScorers.length; i++) {
       subScorers[i] = sims[i].simScorer(((MultiStats)stats).subStats[i], context);
@@ -83,11 +85,11 @@ public class MultiSimilarity extends Similarity {
 
     @Override
     public Explanation explain(int doc, Explanation freq) {
-      Explanation expl = new Explanation(score(doc, freq.getValue()), "sum of:");
+      List<Explanation> subs = new ArrayList<>();
       for (SimScorer subScorer : subScorers) {
-        expl.addDetail(subScorer.explain(doc, freq));
+        subs.add(subScorer.explain(doc, freq));
       }
-      return expl;
+      return Explanation.match(score(doc, freq.getValue()), "sum of:", subs);
     }
 
     @Override
@@ -118,9 +120,9 @@ public class MultiSimilarity extends Similarity {
     }
 
     @Override
-    public void normalize(float queryNorm, float topLevelBoost) {
+    public void normalize(float queryNorm, float boost) {
       for (SimWeight stat : subStats) {
-        stat.normalize(queryNorm, topLevelBoost);
+        stat.normalize(queryNorm, boost);
       }
     }
   }

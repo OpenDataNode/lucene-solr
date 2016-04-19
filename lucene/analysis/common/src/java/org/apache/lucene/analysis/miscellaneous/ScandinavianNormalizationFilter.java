@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.miscellaneous;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.miscellaneous;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.miscellaneous;
+
 
 import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
@@ -27,14 +27,13 @@ import java.io.IOException;
 /**
  * This filter normalize use of the interchangeable Scandinavian characters æÆäÄöÖøØ
  * and folded variants (aa, ao, ae, oe and oo) by transforming them to åÅæÆøØ.
- * <p/>
+ * <p>
  * It's a semantically less destructive solution than {@link ScandinavianFoldingFilter},
  * most useful when a person with a Norwegian or Danish keyboard queries a Swedish index
  * and vice versa. This filter does <b>not</b>  the common Swedish folds of å and ä to a nor ö to o.
- * <p/>
+ * <p>
  * blåbærsyltetøj == blåbärsyltetöj == blaabaarsyltetoej but not blabarsyltetoj
  * räksmörgås == ræksmørgås == ræksmörgaos == raeksmoergaas but not raksmorgas
- * <p/>
  * @see ScandinavianFoldingFilter
  */
 public final class ScandinavianNormalizationFilter extends TokenFilter {

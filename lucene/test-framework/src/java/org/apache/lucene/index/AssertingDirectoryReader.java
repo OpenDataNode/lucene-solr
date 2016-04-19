@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,26 +14,29 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
+import java.io.IOException;
 
 /**
  * A {@link DirectoryReader} that wraps all its subreaders with
- * {@link AssertingAtomicReader}
+ * {@link AssertingLeafReader}
  */
 public class AssertingDirectoryReader extends FilterDirectoryReader {
 
   static class AssertingSubReaderWrapper extends SubReaderWrapper {
     @Override
-    public AtomicReader wrap(AtomicReader reader) {
-      return new AssertingAtomicReader(reader);
+    public LeafReader wrap(LeafReader reader) {
+      return new AssertingLeafReader(reader);
     }
   }
 
-  public AssertingDirectoryReader(DirectoryReader in) {
+  public AssertingDirectoryReader(DirectoryReader in) throws IOException {
     super(in, new AssertingSubReaderWrapper());
   }
 
   @Override
-  protected DirectoryReader doWrapDirectoryReader(DirectoryReader in) {
+  protected DirectoryReader doWrapDirectoryReader(DirectoryReader in) throws IOException {
     return new AssertingDirectoryReader(in);
   }
 

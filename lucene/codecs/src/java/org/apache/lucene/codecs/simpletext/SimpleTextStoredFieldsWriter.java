@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.simpletext;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.codecs.simpletext;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.simpletext;
+
 
 import java.io.IOException;
 
@@ -34,7 +34,7 @@ import org.apache.lucene.util.IOUtils;
 /**
  * Writes plain-text stored fields.
  * <p>
- * <b><font color="red">FOR RECREATIONAL USE ONLY</font></B>
+ * <b>FOR RECREATIONAL USE ONLY</b>
  * @lucene.experimental
  */
 public class SimpleTextStoredFieldsWriter extends StoredFieldsWriter {
@@ -70,7 +70,7 @@ public class SimpleTextStoredFieldsWriter extends StoredFieldsWriter {
       success = true;
     } finally {
       if (!success) {
-        abort();
+        IOUtils.closeWhileHandlingException(this);
       }
     }
   }
@@ -149,14 +149,6 @@ public class SimpleTextStoredFieldsWriter extends StoredFieldsWriter {
         newLine();
       }
     }
-  }
-
-  @Override
-  public void abort() {
-    try {
-      close();
-    } catch (Throwable ignored) {}
-    IOUtils.deleteFilesIgnoringExceptions(directory, IndexFileNames.segmentFileName(segment, "", FIELDS_EXTENSION));
   }
 
   @Override

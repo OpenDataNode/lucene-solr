@@ -17,10 +17,16 @@
 package org.apache.solr.search;
 
 
-import org.apache.lucene.index.DocsEnum;
-import org.apache.lucene.index.Fields;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
+
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.MultiFields;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
@@ -28,13 +34,6 @@ import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.util.BytesRef;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.update.UpdateLog;
-
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.concurrent.ConcurrentHashMap;
 
 import static org.apache.solr.update.processor.DistributedUpdateProcessor.DistribPhase;
 import static org.apache.solr.update.processor.DistributingUpdateProcessorFactory.DISTRIB_UPDATE_PARAM;
@@ -113,29 +112,23 @@ public class TestRTGBase extends SolrTestCaseJ4 {
 
 
   protected List<Long> getLatestVersions() {
-    List<Long> recentVersions;
-    UpdateLog.RecentUpdates startingRecentUpdates = h.getCore().getUpdateHandler().getUpdateLog().getRecentUpdates();
-    try {
-      recentVersions = startingRecentUpdates.getVersions(100);
-    } finally {
-      startingRecentUpdates.close();
+    try (UpdateLog.RecentUpdates startingRecentUpdates = h.getCore().getUpdateHandler().getUpdateLog().getRecentUpdates()) {
+      return startingRecentUpdates.getVersions(100);
     }
-    return recentVersions;
   }
 
 
 
   protected int getFirstMatch(IndexReader r, Term t) throws IOException {
-    Fields fields = MultiFields.getFields(r);
-    if (fields == null) return -1;
-    Terms terms = fields.terms(t.field());
+    Terms terms = MultiFields.getTerms(r, t.field());
     if (terms == null) return -1;
     BytesRef termBytes = t.bytes();
-    final TermsEnum termsEnum = terms.iterator(null);
+    final TermsEnum termsEnum = terms.iterator();
     if (!termsEnum.seekExact(termBytes)) {
       return -1;
     }
-    DocsEnum docs = termsEnum.docs(MultiFields.getLiveDocs(r), null, DocsEnum.FLAG_NONE);
+    PostingsEnum docs = termsEnum.postings(null, PostingsEnum.NONE);
+    docs = BitsFilteredPostingsEnum.wrap(docs, MultiFields.getLiveDocs(r));
     int id = docs.nextDoc();
     if (id != DocIdSetIterator.NO_MORE_DOCS) {
       int next = docs.nextDoc();

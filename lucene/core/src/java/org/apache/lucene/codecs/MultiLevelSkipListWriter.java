@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.codecs;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs;
+
 
 import java.io.IOException;
 
@@ -42,7 +42,7 @@ import org.apache.lucene.util.MathUtil;
  * Skip level i contains every skipInterval-th entry from skip level i-1.
  * Therefore the number of entries on level i is: floor(df / ((skipInterval ^ (i + 1))).
  * 
- * Each skip entry on a level i>0 contains a pointer to the corresponding skip entry in list i-1.
+ * Each skip entry on a level {@code i>0} contains a pointer to the corresponding skip entry in list i-1.
  * This guarantees a logarithmic amount of skips to find the target document.
  * 
  * While this class takes care of writing the different skip levels,

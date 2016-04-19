@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.phonetic;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.phonetic;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.phonetic;
+
 
 import java.io.IOException;
 import java.util.regex.Matcher;
@@ -39,7 +39,7 @@ public final class BeiderMorseFilter extends TokenFilter {
   private final LanguageSet languages;
   
   // output is a string such as ab|ac|...
-  // in complex cases like d'angelo its (anZelo|andZelo|...)-(danZelo|...)
+  // in complex cases like d'angelo it's (anZelo|andZelo|...)-(danZelo|...)
   // if there are multiple 's, it starts to nest...
   private static final Pattern pattern = Pattern.compile("([^()|-]+)");
   

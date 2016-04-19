@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,9 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
+import java.util.Objects;
 
 import org.apache.lucene.util.Bits;
 
@@ -27,8 +28,10 @@ import org.apache.lucene.util.Bits;
  *
  * @see DocIdSet
  * @see org.apache.lucene.search.Filter
+ * @deprecated This class is not useful internally anymore and will be removed
+ * in 6.0
  */
-
+@Deprecated
 public final class BitsFilteredDocIdSet extends FilteredDocIdSet {
 
   private final Bits acceptDocs;
@@ -50,9 +53,7 @@ public final class BitsFilteredDocIdSet extends FilteredDocIdSet {
    */
   public BitsFilteredDocIdSet(DocIdSet innerSet, Bits acceptDocs) {
     super(innerSet);
-    if (acceptDocs == null)
-      throw new NullPointerException("acceptDocs is null");
-    this.acceptDocs = acceptDocs;
+    this.acceptDocs = Objects.requireNonNull(acceptDocs, "Bits must not be null");
   }
 
   @Override

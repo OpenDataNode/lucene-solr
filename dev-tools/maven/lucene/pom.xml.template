@@ -35,12 +35,13 @@
     <module-directory>lucene</module-directory>
   </properties>
   <scm>
-    <connection>scm:svn:${vc-anonymous-base-url}/${module-directory}</connection>
-    <developerConnection>scm:svn:${vc-dev-base-url}/${module-directory}</developerConnection>
-    <url>${vc-browse-base-url}/${module-directory}</url>
+    <connection>scm:git:${vc-anonymous-base-url}</connection>
+    <developerConnection>scm:git:${vc-dev-base-url}</developerConnection>
+    <url>${vc-browse-base-url};f=${module-directory}</url>
   </scm>
   <modules>
     <module>core</module>
+    <module>backward-codecs</module>
     <module>codecs</module>
     <module>test-framework</module>
     <module>analysis</module>
@@ -59,6 +60,7 @@
     <module>replicator</module>
     <module>sandbox</module>
     <module>spatial</module>
+    <module>spatial3d</module>
     <module>suggest</module>
   </modules>
   <build>
@@ -75,11 +77,22 @@
               <bundledSignatures>
                 <bundledSignature>jdk-unsafe</bundledSignature>
                 <bundledSignature>jdk-deprecated</bundledSignature>
-                <bundledSignature>jdk-system-out</bundledSignature>
               </bundledSignatures>
               <signaturesFiles>
                 <signaturesFile>${top-level}/lucene/tools/forbiddenApis/base.txt</signaturesFile>
+                <signaturesFile>${top-level}/lucene/tools/forbiddenApis/lucene.txt</signaturesFile>
               </signaturesFiles>
+            </configuration>
+            <goals>
+              <goal>check</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>lucene-shared-check-sysout-forbidden-apis</id>
+            <configuration>
+              <bundledSignatures>
+                <bundledSignature>jdk-system-out</bundledSignature>
+              </bundledSignatures>
             </configuration>
             <goals>
               <goal>check</goal>
@@ -97,6 +110,7 @@
               <signaturesFiles>
                 <signaturesFile>${top-level}/lucene/tools/forbiddenApis/tests.txt</signaturesFile>
                 <signaturesFile>${top-level}/lucene/tools/forbiddenApis/base.txt</signaturesFile>
+                <signaturesFile>${top-level}/lucene/tools/forbiddenApis/lucene.txt</signaturesFile>
               </signaturesFiles>
             </configuration>
             <goals>

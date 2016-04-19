@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,16 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Map;
 import java.util.Set;
 
 import org.apache.lucene.store.Directory;
@@ -109,7 +109,14 @@ public class SegmentCommitInfo {
   @Deprecated
   public void setGenUpdatesFiles(Map<Long,Set<String>> genUpdatesFiles) {
     this.genUpdatesFiles.clear();
-    this.genUpdatesFiles.putAll(genUpdatesFiles);
+    for (Map.Entry<Long,Set<String>> kv : genUpdatesFiles.entrySet()) {
+      // rename the set
+      Set<String> set = new HashSet<>();
+      for (String file : kv.getValue()) {
+        set.add(info.namedForThisSegment(file));
+      }
+      this.genUpdatesFiles.put(kv.getKey(), set);
+    }
   }
   
   /** Returns the per-field DocValues updates files. */
@@ -120,7 +127,14 @@ public class SegmentCommitInfo {
   /** Sets the DocValues updates file names, per field number. Does not deep clone the map. */
   public void setDocValuesUpdatesFiles(Map<Integer,Set<String>> dvUpdatesFiles) {
     this.dvUpdatesFiles.clear();
-    this.dvUpdatesFiles.putAll(dvUpdatesFiles);
+    for (Map.Entry<Integer,Set<String>> kv : dvUpdatesFiles.entrySet()) {
+      // rename the set
+      Set<String> set = new HashSet<>();
+      for (String file : kv.getValue()) {
+        set.add(info.namedForThisSegment(file));
+      }
+      this.dvUpdatesFiles.put(kv.getKey(), set);
+    }
   }
   
   /** Returns the FieldInfos file names. */
@@ -131,7 +145,9 @@ public class SegmentCommitInfo {
   /** Sets the FieldInfos file names. */
   public void setFieldInfosFiles(Set<String> fieldInfosFiles) {
     this.fieldInfosFiles.clear();
-    this.fieldInfosFiles.addAll(fieldInfosFiles);
+    for (String file : fieldInfosFiles) {
+      this.fieldInfosFiles.add(info.namedForThisSegment(file));
+    }
   }
 
   /** Called when we succeed in writing deletes */
@@ -209,9 +225,7 @@ public class SegmentCommitInfo {
   }
   
   /** Returns total size in bytes of all files for this
-   *  segment. 
-   * <p><b>NOTE:</b> This value is not correct for 3.0 segments
-   * that have shared docstores. To get the correct value, upgrade! */
+   *  segment. */
   public long sizeInBytes() throws IOException {
     if (sizeInBytes == -1) {
       long sum = 0;
@@ -326,15 +340,24 @@ public class SegmentCommitInfo {
   }
 
   void setDelCount(int delCount) {
-    if (delCount < 0 || delCount > info.getDocCount()) {
-      throw new IllegalArgumentException("invalid delCount=" + delCount + " (docCount=" + info.getDocCount() + ")");
+    if (delCount < 0 || delCount > info.maxDoc()) {
+      throw new IllegalArgumentException("invalid delCount=" + delCount + " (maxDoc=" + info.maxDoc() + ")");
     }
     this.delCount = delCount;
   }
+  
+  /** 
+   * Returns a description of this segment. 
+   * @deprecated Use {@link #toString(int)} instead.
+   */
+  @Deprecated
+  public String toString(Directory dir, int pendingDelCount) {
+    return toString(pendingDelCount);
+  }
 
   /** Returns a description of this segment. */
-  public String toString(Directory dir, int pendingDelCount) {
-    String s = info.toString(dir, delCount + pendingDelCount);
+  public String toString(int pendingDelCount) {
+    String s = info.toString(delCount + pendingDelCount);
     if (delGen != -1) {
       s += ":delGen=" + delGen;
     }
@@ -349,23 +372,12 @@ public class SegmentCommitInfo {
 
   @Override
   public String toString() {
-    return toString(info.dir, 0);
+    return toString(0);
   }
 
   @Override
   public SegmentCommitInfo clone() {
-    return clone(false);
-  }
-
-  /** Clones {@code this}, optionally also cloning the {@link SegmentInfo}. */
-  SegmentCommitInfo clone(boolean cloneSegmentInfo) {
-    SegmentInfo otherInfo;
-    if (cloneSegmentInfo) {
-      otherInfo = info.clone();
-    } else {
-      otherInfo = info;
-    }
-    SegmentCommitInfo other = new SegmentCommitInfo(otherInfo, delCount, delGen, fieldInfosGen, docValuesGen);
+    SegmentCommitInfo other = new SegmentCommitInfo(info, delCount, delGen, fieldInfosGen, docValuesGen);
     // Not clear that we need to carry over nextWriteDelGen
     // (i.e. do we ever clone after a failed write and
     // before the next successful write?), but just do it to

@@ -1,5 +1,3 @@
-package org.apache.lucene.search.postingshighlight;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.postingshighlight;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.postingshighlight;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -26,7 +25,7 @@ import java.util.List;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
-import org.apache.lucene.index.DocsAndPositionsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.AutomatonQuery;
 import org.apache.lucene.search.BooleanClause;
@@ -47,10 +46,10 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.lucene.util.automaton.Automata;
-import org.apache.lucene.util.automaton.Operations;
+import org.apache.lucene.util.automaton.Automaton;
 import org.apache.lucene.util.automaton.CharacterRunAutomaton;
 import org.apache.lucene.util.automaton.LevenshteinAutomata;
-import org.apache.lucene.util.automaton.Automaton;
+import org.apache.lucene.util.automaton.Operations;
 
 /**
  * Support for highlighting multiterm queries in PostingsHighlighter.
@@ -64,8 +63,7 @@ class MultiTermHighlighting {
   static CharacterRunAutomaton[] extractAutomata(Query query, String field) {
     List<CharacterRunAutomaton> list = new ArrayList<>();
     if (query instanceof BooleanQuery) {
-      BooleanClause clauses[] = ((BooleanQuery) query).getClauses();
-      for (BooleanClause clause : clauses) {
+      for (BooleanClause clause : (BooleanQuery) query) {
         if (!clause.isProhibited()) {
           list.addAll(Arrays.asList(extractAutomata(clause.getQuery(), field)));
         }
@@ -157,7 +155,7 @@ class MultiTermHighlighting {
         final CharsRef scratch = new CharsRef();
         final Comparator<CharsRef> comparator = CharsRef.getUTF16SortedAsUTF8Comparator();
         
-        // this is *not* an automaton, but its very simple
+        // this is *not* an automaton, but it's very simple
         list.add(new CharacterRunAutomaton(Automata.makeEmpty()) {
           @Override
           public boolean run(char[] s, int offset, int length) {
@@ -197,7 +195,7 @@ class MultiTermHighlighting {
    * <p>
    * This is solely used internally by PostingsHighlighter: <b>DO NOT USE THIS METHOD!</b>
    */
-  static DocsAndPositionsEnum getDocsEnum(final TokenStream ts, final CharacterRunAutomaton[] matchers) throws IOException {
+  static PostingsEnum getDocsEnum(final TokenStream ts, final CharacterRunAutomaton[] matchers) throws IOException {
     final CharTermAttribute charTermAtt = ts.addAttribute(CharTermAttribute.class);
     final OffsetAttribute offsetAtt = ts.addAttribute(OffsetAttribute.class);
     ts.reset();
@@ -207,7 +205,7 @@ class MultiTermHighlighting {
     // would only serve to make this method less bogus.
     // instead, we always return freq() = Integer.MAX_VALUE and let PH terminate based on offset...
     
-    return new DocsAndPositionsEnum() {
+    return new PostingsEnum() {
       int currentDoc = -1;
       int currentMatch = -1;
       int currentStartOffset = -1;
@@ -237,7 +235,7 @@ class MultiTermHighlighting {
         currentStartOffset = currentEndOffset = Integer.MAX_VALUE;
         return Integer.MAX_VALUE;
       }
-      
+
       @Override
       public int freq() throws IOException {
         return Integer.MAX_VALUE; // lie

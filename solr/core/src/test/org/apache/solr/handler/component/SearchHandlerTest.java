@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler.component;
 
 import java.util.ArrayList;
@@ -37,7 +36,7 @@ public class SearchHandlerTest extends SolrTestCaseJ4
   
   @SuppressWarnings("unchecked")
   @Test
-  public void testInitalization()
+  public void testInitialization()
   {
     SolrCore core = h.getCore();
     

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.icu.segmentation;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.icu.segmentation;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.icu.segmentation;
+
 
 import java.io.IOException;
 import java.io.Reader;
@@ -65,11 +65,10 @@ public final class ICUTokenizer extends Tokenizer {
    * <p>
    * The default attribute factory is used.
    * 
-   * @param input Reader containing text to tokenize.
    * @see DefaultICUTokenizerConfig
    */
-  public ICUTokenizer(Reader input) {
-    this(input, new DefaultICUTokenizerConfig(true));
+  public ICUTokenizer() {
+    this(new DefaultICUTokenizerConfig(true));
   }
 
   /**
@@ -78,11 +77,10 @@ public final class ICUTokenizer extends Tokenizer {
    * <p>
    * The default attribute factory is used.
    *
-   * @param input Reader containing text to tokenize.
-   * @param config Tailored BreakIterator configuration 
+   * @param config Tailored BreakIterator configuration
    */
-  public ICUTokenizer(Reader input, ICUTokenizerConfig config) {
-    this(DEFAULT_TOKEN_ATTRIBUTE_FACTORY, input, config);
+  public ICUTokenizer(ICUTokenizerConfig config) {
+    this(DEFAULT_TOKEN_ATTRIBUTE_FACTORY, config);
   }
 
   /**
@@ -90,11 +88,10 @@ public final class ICUTokenizer extends Tokenizer {
    * Reader, using a tailored BreakIterator configuration.
    *
    * @param factory AttributeFactory to use
-   * @param input Reader containing text to tokenize.
-   * @param config Tailored BreakIterator configuration 
+   * @param config Tailored BreakIterator configuration
    */
-  public ICUTokenizer(AttributeFactory factory, Reader input, ICUTokenizerConfig config) {
-    super(factory, input);
+  public ICUTokenizer(AttributeFactory factory, ICUTokenizerConfig config) {
+    super(factory);
     this.config = config;
     breaker = new CompositeBreakIterator(config);
   }

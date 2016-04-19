@@ -1,5 +1,3 @@
-package org.apache.lucene.document;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,13 @@ package org.apache.lucene.document;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.document;
+
 
 import java.io.IOException;
-import java.util.Set;
+import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
+import java.util.Set;
 
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.IndexReader;
@@ -65,13 +66,12 @@ public class DocumentStoredFieldVisitor extends StoredFieldVisitor {
   }
 
   @Override
-  public void stringField(FieldInfo fieldInfo, String value) throws IOException {
+  public void stringField(FieldInfo fieldInfo, byte[] value) throws IOException {
     final FieldType ft = new FieldType(TextField.TYPE_STORED);
     ft.setStoreTermVectors(fieldInfo.hasVectors());
-    ft.setIndexed(fieldInfo.isIndexed());
     ft.setOmitNorms(fieldInfo.omitsNorms());
     ft.setIndexOptions(fieldInfo.getIndexOptions());
-    doc.add(new Field(fieldInfo.name, value, ft));
+    doc.add(new Field(fieldInfo.name, new String(value, StandardCharsets.UTF_8), ft));
   }
 
   @Override

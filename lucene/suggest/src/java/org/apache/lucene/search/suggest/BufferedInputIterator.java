@@ -1,5 +1,3 @@
-package org.apache.lucene.search.suggest;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,9 @@ package org.apache.lucene.search.suggest;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.suggest;
 
 import java.io.IOException;
-import java.util.Comparator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -48,8 +46,6 @@ public class BufferedInputIterator implements InputIterator {
   private final BytesRefBuilder spare = new BytesRefBuilder();
   private final BytesRefBuilder payloadSpare = new BytesRefBuilder();
   private final boolean hasPayloads;
-  private final Comparator<BytesRef> comp;
-
   private final boolean hasContexts;
 
   /** Creates a new iterator, buffering entries from the specified iterator */
@@ -71,7 +67,7 @@ public class BufferedInputIterator implements InputIterator {
       }
       freqs[freqIndex++] = source.weight();
     }
-    comp = source.getComparator();
+   
   }
 
   @Override
@@ -99,11 +95,6 @@ public class BufferedInputIterator implements InputIterator {
   @Override
   public boolean hasPayloads() {
     return hasPayloads;
-  }
-
-  @Override
-  public Comparator<BytesRef> getComparator() {
-    return comp;
   }
 
   @Override

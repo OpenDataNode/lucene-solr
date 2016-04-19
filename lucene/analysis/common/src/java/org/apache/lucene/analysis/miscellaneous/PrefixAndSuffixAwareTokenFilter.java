@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.miscellaneous;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.miscellaneous;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.miscellaneous;
+
 
 import org.apache.lucene.analysis.Token;
 import org.apache.lucene.analysis.TokenStream;
@@ -24,7 +24,7 @@ import java.io.IOException;
 
 /**
  * Links two {@link PrefixAwareTokenFilter}.
- * <p/>
+ * <p>
  * <b>NOTE:</b> This filter might not behave correctly if used with custom Attributes, i.e. Attributes other than
  * the ones located in org.apache.lucene.analysis.tokenattributes. 
  */

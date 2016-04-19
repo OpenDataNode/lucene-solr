@@ -1,5 +1,3 @@
-package org.apache.solr.cloud.hdfs;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,38 +14,42 @@ package org.apache.solr.cloud.hdfs;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud.hdfs;
 
 import java.io.IOException;
 
 import org.apache.hadoop.hdfs.MiniDFSCluster;
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.cloud.CollectionsAPIDistributedZkTest;
+import org.apache.solr.update.HdfsUpdateLog;
+import org.apache.solr.util.BadHdfsThreadsFilter;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 
 import com.carrotsearch.randomizedtesting.annotations.Nightly;
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope;
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope.Scope;
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakFilters;
 
 @Slow
 @Nightly
-@ThreadLeakScope(Scope.NONE) // hdfs client currently leaks thread(s)
+@ThreadLeakFilters(defaultFilters = true, filters = {
+    BadHdfsThreadsFilter.class // hdfs currently leaks thread(s)
+})
 public class HdfsCollectionsAPIDistributedZkTest extends CollectionsAPIDistributedZkTest {
   private static MiniDFSCluster dfsCluster;
+  private static long initialFailLogsCount;
   
   @BeforeClass
   public static void setupClass() throws Exception {
-    dfsCluster = HdfsTestUtil.setupClass(createTempDir().getAbsolutePath());
-    
-    System.setProperty("solr.hdfs.home", dfsCluster.getURI().toString() + "/solr");
+    dfsCluster = HdfsTestUtil.setupClass(createTempDir().toFile().getAbsolutePath());
     System.setProperty("solr.hdfs.blockcache.enabled", "false");
-    
+    initialFailLogsCount = HdfsUpdateLog.INIT_FAILED_LOGS_COUNT.get();
   }
   
   @AfterClass
   public static void teardownClass() throws Exception {
+    // there should be no new fails from this test
+    assertEquals(0, HdfsUpdateLog.INIT_FAILED_LOGS_COUNT.get() - initialFailLogsCount);
     HdfsTestUtil.teardownClass(dfsCluster);
-    System.clearProperty("solr.hdfs.home");
     System.clearProperty("solr.hdfs.blockcache.enabled");
     dfsCluster = null;
   }

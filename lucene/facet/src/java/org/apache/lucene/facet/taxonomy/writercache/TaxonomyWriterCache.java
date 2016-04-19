@@ -1,8 +1,3 @@
-package org.apache.lucene.facet.taxonomy.writercache;
-
-import org.apache.lucene.facet.taxonomy.FacetLabel;
-import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -19,10 +14,14 @@ import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet.taxonomy.writercache;
+
+import org.apache.lucene.facet.taxonomy.FacetLabel;
+import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter;
 
 /**
  * TaxonomyWriterCache is a relatively simple interface for a cache of
- * category->ordinal mappings, used in TaxonomyWriter implementations (such as
+ * category-&gt;ordinal mappings, used in TaxonomyWriter implementations (such as
  * {@link DirectoryTaxonomyWriter}).
  * <p>
  * It basically has put() methods for adding a mapping, and get() for looking a

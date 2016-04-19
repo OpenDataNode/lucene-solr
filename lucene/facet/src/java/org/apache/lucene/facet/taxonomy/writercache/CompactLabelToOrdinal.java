@@ -1,5 +1,3 @@
-package org.apache.lucene.facet.taxonomy.writercache;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,15 +14,16 @@ package org.apache.lucene.facet.taxonomy.writercache;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet.taxonomy.writercache;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Iterator;
 
 import org.apache.lucene.facet.taxonomy.FacetLabel;
@@ -352,9 +351,9 @@ public class CompactLabelToOrdinal extends LabelToOrdinal {
 
   /**
    * Opens the file and reloads the CompactLabelToOrdinal. The file it expects
-   * is generated from the {@link #flush(File)} command.
+   * is generated from the {@link #flush(Path)} command.
    */
-  static CompactLabelToOrdinal open(File file, float loadFactor,
+  static CompactLabelToOrdinal open(Path file, float loadFactor,
                                     int numHashArrays) throws IOException {
     /**
      * Part of the file is the labelRepository, which needs to be rehashed
@@ -369,7 +368,7 @@ public class CompactLabelToOrdinal extends LabelToOrdinal {
     DataInputStream dis = null;
     try {
       dis = new DataInputStream(new BufferedInputStream(
-          new FileInputStream(file)));
+          Files.newInputStream(file)));
 
       // TaxiReader needs to load the "counter" or occupancy (L2O) to know
       // the next unique facet. we used to load the delimiter too, but
@@ -433,8 +432,8 @@ public class CompactLabelToOrdinal extends LabelToOrdinal {
 
   }
 
-  void flush(File file) throws IOException {
-    FileOutputStream fos = new FileOutputStream(file);
+  void flush(Path file) throws IOException {
+    OutputStream fos = Files.newOutputStream(file);
 
     try {
       BufferedOutputStream os = new BufferedOutputStream(fos);

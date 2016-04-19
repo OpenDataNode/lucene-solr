@@ -1,5 +1,3 @@
-package org.apache.solr.spelling;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,11 @@ package org.apache.solr.spelling;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.spelling;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -46,17 +46,17 @@ public class ConjunctionSolrSpellChecker extends SolrSpellChecker {
   private String dictionaryName = null;
   private Analyzer queryAnalyzer = null;
   private List<SolrSpellChecker> checkers = new ArrayList<>();
-  private boolean initalized = false;
+  private boolean initialized = false;
   
   public void addChecker(SolrSpellChecker checker) {
-    if (initalized) {
+    if (initialized) {
       throw new IllegalStateException(
           "Need to add checkers before calling init()");
     }
     try {
       if (stringDistance == null) {
         stringDistance = checker.getStringDistance();
-      } else if (stringDistance != checker.getStringDistance()) {
+      } else if (!stringDistance.equals(checker.getStringDistance())) {
         throw new IllegalArgumentException(
             "All checkers need to use the same StringDistance.");
       }
@@ -101,7 +101,7 @@ public class ConjunctionSolrSpellChecker extends SolrSpellChecker {
     if (dictionaryName == null) {
       dictionaryName = DEFAULT_DICTIONARY_NAME;
     }
-    initalized = true;
+    initialized = true;
     return dictionaryName;
   }
   
@@ -167,17 +167,20 @@ public class ConjunctionSolrSpellChecker extends SolrSpellChecker {
             Map.Entry<String,Integer> corr = iter.next();
             combinedResult.add(original, corr.getKey(), corr.getValue());
             Integer tokenFrequency = combinedTokenFrequency.get(original);
-            if(tokenFrequency!=null) {
-              combinedResult.addFrequency(original, tokenFrequency);
-            }
+            combinedResult.addFrequency(original, tokenFrequency==null ? 0 : tokenFrequency);
             if(++numberAdded==numSug) {
               break;
             }
           }
         }        
         if(!anyData) {
+          if(numberAdded==0) {
+            combinedResult.add(original, Collections.<String>emptyList());
+            Integer tokenFrequency = combinedTokenFrequency.get(original);
+            combinedResult.addFrequency(original, tokenFrequency==null ? 0 : tokenFrequency);
+          }
           break;
-        }
+        }        
       }      
     }    
     return combinedResult;

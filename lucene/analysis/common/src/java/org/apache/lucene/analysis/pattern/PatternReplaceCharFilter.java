@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.analysis.pattern;
 
 import java.io.IOException;
@@ -30,7 +29,7 @@ import org.apache.lucene.analysis.charfilter.BaseCharFilter;
  * The pattern match will be done in each "block" in char stream.
  * 
  * <p>
- * ex1) source="aa&nbsp;&nbsp;bb&nbsp;aa&nbsp;bb", pattern="(aa)\\s+(bb)" replacement="$1#$2"<br/>
+ * ex1) source="aa&nbsp;&nbsp;bb&nbsp;aa&nbsp;bb", pattern="(aa)\\s+(bb)" replacement="$1#$2"<br>
  * output="aa#bb&nbsp;aa#bb"
  * </p>
  * 
@@ -39,17 +38,15 @@ import org.apache.lucene.analysis.charfilter.BaseCharFilter;
  * face a trouble.
  * 
  * <p>
- * ex2) source="aa123bb", pattern="(aa)\\d+(bb)" replacement="$1&nbsp;$2"<br/>
- * output="aa&nbsp;bb"<br/>
- * and you want to search bb and highlight it, you will get<br/>
+ * ex2) source="aa123bb", pattern="(aa)\\d+(bb)" replacement="$1&nbsp;$2"<br>
+ * output="aa&nbsp;bb"<br>
+ * and you want to search bb and highlight it, you will get<br>
  * highlight snippet="aa1&lt;em&gt;23bb&lt;/em&gt;"
  * </p>
  * 
  * @since Solr 1.5
  */
 public class PatternReplaceCharFilter extends BaseCharFilter {
-  @Deprecated
-  public static final int DEFAULT_MAX_BLOCK_CHARS = 10000;
 
   private final Pattern pattern;
   private final String replacement;
@@ -59,12 +56,6 @@ public class PatternReplaceCharFilter extends BaseCharFilter {
     super(in);
     this.pattern = pattern;
     this.replacement = replacement;
-  }
-
-  @Deprecated
-  public PatternReplaceCharFilter(Pattern pattern, String replacement, 
-      int maxBlockChars, String blockDelimiter, Reader in) {
-    this(pattern, replacement, in);
   }
 
   @Override

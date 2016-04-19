@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.core.config;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.core.config;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.core.config;
 
 import java.util.HashMap;
 
@@ -25,7 +24,7 @@ import java.util.HashMap;
  * It has operations to set, unset and get configuration values.
  * </p>
  * <p>
- * Each configuration is is a key->value pair. The key should be an unique
+ * Each configuration is is a key-&gt;value pair. The key should be an unique
  * {@link ConfigurationKey} instance and it also holds the value's type.
  * </p>
  * 

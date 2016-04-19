@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.ja.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.ja.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.ja.util;
+
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -165,7 +165,7 @@ public class TokenInfoDictionaryBuilder {
     
     final FST<Long> fst = fstBuilder.finish();
     
-    System.out.print("  " + fst.getNodeCount() + " nodes, " + fst.getArcCount() + " arcs, " + fst.ramBytesUsed() + " bytes...  ");
+    System.out.print("  " + fstBuilder.getNodeCount() + " nodes, " + fstBuilder.getArcCount() + " arcs, " + fst.ramBytesUsed() + " bytes...  ");
     dictionary.setFST(fst);
     System.out.println(" done");
     

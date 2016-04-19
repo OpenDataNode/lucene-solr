@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
 
-import java.io.IOException;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -37,6 +29,15 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
+import org.apache.lucene.util.Version;
+
+import java.io.IOException;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /*
   Verify we can read the pre-2.1 file format, do searches
@@ -272,8 +273,6 @@ public class TestDeletionPolicy extends LuceneTestCase {
     String fileName = IndexFileNames.fileNameFromGeneration(IndexFileNames.SEGMENTS,
                                                             "",
                                                             gen);
-    dir.deleteFile(IndexFileNames.SEGMENTS_GEN);
-
     boolean oneSecondResolution = true;
 
     while(gen > 0) {
@@ -287,8 +286,9 @@ public class TestDeletionPolicy extends LuceneTestCase {
         // if we are on a filesystem that seems to have only
         // 1 second resolution, allow +1 second in commit
         // age tolerance:
-        SegmentInfos sis = new SegmentInfos();
-        sis.read(dir, fileName);
+        SegmentInfos sis = SegmentInfos.readCommit(dir, fileName);
+        assertEquals(Version.LATEST, sis.getCommitLuceneVersion());
+        assertEquals(Version.LATEST, sis.getMinSegmentLuceneVersion());
         long modTime = Long.parseLong(sis.getUserData().get("commitTime"));
         oneSecondResolution &= (modTime % 1000) == 0;
         final long leeway = (long) ((SECONDS + (oneSecondResolution ? 1.0:0.0))*1000);
@@ -377,7 +377,6 @@ public class TestDeletionPolicy extends LuceneTestCase {
 
       // Simplistic check: just verify all segments_N's still
       // exist, and, I can open a reader on each:
-      dir.deleteFile(IndexFileNames.SEGMENTS_GEN);
       long gen = SegmentInfos.getLastCommitGeneration(dir);
       while(gen > 0) {
         IndexReader reader = DirectoryReader.open(dir);
@@ -599,7 +598,6 @@ public class TestDeletionPolicy extends LuceneTestCase {
 
       // Simplistic check: just verify only the past N segments_N's still
       // exist, and, I can open a reader on each:
-      dir.deleteFile(IndexFileNames.SEGMENTS_GEN);
       long gen = SegmentInfos.getLastCommitGeneration(dir);
       for(int i=0;i<N+1;i++) {
         try {
@@ -667,7 +665,7 @@ public class TestDeletionPolicy extends LuceneTestCase {
         }
         // this is a commit
         writer.close();
-        conf = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))
+        conf = new IndexWriterConfig(new MockAnalyzer(random()))
           .setIndexDeletionPolicy(policy)
           .setMergePolicy(NoMergePolicy.INSTANCE);
         writer = new IndexWriter(dir, conf);
@@ -677,7 +675,7 @@ public class TestDeletionPolicy extends LuceneTestCase {
         writer.close();
         IndexReader reader = DirectoryReader.open(dir);
         IndexSearcher searcher = newSearcher(reader);
-        ScoreDoc[] hits = searcher.search(query, null, 1000).scoreDocs;
+        ScoreDoc[] hits = searcher.search(query, 1000).scoreDocs;
         assertEquals(16, hits.length);
         reader.close();
 
@@ -695,14 +693,13 @@ public class TestDeletionPolicy extends LuceneTestCase {
 
       IndexReader rwReader = DirectoryReader.open(dir);
       IndexSearcher searcher = newSearcher(rwReader);
-      ScoreDoc[] hits = searcher.search(query, null, 1000).scoreDocs;
+      ScoreDoc[] hits = searcher.search(query, 1000).scoreDocs;
       assertEquals(0, hits.length);
 
       // Simplistic check: just verify only the past N segments_N's still
       // exist, and, I can open a reader on each:
       long gen = SegmentInfos.getLastCommitGeneration(dir);
 
-      dir.deleteFile(IndexFileNames.SEGMENTS_GEN);
       int expectedCount = 0;
       
       rwReader.close();
@@ -714,7 +711,7 @@ public class TestDeletionPolicy extends LuceneTestCase {
           // Work backwards in commits on what the expected
           // count should be.
           searcher = newSearcher(reader);
-          hits = searcher.search(query, null, 1000).scoreDocs;
+          hits = searcher.search(query, 1000).scoreDocs;
           assertEquals(expectedCount, hits.length);
           if (expectedCount == 0) {
             expectedCount = 16;

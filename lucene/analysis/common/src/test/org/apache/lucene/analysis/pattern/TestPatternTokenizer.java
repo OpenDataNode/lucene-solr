@@ -14,11 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.analysis.pattern;
 
 import java.io.IOException;
-import java.io.Reader;
 import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,10 +27,8 @@ import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.CharFilter;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
-import org.apache.lucene.analysis.Analyzer.TokenStreamComponents;
 import org.apache.lucene.analysis.charfilter.MappingCharFilter;
 import org.apache.lucene.analysis.charfilter.NormalizeCharMap;
-import org.apache.lucene.analysis.path.PathHierarchyTokenizer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 
 public class TestPatternTokenizer extends BaseTokenStreamTestCase 
@@ -53,7 +49,8 @@ public class TestPatternTokenizer extends BaseTokenStreamTestCase
     };
     
     for( String[] test : tests ) {     
-      TokenStream stream = new PatternTokenizer(newAttributeFactory(), new StringReader(test[2]), Pattern.compile(test[1]), Integer.parseInt(test[0]));
+      TokenStream stream = new PatternTokenizer(newAttributeFactory(), Pattern.compile(test[1]), Integer.parseInt(test[0]));
+      ((Tokenizer)stream).setReader(new StringReader(test[2]));
       String out = tsToString( stream );
       // System.out.println( test[2] + " ==> " + out );
 
@@ -85,7 +82,8 @@ public class TestPatternTokenizer extends BaseTokenStreamTestCase
     CharFilter charStream = new MappingCharFilter( normMap, new StringReader( INPUT ) );
 
     // create PatternTokenizer
-    Tokenizer stream = new PatternTokenizer(newAttributeFactory(), charStream, Pattern.compile("[,;/\\s]+"), -1);
+    Tokenizer stream = new PatternTokenizer(newAttributeFactory(), Pattern.compile("[,;/\\s]+"), -1);
+    stream.setReader(charStream);
     assertTokenStreamContents(stream,
         new String[] { "Günther", "Günther", "is", "here" },
         new int[] { 0, 13, 26, 29 },
@@ -93,7 +91,8 @@ public class TestPatternTokenizer extends BaseTokenStreamTestCase
         INPUT.length());
     
     charStream = new MappingCharFilter( normMap, new StringReader( INPUT ) );
-    stream = new PatternTokenizer(newAttributeFactory(), charStream, Pattern.compile("Günther"), 0);
+    stream = new PatternTokenizer(newAttributeFactory(), Pattern.compile("Günther"), 0);
+    stream.setReader(charStream);
     assertTokenStreamContents(stream,
         new String[] { "Günther", "Günther" },
         new int[] { 0, 13 },
@@ -128,20 +127,55 @@ public class TestPatternTokenizer extends BaseTokenStreamTestCase
   public void testRandomStrings() throws Exception {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new PatternTokenizer(newAttributeFactory(), reader, Pattern.compile("a"), -1);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new PatternTokenizer(newAttributeFactory(), Pattern.compile("a"), -1);
         return new TokenStreamComponents(tokenizer);
       }    
     };
     checkRandomData(random(), a, 1000*RANDOM_MULTIPLIER);
+    a.close();
     
     Analyzer b = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new PatternTokenizer(newAttributeFactory(), reader, Pattern.compile("a"), 0);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new PatternTokenizer(newAttributeFactory(), Pattern.compile("a"), 0);
         return new TokenStreamComponents(tokenizer);
       }    
     };
     checkRandomData(random(), b, 1000*RANDOM_MULTIPLIER);
+    b.close();
+  }
+
+  // LUCENE-6814
+  public void testHeapFreedAfterClose() throws Exception {
+    // TODO: can we move this to BaseTSTC to catch other "hangs onto heap"ers?
+
+    // Build a 1MB string:
+    StringBuilder b = new StringBuilder();
+    for(int i=0;i<1024;i++) {
+      // 1023 spaces, then an x
+      for(int j=0;j<1023;j++) {
+        b.append(' ');
+      }
+      b.append('x');
+    }
+
+    String big = b.toString();
+
+    Pattern x = Pattern.compile("x");
+
+    List<Tokenizer> tokenizers = new ArrayList<>();
+    for(int i=0;i<512;i++) {
+      Tokenizer stream = new PatternTokenizer(x, -1);
+      tokenizers.add(stream);
+      stream.setReader(new StringReader(big));
+      stream.reset();
+      for(int j=0;j<1024;j++) {
+        assertTrue(stream.incrementToken());
+      }
+      assertFalse(stream.incrementToken());
+      stream.end();
+      stream.close();
+    }
   }
 }

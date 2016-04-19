@@ -1,5 +1,3 @@
-package org.apache.lucene.spatial.prefix;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,17 +14,25 @@ package org.apache.lucene.spatial.prefix;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.spatial.prefix;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
+import com.spatial4j.core.shape.Point;
 import com.spatial4j.core.shape.Shape;
-import org.apache.lucene.search.Filter;
-import org.apache.lucene.spatial.DisjointSpatialFilter;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.spatial.prefix.tree.Cell;
+import org.apache.lucene.spatial.prefix.tree.CellIterator;
+import org.apache.lucene.spatial.prefix.tree.LegacyCell;
 import org.apache.lucene.spatial.prefix.tree.SpatialPrefixTree;
 import org.apache.lucene.spatial.query.SpatialArgs;
 import org.apache.lucene.spatial.query.SpatialOperation;
 import org.apache.lucene.spatial.query.UnsupportedSpatialOperation;
 
 /**
- * A {@link PrefixTreeStrategy} which uses {@link AbstractVisitingPrefixTreeFilter}.
+ * A {@link PrefixTreeStrategy} which uses {@link AbstractVisitingPrefixTreeQuery}.
  * This strategy has support for searching non-point shapes (note: not tested).
  * Even a query shape with distErrPct=0 (fully precise to the grid) should have
  * good performance for typical data, unless there is a lot of indexed data
@@ -35,20 +41,29 @@ import org.apache.lucene.spatial.query.UnsupportedSpatialOperation;
  * @lucene.experimental
  */
 public class RecursivePrefixTreeStrategy extends PrefixTreeStrategy {
+  /* Future potential optimizations:
 
-  private int prefixGridScanLevel;
+    Each shape.relate(otherShape) result could be cached since much of the same relations will be invoked when
+    multiple segments are involved. Do this for "complex" shapes, not cheap ones, and don't cache when disjoint to
+    bbox because it's a cheap calc. This is one advantage TermQueryPrefixTreeStrategy has over RPT.
 
-  /** True if only indexed points shall be supported.  See
-   *  {@link IntersectsPrefixTreeFilter#hasIndexedLeaves}. */
-  protected boolean pointsOnly = false;
+   */
 
-  /** See {@link ContainsPrefixTreeFilter#multiOverlappingIndexedShapes}. */
+  protected int prefixGridScanLevel;
+
+  //Formerly known as simplifyIndexedCells. Eventually will be removed. Only compatible with RPT
+  // and a LegacyPrefixTree.
+  protected boolean pruneLeafyBranches = true;
+
   protected boolean multiOverlappingIndexedShapes = true;
 
   public RecursivePrefixTreeStrategy(SpatialPrefixTree grid, String fieldName) {
-    super(grid, fieldName,
-        true);//simplify indexed cells
+    super(grid, fieldName);
     prefixGridScanLevel = grid.getMaxLevels() - 4;//TODO this default constant is dependent on the prefix grid size
+  }
+
+  public int getPrefixGridScanLevel() {
+    return prefixGridScanLevel;
   }
 
   /**
@@ -63,29 +78,113 @@ public class RecursivePrefixTreeStrategy extends PrefixTreeStrategy {
     this.prefixGridScanLevel = prefixGridScanLevel;
   }
 
-  @Override
-  public String toString() {
-    return getClass().getSimpleName()+"(prefixGridScanLevel:"+prefixGridScanLevel+",SPG:("+ grid +"))";
+  public boolean isMultiOverlappingIndexedShapes() {
+    return multiOverlappingIndexedShapes;
+  }
+
+  /** See {@link ContainsPrefixTreeQuery#multiOverlappingIndexedShapes}. */
+  public void setMultiOverlappingIndexedShapes(boolean multiOverlappingIndexedShapes) {
+    this.multiOverlappingIndexedShapes = multiOverlappingIndexedShapes;
+  }
+
+  public boolean isPruneLeafyBranches() {
+    return pruneLeafyBranches;
+  }
+
+  /**
+   * An optional hint affecting non-point shapes: it will
+   * prune away a complete set sibling leaves to their parent (recursively), resulting in ~20-50%
+   * fewer indexed cells, and consequently that much less disk and that much faster indexing.
+   * So if it's a quad tree and all 4 sub-cells are there marked as a leaf, then they will be
+   * removed (pruned) and the parent is marked as a leaf instead.  This occurs recursively on up.  Unfortunately, the
+   * current implementation will buffer all cells to do this, so consider disabling for high precision (low distErrPct)
+   * shapes. (default=true)
+   */
+  public void setPruneLeafyBranches(boolean pruneLeafyBranches) {
+    this.pruneLeafyBranches = pruneLeafyBranches;
   }
 
   @Override
-  public Filter makeFilter(SpatialArgs args) {
+  public String toString() {
+    StringBuilder str = new StringBuilder(getClass().getSimpleName()).append('(');
+    str.append("SPG:(").append(grid.toString()).append(')');
+    if (pointsOnly)
+      str.append(",pointsOnly");
+    if (pruneLeafyBranches)
+      str.append(",pruneLeafyBranches");
+    if (prefixGridScanLevel != grid.getMaxLevels() - 4)
+      str.append(",prefixGridScanLevel:").append(""+prefixGridScanLevel);
+    if (!multiOverlappingIndexedShapes)
+      str.append(",!multiOverlappingIndexedShapes");
+    return str.append(')').toString();
+  }
+
+  @Override
+  protected Iterator<Cell> createCellIteratorToIndex(Shape shape, int detailLevel, Iterator<Cell> reuse) {
+    if (shape instanceof Point || !pruneLeafyBranches)
+      return super.createCellIteratorToIndex(shape, detailLevel, reuse);
+
+    List<Cell> cells = new ArrayList<>(4096);
+    recursiveTraverseAndPrune(grid.getWorldCell(), shape, detailLevel, cells);
+    return cells.iterator();
+  }
+
+  /** Returns true if cell was added as a leaf. If it wasn't it recursively descends. */
+  private boolean recursiveTraverseAndPrune(Cell cell, Shape shape, int detailLevel, List<Cell> result) {
+    // Important: this logic assumes Cells don't share anything with other cells when
+    // calling cell.getNextLevelCells(). This is only true for LegacyCell.
+    if (!(cell instanceof LegacyCell))
+      throw new IllegalStateException("pruneLeafyBranches must be disabled for use with grid "+grid);
+
+    if (cell.getLevel() == detailLevel) {
+      cell.setLeaf();//FYI might already be a leaf
+    }
+    if (cell.isLeaf()) {
+      result.add(cell);
+      return true;
+    }
+    if (cell.getLevel() != 0)
+      result.add(cell);
+
+    int leaves = 0;
+    CellIterator subCells = cell.getNextLevelCells(shape);
+    while (subCells.hasNext()) {
+      Cell subCell = subCells.next();
+      if (recursiveTraverseAndPrune(subCell, shape, detailLevel, result))
+        leaves++;
+    }
+    //can we prune?
+    if (leaves == ((LegacyCell)cell).getSubCellsSize() && cell.getLevel() != 0) {
+      //Optimization: substitute the parent as a leaf instead of adding all
+      // children as leaves
+
+      //remove the leaves
+      do {
+        result.remove(result.size() - 1);//remove last
+      } while (--leaves > 0);
+      //add cell as the leaf
+      cell.setLeaf();
+      return true;
+    }
+    return false;
+  }
+
+  @Override
+  public Query makeQuery(SpatialArgs args) {
     final SpatialOperation op = args.getOperation();
-    if (op == SpatialOperation.IsDisjointTo) //Note: in 5x support has been removed
-      return new DisjointSpatialFilter(this, args, getFieldName());
 
     Shape shape = args.getShape();
     int detailLevel = grid.getLevelForDistance(args.resolveDistErr(ctx, distErrPct));
 
-    if (pointsOnly || op == SpatialOperation.Intersects) {
-      return new IntersectsPrefixTreeFilter(
-          shape, getFieldName(), grid, detailLevel, prefixGridScanLevel, !pointsOnly);
+    if (op == SpatialOperation.Intersects) {
+      return new IntersectsPrefixTreeQuery(
+          shape, getFieldName(), grid, detailLevel, prefixGridScanLevel);
     } else if (op == SpatialOperation.IsWithin) {
-      return new WithinPrefixTreeFilter(
+      return new WithinPrefixTreeQuery(
           shape, getFieldName(), grid, detailLevel, prefixGridScanLevel,
           -1);//-1 flag is slower but ensures correct results
     } else if (op == SpatialOperation.Contains) {
-      return new ContainsPrefixTreeFilter(shape, getFieldName(), grid, detailLevel,
+      return new ContainsPrefixTreeQuery(shape, getFieldName(), grid, detailLevel,
           multiOverlappingIndexedShapes);
     }
     throw new UnsupportedSpatialOperation(op);

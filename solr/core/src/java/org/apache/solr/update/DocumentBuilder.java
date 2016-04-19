@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update;
 
 import java.util.List;
@@ -30,14 +29,12 @@ import org.apache.solr.schema.CopyField;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
 
+
 import com.google.common.collect.Sets;
 
 /**
  *
  */
-
-
-// Not thread safe - by design.  Create a new builder for each thread.
 public class DocumentBuilder {
 
   private static void addField(Document doc, SchemaField field, Object val, float boost) {
@@ -66,7 +63,7 @@ public class DocumentBuilder {
    * Convert a SolrInputDocument to a lucene Document.
    * 
    * This function should go elsewhere.  This builds the Document without an
-   * extra Map<> checking for multiple values.  For more discussion, see:
+   * extra Map&lt;&gt; checking for multiple values.  For more discussion, see:
    * http://www.nabble.com/Re%3A-svn-commit%3A-r547493---in--lucene-solr-trunk%3A-.--src-java-org-apache-solr-common--src-java-org-apache-solr-schema--src-java-org-apache-solr-update--src-test-org-apache-solr-common--tf3931539.html
    * 
    * TODO: /!\ NOTE /!\ This semantics of this function are still in flux.  
@@ -162,13 +159,13 @@ public class DocumentBuilder {
               // record the field as having a value
               usedFields.add(destinationField.getName());
             }
-            
-            // The final boost for a given field named is the product of the 
-            // *all* boosts on values of that field. 
-            // For multi-valued fields, we only want to set the boost on the
-            // first field.
-            fieldBoost = compoundBoost = 1.0f;
           }
+
+          // The final boost for a given field named is the product of the 
+          // *all* boosts on values of that field. 
+          // For multi-valued fields, we only want to set the boost on the
+          // first field.
+          fieldBoost = compoundBoost = 1.0f;
         }
       }
       catch( SolrException ex ) {

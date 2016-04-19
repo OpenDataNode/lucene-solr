@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.blockterms;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,19 +14,18 @@ package org.apache.lucene.codecs.blockterms;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.blockterms;
+
 
 import org.apache.lucene.codecs.Codec;
-import org.apache.lucene.codecs.lucene41ords.Lucene41WithOrds;
 import org.apache.lucene.index.BasePostingsFormatTestCase;
 import org.apache.lucene.util.TestUtil;
 
 /**
  * Basic tests of a PF using FixedGap terms dictionary
  */
-// TODO: we should add an instantiation for VarGap too to TestFramework, and a test in this package
-// TODO: ensure both of these are also in rotation in RandomCodec
 public class TestFixedGapPostingsFormat extends BasePostingsFormatTestCase {
-  private final Codec codec = TestUtil.alwaysPostingsFormat(new Lucene41WithOrds());
+  private final Codec codec = TestUtil.alwaysPostingsFormat(new LuceneFixedGap(TestUtil.nextInt(random(), 1, 1000)));
 
   @Override
   protected Codec getCodec() {

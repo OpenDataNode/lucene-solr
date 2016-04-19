@@ -1,5 +1,3 @@
-package org.apache.lucene.benchmark.byTask.feeds;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,12 @@ package org.apache.lucene.benchmark.byTask.feeds;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.benchmark.byTask.feeds;
+
 
 /**
  * Exception indicating there is no more data.
- * Thrown by Docs Makers if doc.maker.forever is false and docs sources of that maker where exhausted.
+ * Thrown by Docs Makers if content.source.forever is false and docs sources of that maker where exhausted.
  * This is useful for iterating all document of a source, in case we don't know in advance how many docs there are.
  */
 public class NoMoreDataException extends Exception {

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 /*
  * Forked from https://github.com/codahale/metrics
  */
@@ -23,6 +22,8 @@ package org.apache.solr.util.stats;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
+
+import org.apache.solr.common.util.SuppressForbidden;
 
 /**
  * An abstraction for how time passes. It is passed to {@link Timer} to track timing.
@@ -40,6 +41,7 @@ public abstract class Clock {
    *
    * @return time in milliseconds
    */
+  @SuppressForbidden(reason = "Need currentTimeMillis, API used by ExponentiallyDecayingSample for suspect reasons")
   public long getTime() {
     return System.currentTimeMillis();
   }

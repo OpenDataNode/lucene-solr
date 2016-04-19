@@ -1,5 +1,3 @@
-package org.apache.solr.client.solrj.response;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.client.solrj.response;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.client.solrj.response;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -84,11 +83,6 @@ public abstract class RangeFacet<B, G> {
 
   public static class Numeric extends RangeFacet<Number, Number> {
 
-    @Deprecated
-    public Numeric(String name, Number start, Number end, Number gap, Number before, Number after) {
-      this(name, start, end, gap, before, after, null);
-    }
-
     public Numeric(String name, Number start, Number end, Number gap, Number before, Number after, Number between) {
       super(name, start, end, gap, before, after, between);
     }
@@ -96,11 +90,6 @@ public abstract class RangeFacet<B, G> {
   }
 
   public static class Date extends RangeFacet<java.util.Date, String> {
-
-    @Deprecated
-    public Date(String name, java.util.Date start, java.util.Date end, String gap, Number before, Number after) {
-      this(name, start, end, gap, before, after, null);
-    }
 
     public Date(String name, java.util.Date start, java.util.Date end, String gap, Number before, Number after, Number between) {
       super(name, start, end, gap, before, after, between);

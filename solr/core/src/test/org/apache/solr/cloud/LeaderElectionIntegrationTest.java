@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,23 +14,13 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import org.apache.lucene.util.LuceneTestCase.Slow;
-import org.apache.solr.SolrTestCaseJ4;
-import org.apache.solr.common.cloud.SolrZkClient;
-import org.apache.solr.common.cloud.ZkNodeProps;
-import org.apache.solr.common.cloud.ZkStateReader;
-import org.apache.solr.core.CoreContainer;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.xml.sax.SAXException;
+package org.apache.solr.cloud;
 
 import javax.xml.parsers.ParserConfigurationException;
-import java.io.File;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -41,10 +29,24 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.google.common.collect.ImmutableMap;
+import org.apache.lucene.util.LuceneTestCase.Slow;
+import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.common.cloud.SolrZkClient;
+import org.apache.solr.common.cloud.ZkNodeProps;
+import org.apache.solr.common.cloud.ZkStateReader;
+import org.apache.solr.core.CoreContainer;
+import org.apache.solr.core.SolrResourceLoader;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
+import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.xml.sax.SAXException;
+
 @Slow
 public class LeaderElectionIntegrationTest extends SolrTestCaseJ4 {
-  protected static Logger log = LoggerFactory
-      .getLogger(AbstractZkTestCase.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   private final static int NUM_SHARD_REPLICAS = 5;
   
@@ -79,7 +81,7 @@ public class LeaderElectionIntegrationTest extends SolrTestCaseJ4 {
     
     System.setProperty("zkClientTimeout", "8000");
     
-    zkDir = createTempDir("zkData").getAbsolutePath();
+    zkDir = createTempDir("zkData").toFile().getAbsolutePath();
     zkServer = new ZkTestServer(zkDir);
     zkServer.run();
     System.setProperty("zkHost", zkServer.getZkAddress());
@@ -132,11 +134,11 @@ public class LeaderElectionIntegrationTest extends SolrTestCaseJ4 {
      
   private void setupContainer(int port, String shard) throws IOException,
       ParserConfigurationException, SAXException {
-    File data = createTempDir();
+    Path data = createTempDir();
     
     System.setProperty("hostPort", Integer.toString(port));
     System.setProperty("shard", shard);
-    System.setProperty("solr.data.dir", data.getAbsolutePath());
+    System.setProperty("solr.data.dir", data.toString());
     System.setProperty("solr.solr.home", TEST_HOME());
     Set<Integer> ports = shardPorts.get(shard);
     if (ports == null) {
@@ -144,10 +146,12 @@ public class LeaderElectionIntegrationTest extends SolrTestCaseJ4 {
       shardPorts.put(shard, ports);
     }
     ports.add(port);
-    CoreContainer container = new CoreContainer();
+
+    SolrResourceLoader loader = new SolrResourceLoader(createTempDir());
+    Files.copy(TEST_PATH().resolve("solr.xml"), loader.getInstancePath().resolve("solr.xml"));
+    CoreContainer container = new CoreContainer(loader);
     container.load();
-    assertTrue("Container " + port + " has no cores!", container.getCores()
-        .size() > 0);
+    container.create("collection1_" + shard, ImmutableMap.of("collection", "collection1"));
     containerMap.put(port, container);
     System.clearProperty("solr.solr.home");
     System.clearProperty("hostPort");
@@ -195,7 +199,7 @@ public class LeaderElectionIntegrationTest extends SolrTestCaseJ4 {
       
       if (leaderPort == newLeaderPort) {
         zkClient.printLayoutToStdOut();
-        fail("We didn't find a new leader! " + leaderPort + " was shutdown, but it's still showing as the leader");
+        fail("We didn't find a new leader! " + leaderPort + " was close, but it's still showing as the leader");
       }
       
       assertTrue("Could not find leader " + newLeaderPort + " in " + shard1Ports, shard1Ports.contains(newLeaderPort));
@@ -212,7 +216,10 @@ public class LeaderElectionIntegrationTest extends SolrTestCaseJ4 {
     String leader = getLeader();
     int leaderPort = getLeaderPort(leader);
     ZkController zkController = containerMap.get(leaderPort).getZkController();
-    zkController.getZkClient().getSolrZooKeeper().pauseCnxn(zkController.getClientTimeout() + 100);
+
+    zkController.getZkClient().getSolrZooKeeper().closeCnxn();
+    long sessionId = zkClient.getSolrZooKeeper().getSessionId();
+    zkServer.expire(sessionId);
     
     for (int i = 0; i < 60; i++) { // wait till leader is changed
       if (leaderPort != getLeaderPort(getLeader())) {

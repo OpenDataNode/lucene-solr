@@ -1,19 +1,3 @@
-package org.apache.lucene.analysis.miscellaneous;
-
-import java.io.IOException;
-import java.io.StringReader;
-import java.util.Locale;
-import java.util.regex.Pattern;
-
-import org.apache.lucene.analysis.BaseTokenStreamTestCase;
-import org.apache.lucene.analysis.MockTokenizer;
-import org.apache.lucene.analysis.TokenFilter;
-import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.analysis.tokenattributes.KeywordAttribute;
-import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
-import org.apache.lucene.analysis.util.CharArraySet;
-import org.junit.Test;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -30,6 +14,22 @@ import org.junit.Test;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.miscellaneous;
+
+import java.io.IOException;
+import java.io.StringReader;
+import java.util.Locale;
+import java.util.regex.Pattern;
+
+import org.apache.lucene.analysis.BaseTokenStreamTestCase;
+import org.apache.lucene.analysis.MockTokenizer;
+import org.apache.lucene.analysis.TokenFilter;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.tokenattributes.KeywordAttribute;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.analysis.util.CharArraySet;
+import org.junit.Test;
+
 
 /**
  * Testcase for {@link KeywordMarkerFilter}
@@ -43,16 +43,13 @@ public class TestKeywordMarkerFilter extends BaseTokenStreamTestCase {
     String[] output = new String[] { "the", "quick", "brown", "LuceneFox",
         "jumps" };
     assertTokenStreamContents(new LowerCaseFilterMock(
-        new SetKeywordMarkerFilter(new MockTokenizer(new StringReader(
-            "The quIck browN LuceneFox Jumps"), MockTokenizer.WHITESPACE, false), set)), output);
+        new SetKeywordMarkerFilter(whitespaceMockTokenizer("The quIck browN LuceneFox Jumps"), set)), output);
     CharArraySet mixedCaseSet = new CharArraySet( asSet("LuceneFox"), false);
     assertTokenStreamContents(new LowerCaseFilterMock(
-        new SetKeywordMarkerFilter(new MockTokenizer(new StringReader(
-            "The quIck browN LuceneFox Jumps"), MockTokenizer.WHITESPACE, false), mixedCaseSet)), output);
+        new SetKeywordMarkerFilter(whitespaceMockTokenizer("The quIck browN LuceneFox Jumps"), mixedCaseSet)), output);
     CharArraySet set2 = set;
     assertTokenStreamContents(new LowerCaseFilterMock(
-        new SetKeywordMarkerFilter(new MockTokenizer(new StringReader(
-            "The quIck browN LuceneFox Jumps"), MockTokenizer.WHITESPACE, false), set2)), output);
+        new SetKeywordMarkerFilter(whitespaceMockTokenizer("The quIck browN LuceneFox Jumps"), set2)), output);
   }
   
   @Test
@@ -60,15 +57,13 @@ public class TestKeywordMarkerFilter extends BaseTokenStreamTestCase {
     String[] output = new String[] { "the", "quick", "brown", "LuceneFox",
         "jumps" };
     assertTokenStreamContents(new LowerCaseFilterMock(
-        new PatternKeywordMarkerFilter(new MockTokenizer(new StringReader(
-            "The quIck browN LuceneFox Jumps"), MockTokenizer.WHITESPACE, false), Pattern.compile("[a-zA-Z]+[fF]ox"))), output);
+        new PatternKeywordMarkerFilter(whitespaceMockTokenizer("The quIck browN LuceneFox Jumps"), Pattern.compile("[a-zA-Z]+[fF]ox"))), output);
     
     output = new String[] { "the", "quick", "brown", "lucenefox",
     "jumps" };
     
     assertTokenStreamContents(new LowerCaseFilterMock(
-        new PatternKeywordMarkerFilter(new MockTokenizer(new StringReader(
-            "The quIck browN LuceneFox Jumps"), MockTokenizer.WHITESPACE, false), Pattern.compile("[a-zA-Z]+[f]ox"))), output);
+        new PatternKeywordMarkerFilter(whitespaceMockTokenizer("The quIck browN LuceneFox Jumps"), Pattern.compile("[a-zA-Z]+[f]ox"))), output);
   }
 
   // LUCENE-2901
@@ -76,7 +71,7 @@ public class TestKeywordMarkerFilter extends BaseTokenStreamTestCase {
     TokenStream ts = new LowerCaseFilterMock(
                      new SetKeywordMarkerFilter(
                      new SetKeywordMarkerFilter(
-                     new MockTokenizer(new StringReader("Dogs Trees Birds Houses"), MockTokenizer.WHITESPACE, false),
+                     whitespaceMockTokenizer("Dogs Trees Birds Houses"),
                      new CharArraySet( asSet("Birds", "Houses"), false)), 
                      new CharArraySet( asSet("Dogs", "Trees"), false)));
     
@@ -85,7 +80,7 @@ public class TestKeywordMarkerFilter extends BaseTokenStreamTestCase {
     ts = new LowerCaseFilterMock(
         new PatternKeywordMarkerFilter(
         new PatternKeywordMarkerFilter(
-        new MockTokenizer(new StringReader("Dogs Trees Birds Houses"), MockTokenizer.WHITESPACE, false),
+        whitespaceMockTokenizer("Dogs Trees Birds Houses"),
         Pattern.compile("Birds|Houses")), 
         Pattern.compile("Dogs|Trees")));
 
@@ -94,7 +89,7 @@ public class TestKeywordMarkerFilter extends BaseTokenStreamTestCase {
     ts = new LowerCaseFilterMock(
         new SetKeywordMarkerFilter(
         new PatternKeywordMarkerFilter(
-        new MockTokenizer(new StringReader("Dogs Trees Birds Houses"), MockTokenizer.WHITESPACE, false),
+        whitespaceMockTokenizer("Dogs Trees Birds Houses"),
         Pattern.compile("Birds|Houses")), 
         new CharArraySet( asSet("Dogs", "Trees"), false)));
 

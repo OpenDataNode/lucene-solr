@@ -14,21 +14,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.analysis.phonetic;
 
 import java.io.IOException;
-import java.io.Reader;
 import java.io.StringReader;
 
 import org.apache.commons.codec.Encoder;
-import org.apache.commons.codec.language.*;
+import org.apache.commons.codec.language.Caverphone2;
+import org.apache.commons.codec.language.DoubleMetaphone;
+import org.apache.commons.codec.language.Metaphone;
+import org.apache.commons.codec.language.Nysiis;
+import org.apache.commons.codec.language.RefinedSoundex;
+import org.apache.commons.codec.language.Soundex;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.core.KeywordTokenizer;
-import org.apache.lucene.analysis.core.WhitespaceTokenizer;
 
 /**
  * Tests {@link PhoneticFilter}
@@ -61,12 +63,18 @@ public class TestPhoneticFilter extends BaseTokenStreamTestCase {
           "TTA1111111", "Datha", "KLN1111111", "Carlene" });
     assertAlgorithm(new Caverphone2(), false, "Darda Karleen Datha Carlene",
         new String[] { "TTA1111111", "KLN1111111", "TTA1111111", "KLN1111111" });
+
+    assertAlgorithm(new Nysiis(), true, "aaa bbb ccc easgasg",
+        new String[] { "A", "aaa", "B", "bbb", "C", "ccc", "EASGAS", "easgasg" });
+    assertAlgorithm(new Nysiis(), false, "aaa bbb ccc easgasg",
+        new String[] { "A", "B", "C", "EASGAS" });
   }
 
   
   static void assertAlgorithm(Encoder encoder, boolean inject, String input,
       String[] expected) throws Exception {
-    Tokenizer tokenizer = new WhitespaceTokenizer(new StringReader(input));
+    Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    tokenizer.setReader(new StringReader(input));
     PhoneticFilter filter = new PhoneticFilter(tokenizer, encoder, inject);
     assertTokenStreamContents(filter, expected);
   }
@@ -80,23 +88,25 @@ public class TestPhoneticFilter extends BaseTokenStreamTestCase {
     for (final Encoder e : encoders) {
       Analyzer a = new Analyzer() {
         @Override
-        protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-          Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+        protected TokenStreamComponents createComponents(String fieldName) {
+          Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
           return new TokenStreamComponents(tokenizer, new PhoneticFilter(tokenizer, e, false));
         }   
       };
       
       checkRandomData(random(), a, 1000*RANDOM_MULTIPLIER);
+      a.close();
       
       Analyzer b = new Analyzer() {
         @Override
-        protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-          Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+        protected TokenStreamComponents createComponents(String fieldName) {
+          Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
           return new TokenStreamComponents(tokenizer, new PhoneticFilter(tokenizer, e, false));
         }   
       };
       
       checkRandomData(random(), b, 1000*RANDOM_MULTIPLIER);
+      b.close();
     }
   }
   
@@ -107,12 +117,13 @@ public class TestPhoneticFilter extends BaseTokenStreamTestCase {
     for (final Encoder e : encoders) {
       Analyzer a = new Analyzer() {
         @Override
-        protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-          Tokenizer tokenizer = new KeywordTokenizer(reader);
+        protected TokenStreamComponents createComponents(String fieldName) {
+          Tokenizer tokenizer = new KeywordTokenizer();
           return new TokenStreamComponents(tokenizer, new PhoneticFilter(tokenizer, e, random().nextBoolean()));
         }
       };
       checkOneTerm(a, "", "");
+      a.close();
     }
   }
 }

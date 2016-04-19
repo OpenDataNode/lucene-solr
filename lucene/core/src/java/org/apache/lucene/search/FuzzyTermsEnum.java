@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,15 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-import org.apache.lucene.index.DocsAndPositionsEnum;
-import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.FilteredTermsEnum;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermState;
@@ -31,8 +30,8 @@ import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.util.Attribute;
 import org.apache.lucene.util.AttributeImpl;
+import org.apache.lucene.util.AttributeReflector;
 import org.apache.lucene.util.AttributeSource;
-import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.UnicodeUtil;
@@ -45,7 +44,7 @@ import org.apache.lucene.util.automaton.LevenshteinAutomata;
  * to the specified filter term.
  *
  * <p>Term enumerations are always ordered by
- * {@link #getComparator}.  Each term in the enumeration is
+ * {@link BytesRef#compareTo}.  Each term in the enumeration is
  * greater than all that precede it.</p>
  */
 public class FuzzyTermsEnum extends TermsEnum {
@@ -266,14 +265,8 @@ public class FuzzyTermsEnum extends TermsEnum {
   }
   
   @Override
-  public DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags) throws IOException {
-    return actualEnum.docs(liveDocs, reuse, flags);
-  }
-  
-  @Override
-  public DocsAndPositionsEnum docsAndPositions(Bits liveDocs,
-                                               DocsAndPositionsEnum reuse, int flags) throws IOException {
-    return actualEnum.docsAndPositions(liveDocs, reuse, flags);
+  public PostingsEnum postings(PostingsEnum reuse, int flags) throws IOException {
+    return actualEnum.postings(reuse, flags);
   }
   
   @Override
@@ -284,11 +277,6 @@ public class FuzzyTermsEnum extends TermsEnum {
   @Override
   public TermState termState() throws IOException {
     return actualEnum.termState();
-  }
-  
-  @Override
-  public Comparator<BytesRef> getComparator() {
-    return actualEnum.getComparator();
   }
   
   @Override
@@ -436,6 +424,11 @@ public class FuzzyTermsEnum extends TermsEnum {
         ((LevenshteinAutomataAttribute) target).automata();
       targetAutomata.clear();
       targetAutomata.addAll(automata);
+    }
+
+    @Override
+    public void reflectWith(AttributeReflector reflector) {
+      reflector.reflect(LevenshteinAutomataAttribute.class, "automata", automata);
     }
   }
 }

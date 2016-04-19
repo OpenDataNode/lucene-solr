@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.pl;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.pl;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.pl;
+
 
 import java.io.IOException;
 
@@ -27,7 +27,7 @@ public class TestPolishAnalyzer extends BaseTokenStreamTestCase {
   /** This test fails with NPE when the 
    * stopwords file is missing in classpath */
   public void testResourcesAvailable() {
-    new PolishAnalyzer();
+    new PolishAnalyzer().close();
   }
   
   /** test stopwords and stemming */
@@ -38,6 +38,7 @@ public class TestPolishAnalyzer extends BaseTokenStreamTestCase {
     checkOneTerm(a, "studenci", "student");
     // stopword
     assertAnalyzesTo(a, "był", new String[] {});
+    a.close();
   }
   
   /** test use of exclusion set */
@@ -46,10 +47,13 @@ public class TestPolishAnalyzer extends BaseTokenStreamTestCase {
     Analyzer a = new PolishAnalyzer(PolishAnalyzer.getDefaultStopSet(), exclusionSet);
     checkOneTerm(a, "studenta", "studenta");
     checkOneTerm(a, "studenci", "student");
+    a.close();
   }
   
   /** blast some random strings through the analyzer */
   public void testRandomStrings() throws Exception {
-    checkRandomData(random(), new PolishAnalyzer(), 1000*RANDOM_MULTIPLIER);
+    Analyzer analyzer = new PolishAnalyzer();
+    checkRandomData(random(), analyzer, 1000*RANDOM_MULTIPLIER);
+    analyzer.close();
   }
 }

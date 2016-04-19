@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update.processor;
 
 import org.apache.solr.request.SolrQueryRequest;
@@ -24,6 +23,7 @@ import org.apache.solr.schema.FieldType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.invoke.MethodHandles;
 import java.math.RoundingMode;
 import java.text.NumberFormat;
 import java.text.ParsePosition;
@@ -39,8 +39,7 @@ import java.util.Locale;
  * <p>
  * The default selection behavior is to mutate both those fields that don't match
  * a schema field, as well as those fields that match a schema field with a field 
- * type that uses class solr.DoubleField, solr.TrieDoubleField, or 
- * solr.SortableDoubleField.
+ * type that uses class solr.TrieDoubleField.
  * </p>
  * <p>
  * If all values are parseable as double (or are already Double), then the field
@@ -68,7 +67,7 @@ import java.util.Locale;
  */
 public class ParseDoubleFieldUpdateProcessorFactory extends ParseNumericFieldUpdateProcessorFactory {
 
-  private static final Logger log = LoggerFactory.getLogger(ParseDoubleFieldUpdateProcessorFactory.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   @Override
   public UpdateRequestProcessor getInstance(SolrQueryRequest req,

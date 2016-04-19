@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 
@@ -38,13 +38,13 @@ public class SimpleMergedSegmentWarmer extends IndexReaderWarmer {
   }
   
   @Override
-  public void warm(AtomicReader reader) throws IOException {
+  public void warm(LeafReader reader) throws IOException {
     long startTime = System.currentTimeMillis();
     int indexedCount = 0;
     int docValuesCount = 0;
     int normsCount = 0;
     for (FieldInfo info : reader.getFieldInfos()) {
-      if (info.isIndexed()) {
+      if (info.getIndexOptions() != IndexOptions.NONE) {
         reader.terms(info.name); 
         indexedCount++;
         
@@ -54,7 +54,7 @@ public class SimpleMergedSegmentWarmer extends IndexReaderWarmer {
         }
       }
       
-      if (info.hasDocValues()) {
+      if (info.getDocValuesType() != DocValuesType.NONE) {
         switch(info.getDocValuesType()) {
           case NUMERIC:
             reader.getNumericDocValues(info.name);

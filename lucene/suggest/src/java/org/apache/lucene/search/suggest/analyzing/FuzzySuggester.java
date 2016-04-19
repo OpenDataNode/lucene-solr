@@ -1,4 +1,3 @@
-package org.apache.lucene.search.suggest.analyzing;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,12 +14,10 @@ package org.apache.lucene.search.suggest.analyzing;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.lucene.search.suggest.analyzing;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
@@ -30,12 +27,15 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.UnicodeUtil;
 import org.apache.lucene.util.automaton.Automata;
-import org.apache.lucene.util.automaton.Operations;
-import org.apache.lucene.util.automaton.LevenshteinAutomata;
 import org.apache.lucene.util.automaton.Automaton;
+import org.apache.lucene.util.automaton.FiniteStringsIterator;
+import org.apache.lucene.util.automaton.LevenshteinAutomata;
+import org.apache.lucene.util.automaton.Operations;
 import org.apache.lucene.util.automaton.UTF32ToUTF8;
 import org.apache.lucene.util.fst.FST;
 import org.apache.lucene.util.fst.PairOutputs.Pair;
+
+import static org.apache.lucene.util.automaton.Operations.DEFAULT_MAX_DETERMINIZED_STATES;
 
 /**
  * Implements a fuzzy {@link AnalyzingSuggester}. The similarity measurement is
@@ -117,7 +117,7 @@ public final class FuzzySuggester extends AnalyzingSuggester {
   }
   
   /**
-   * Creates a {@link FuzzySuggester} instance with an index & a query analyzer initialized with default values.
+   * Creates a {@link FuzzySuggester} instance with an index and query analyzer initialized with default values.
    * 
    * @param indexAnalyzer
    *           Analyzer that will be used for analyzing suggestions while building the index.
@@ -145,7 +145,7 @@ public final class FuzzySuggester extends AnalyzingSuggester {
    *        to expand from the analyzed form.  Set this to -1 for
    *        no limit.
    * @param preservePositionIncrements Whether position holes should appear in the automaton
-   * @param maxEdits must be >= 0 and <= {@link LevenshteinAutomata#MAXIMUM_SUPPORTED_DISTANCE} .
+   * @param maxEdits must be &gt;= 0 and &lt;= {@link LevenshteinAutomata#MAXIMUM_SUPPORTED_DISTANCE} .
    * @param transpositions <code>true</code> if transpositions should be treated as a primitive 
    *        edit operation. If this is false, comparisons will implement the classic
    *        Levenshtein algorithm.
@@ -205,7 +205,7 @@ public final class FuzzySuggester extends AnalyzingSuggester {
   protected Automaton convertAutomaton(Automaton a) {
     if (unicodeAware) {
       Automaton utf8automaton = new UTF32ToUTF8().convert(a);
-      utf8automaton = Operations.determinize(utf8automaton);
+      utf8automaton = Operations.determinize(utf8automaton, DEFAULT_MAX_DETERMINIZED_STATES);
       return utf8automaton;
     } else {
       return a;
@@ -220,40 +220,37 @@ public final class FuzzySuggester extends AnalyzingSuggester {
   }
 
   Automaton toLevenshteinAutomata(Automaton automaton) {
-    final Set<IntsRef> ref = Operations.getFiniteStrings(automaton, -1);
-    Automaton subs[] = new Automaton[ref.size()];
-    int upto = 0;
-    for (IntsRef path : ref) {
-      if (path.length <= nonFuzzyPrefix || path.length < minFuzzyLength) {
-        subs[upto] = Automata.makeString(path.ints, path.offset, path.length);
-        upto++;
+    List<Automaton> subs = new ArrayList<>();
+    FiniteStringsIterator finiteStrings = new FiniteStringsIterator(automaton);
+    for (IntsRef string; (string = finiteStrings.next()) != null;) {
+      if (string.length <= nonFuzzyPrefix || string.length < minFuzzyLength) {
+        subs.add(Automata.makeString(string.ints, string.offset, string.length));
       } else {
-        int ints[] = new int[path.length-nonFuzzyPrefix];
-        System.arraycopy(path.ints, path.offset+nonFuzzyPrefix, ints, 0, ints.length);
+        int ints[] = new int[string.length-nonFuzzyPrefix];
+        System.arraycopy(string.ints, string.offset+nonFuzzyPrefix, ints, 0, ints.length);
         // TODO: maybe add alphaMin to LevenshteinAutomata,
         // and pass 1 instead of 0?  We probably don't want
         // to allow the trailing dedup bytes to be
         // edited... but then 0 byte is "in general" allowed
         // on input (but not in UTF8).
         LevenshteinAutomata lev = new LevenshteinAutomata(ints, unicodeAware ? Character.MAX_CODE_POINT : 255, transpositions);
-        subs[upto] = lev.toAutomaton(maxEdits, UnicodeUtil.newString(path.ints, path.offset, nonFuzzyPrefix));
-        upto++;
+        subs.add(lev.toAutomaton(maxEdits, UnicodeUtil.newString(string.ints, string.offset, nonFuzzyPrefix)));
       }
     }
 
-    if (subs.length == 0) {
+    if (subs.isEmpty()) {
       // automaton is empty, there is no accepted paths through it
       return Automata.makeEmpty(); // matches nothing
-    } else if (subs.length == 1) {
+    } else if (subs.size() == 1) {
       // no synonyms or anything: just a single path through the tokenstream
-      return subs[0];
+      return subs.get(0);
     } else {
       // multiple paths: this is really scary! is it slow?
       // maybe we should not do this and throw UOE?
-      Automaton a = Operations.union(Arrays.asList(subs));
+      Automaton a = Operations.union(subs);
       // TODO: we could call toLevenshteinAutomata() before det? 
       // this only happens if you have multiple paths anyway (e.g. synonyms)
-      return Operations.determinize(a);
+      return Operations.determinize(a, DEFAULT_MAX_DETERMINIZED_STATES);
     }
   }
 }

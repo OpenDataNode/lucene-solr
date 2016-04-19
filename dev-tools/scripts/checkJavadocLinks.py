@@ -17,7 +17,7 @@ import traceback
 import os
 import sys
 import re
-from html.parser import HTMLParser, HTMLParseError
+from html.parser import HTMLParser
 import urllib.parse as urlparse
 
 reHyperlink = re.compile(r'<a(\s+.*?)>', re.I)
@@ -40,7 +40,7 @@ class FindHyperlinks(HTMLParser):
 
   def handle_starttag(self, tag, attrs):
     # NOTE: I don't think 'a' should be in here. But try debugging 
-    # NumericRangeQuery.html. (Could be javadocs bug, its a generic type...)
+    # NumericRangeQuery.html. (Could be javadocs bug, it's a generic type...)
     if tag not in ('link', 'meta', 'frame', 'br', 'hr', 'p', 'li', 'img', 'col', 'a'):
       self.stack.append(tag)
     if tag == 'a':
@@ -109,7 +109,8 @@ def parse(baseURL, html):
   try:
     parser.feed(html)
     parser.close()
-  except HTMLParseError:
+  except:
+    # TODO: Python's html.parser is now always lenient, which is no good for us: we want correct HTML in our javadocs
     parser.printFile()
     print('  WARNING: failed to parse %s:' % baseURL)
     traceback.print_exc(file=sys.stdout)
@@ -177,6 +178,9 @@ def checkAll(dirName):
       else:
         anchor = None
 
+      # remove any whitespace from the middle of the link
+      link = ''.join(link.split())
+
       idx = link.find('?')
       if idx != -1:
         link = link[:idx]
@@ -194,6 +198,9 @@ def checkAll(dirName):
         elif link == 'http://lucene.apache.org/solr/':
           # OK
           pass
+        elif link == 'http://lucene.apache.org/solr/resources.html':
+          # OK
+          pass
         elif link.find('lucene.apache.org/java/docs/discussion.html') != -1:
           # OK
           pass
@@ -203,10 +210,7 @@ def checkAll(dirName):
         elif link.find('lucene.apache.org/solr/mirrors-solr-latest-redir.html') != -1:
           # OK
           pass
-        elif link.find('lucene.apache.org/solr/discussion.html') != -1:
-          # OK
-          pass
-        elif link.find('lucene.apache.org/solr/features.html') != -1:
+        elif link.find('lucene.apache.org/solr/quickstart.html') != -1:
           # OK
           pass
         elif (link.find('svn.apache.org') != -1

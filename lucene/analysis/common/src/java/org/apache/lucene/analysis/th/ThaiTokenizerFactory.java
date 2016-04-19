@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.th;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,9 @@ package org.apache.lucene.analysis.th;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.th;
 
-import java.io.Reader;
+
 import java.util.Map;
 
 import org.apache.lucene.analysis.Tokenizer;
@@ -44,8 +43,8 @@ public class ThaiTokenizerFactory extends TokenizerFactory {
   }
   
   @Override
-  public Tokenizer create(AttributeFactory factory, Reader reader) {
-    return new ThaiTokenizer(factory, reader);
+  public Tokenizer create(AttributeFactory factory) {
+    return new ThaiTokenizer(factory);
   }
 }
 

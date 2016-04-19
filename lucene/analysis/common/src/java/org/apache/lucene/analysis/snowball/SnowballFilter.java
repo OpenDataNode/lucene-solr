@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.snowball;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.snowball;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.snowball;
+
 
 import java.io.IOException;
 
@@ -36,7 +36,6 @@ import org.tartarus.snowball.SnowballProgram;
  *  <li>For the Turkish language, see {@link TurkishLowerCaseFilter}.
  *  <li>For other languages, see {@link LowerCaseFilter}.
  * </ul>
- * </p>
  *
  * <p>
  * Note: This filter is aware of the {@link KeywordAttribute}. To prevent

@@ -1,5 +1,3 @@
-package org.apache.lucene.facet;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,18 +14,18 @@ package org.apache.lucene.facet;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.search.Collector;
-import org.apache.lucene.search.Scorer.ChildScorer;
 import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.Scorer.ChildScorer;
+import org.apache.lucene.search.SimpleCollector;
 
 /** Verifies in collect() that all child subScorers are on
  *  the collected doc. */
-class AssertingSubDocsAtOnceCollector extends Collector {
+class AssertingSubDocsAtOnceCollector extends SimpleCollector {
 
   // TODO: allow wrapping another Collector
 
@@ -57,11 +55,7 @@ class AssertingSubDocsAtOnceCollector extends Collector {
   }
 
   @Override
-  public void setNextReader(AtomicReaderContext context) {
-  }
-
-  @Override
-  public boolean acceptsDocsOutOfOrder() {
+  public boolean needsScores() {
     return false;
   }
 }

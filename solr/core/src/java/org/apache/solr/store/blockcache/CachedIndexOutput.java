@@ -1,6 +1,4 @@
-package org.apache.solr.store.blockcache;
-
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,6 +14,7 @@ package org.apache.solr.store.blockcache;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.store.blockcache;
 
 import java.io.IOException;
 
@@ -37,7 +36,7 @@ public class CachedIndexOutput extends ReusedBufferedIndexOutput {
   
   public CachedIndexOutput(BlockDirectory directory, IndexOutput dest,
       int blockSize, String name, Cache cache, int bufferSize) {
-    super(bufferSize);
+    super("dest=" + dest + " name=" + name, bufferSize);
     this.directory = directory;
     this.dest = dest;
     this.blockSize = blockSize;
@@ -45,12 +44,7 @@ public class CachedIndexOutput extends ReusedBufferedIndexOutput {
     this.location = directory.getFileCacheLocation(name);
     this.cache = cache;
   }
-  
-  @Override
-  public void flushInternal() throws IOException {
-    dest.flush();
-  }
-  
+
   @Override
   public void closeInternal() throws IOException {
     dest.close();
@@ -86,7 +80,7 @@ public class CachedIndexOutput extends ReusedBufferedIndexOutput {
 
   @Override
   public long getChecksum() throws IOException {
-    flush();
+    flushBufferToCache();
     return dest.getChecksum();
   }
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene.search.grouping.term;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,26 +14,26 @@ package org.apache.lucene.search.grouping.term;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.grouping.term;
+
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.DocValues;
+import org.apache.lucene.index.SortedDocValues;
+import org.apache.lucene.search.grouping.AbstractAllGroupsCollector;
+import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.SentinelIntSet;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.SortedDocValues;
-import org.apache.lucene.search.FieldCache;
-import org.apache.lucene.search.grouping.AbstractAllGroupsCollector;
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.SentinelIntSet;
-
 /**
  * A collector that collects all groups that match the
  * query. Only the group value is collected, and the order
  * is undefined.  This collector does not determine
  * the most relevant document of a group.
- *
- * <p/>
+ * <p>
  * Implementation detail: an int hash set (SentinelIntSet)
  * is used to detect if a group is already added to the
  * total count.  For each segment the int set is cleared and filled
@@ -102,8 +100,8 @@ public class TermAllGroupsCollector extends AbstractAllGroupsCollector<BytesRef>
   }
 
   @Override
-  public void setNextReader(AtomicReaderContext context) throws IOException {
-    index = FieldCache.DEFAULT.getTermsIndex(context.reader(), groupField);
+  protected void doSetNextReader(LeafReaderContext context) throws IOException {
+    index = DocValues.getSorted(context.reader(), groupField);
 
     // Clear ordSet and fill it with previous encountered groups that can occur in the current segment.
     ordSet.clear();
@@ -118,4 +116,5 @@ public class TermAllGroupsCollector extends AbstractAllGroupsCollector<BytesRef>
       }
     }
   }
+
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.codecs;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs;
+
 
 import java.io.IOException;
 import java.util.ServiceLoader;
@@ -40,8 +40,23 @@ import org.apache.lucene.util.NamedSPILoader;
  * @lucene.experimental */
 public abstract class DocValuesFormat implements NamedSPILoader.NamedSPI {
   
-  private static final NamedSPILoader<DocValuesFormat> loader =
-      new NamedSPILoader<>(DocValuesFormat.class);
+  /**
+   * This static holder class prevents classloading deadlock by delaying
+   * init of doc values formats until needed.
+   */
+  private static final class Holder {
+    private static final NamedSPILoader<DocValuesFormat> LOADER = new NamedSPILoader<>(DocValuesFormat.class);
+    
+    private Holder() {}
+    
+    static NamedSPILoader<DocValuesFormat> getLoader() {
+      if (LOADER == null) {
+        throw new IllegalStateException("You tried to lookup a DocValuesFormat by name before all formats could be initialized. "+
+          "This likely happens if you call DocValuesFormat#forName from a DocValuesFormat's ctor.");
+      }
+      return LOADER;
+    }
+  }
   
   /** Unique name that's used to retrieve this format when
    *  reading the index.
@@ -90,20 +105,12 @@ public abstract class DocValuesFormat implements NamedSPILoader.NamedSPI {
   
   /** looks up a format by name */
   public static DocValuesFormat forName(String name) {
-    if (loader == null) {
-      throw new IllegalStateException("You called DocValuesFormat.forName() before all formats could be initialized. "+
-          "This likely happens if you call it from a DocValuesFormat's ctor.");
-    }
-    return loader.lookup(name);
+    return Holder.getLoader().lookup(name);
   }
   
   /** returns a list of all available format names */
   public static Set<String> availableDocValuesFormats() {
-    if (loader == null) {
-      throw new IllegalStateException("You called DocValuesFormat.availableDocValuesFormats() before all formats could be initialized. "+
-          "This likely happens if you call it from a DocValuesFormat's ctor.");
-    }
-    return loader.availableServices();
+    return Holder.getLoader().availableServices();
   }
   
   /** 
@@ -118,6 +125,6 @@ public abstract class DocValuesFormat implements NamedSPILoader.NamedSPI {
    * of new docvalues formats on the given classpath/classloader!</em>
    */
   public static void reloadDocValuesFormats(ClassLoader classloader) {
-    loader.reload(classloader);
+    Holder.getLoader().reload(classloader);
   }
 }

@@ -1,5 +1,3 @@
-package org.apache.solr.common.params;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.common.params;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.common.params;
 
 import java.util.Locale;
 
@@ -28,35 +27,48 @@ public interface CollectionParams
 
 
   public enum CollectionAction {
-    CREATE,
-    DELETE,
-    RELOAD,
-    SYNCSHARD,
-    CREATEALIAS,
-    DELETEALIAS,
-    SPLITSHARD,
-    DELETESHARD,
-    CREATESHARD,
-    DELETEREPLICA,
-    MIGRATE,
-    ADDROLE,
-    REMOVEROLE,
-    CLUSTERPROP,
-    REQUESTSTATUS,
-    ADDREPLICA,
-    OVERSEERSTATUS,
-    LIST,
-    CLUSTERSTATUS;
+    CREATE(true),
+    DELETE(true),
+    RELOAD(true),
+    SYNCSHARD(true),
+    CREATEALIAS(true),
+    DELETEALIAS(true),
+    SPLITSHARD(true),
+    DELETESHARD(true),
+    CREATESHARD(true),
+    DELETEREPLICA(true),
+    FORCELEADER(true),
+    MIGRATE(true),
+    ADDROLE(true),
+    REMOVEROLE(true),
+    CLUSTERPROP(true),
+    REQUESTSTATUS(false),
+    DELETESTATUS(false),
+    ADDREPLICA(true),
+    OVERSEERSTATUS(false),
+    LIST(false),
+    CLUSTERSTATUS(false),
+    ADDREPLICAPROP(true),
+    DELETEREPLICAPROP(true),
+    BALANCESHARDUNIQUE(true),
+    REBALANCELEADERS(true),
+    MODIFYCOLLECTION(true),
+    MIGRATESTATEFORMAT(true);
     
-    public static CollectionAction get( String p )
-    {
+    public final boolean isWrite;
+
+    CollectionAction(boolean isWrite) {
+      this.isWrite = isWrite;
+    }
+
+    public static CollectionAction get(String p) {
       if( p != null ) {
         try {
           return CollectionAction.valueOf( p.toUpperCase(Locale.ROOT) );
         }
         catch( Exception ex ) {}
       }
-      return null; 
+      return null;
     }
     public boolean isEqual(String s){
       if(s == null) return false;

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.pt;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,18 +14,21 @@ package org.apache.lucene.analysis.pt;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.pt;
+
 
 import java.io.IOException;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.util.CharArraySet;
+import org.apache.lucene.util.Version;
 
 public class TestPortugueseAnalyzer extends BaseTokenStreamTestCase {
   /** This test fails with NPE when the 
    * stopwords file is missing in classpath */
   public void testResourcesAvailable() {
-    new PortugueseAnalyzer();
+    new PortugueseAnalyzer().close();
   }
   
   /** test stopwords and stemming */
@@ -38,6 +39,7 @@ public class TestPortugueseAnalyzer extends BaseTokenStreamTestCase {
     checkOneTerm(a, "quilométricos", "quilometric");
     // stopword
     assertAnalyzesTo(a, "não", new String[] {});
+    a.close();
   }
   
   /** test use of exclusion set */
@@ -47,10 +49,20 @@ public class TestPortugueseAnalyzer extends BaseTokenStreamTestCase {
         PortugueseAnalyzer.getDefaultStopSet(), exclusionSet);
     checkOneTerm(a, "quilométricas", "quilométricas");
     checkOneTerm(a, "quilométricos", "quilometric");
+    a.close();
   }
   
   /** blast some random strings through the analyzer */
   public void testRandomStrings() throws Exception {
-    checkRandomData(random(), new PortugueseAnalyzer(), 1000*RANDOM_MULTIPLIER);
+    Analyzer analyzer = new PortugueseAnalyzer();
+    checkRandomData(random(), analyzer, 1000*RANDOM_MULTIPLIER);
+    analyzer.close();
+  }
+
+  public void testBackcompat40() throws IOException {
+    PortugueseAnalyzer a = new PortugueseAnalyzer();
+    a.setVersion(Version.LUCENE_4_6_1);
+    // this is just a test to see the correct unicode version is being used, not actually testing hebrew
+    assertAnalyzesTo(a, "א\"א", new String[] {"א", "א"});
   }
 }

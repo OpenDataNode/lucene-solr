@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.analysis.miscellaneous;
 
 import org.apache.lucene.analysis.TokenFilter;
@@ -32,7 +31,7 @@ public final class RemoveDuplicatesTokenFilter extends TokenFilter {
 
   private final CharTermAttribute termAttribute = addAttribute(CharTermAttribute.class);
   private final PositionIncrementAttribute posIncAttribute =  addAttribute(PositionIncrementAttribute.class);
-
+  
   private final CharArraySet previous = new CharArraySet(8, false);
 
   /**

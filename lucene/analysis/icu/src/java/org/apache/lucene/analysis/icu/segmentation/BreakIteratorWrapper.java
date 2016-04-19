@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.icu.segmentation;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.icu.segmentation;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.icu.segmentation;
+
 
 import java.text.CharacterIterator;
 
@@ -59,7 +59,7 @@ abstract class BreakIteratorWrapper {
   }
 
   /**
-   * If its a RuleBasedBreakIterator, the rule status can be used for token type. If its
+   * If it's a RuleBasedBreakIterator, the rule status can be used for token type. If it's
    * any other BreakIterator, the rulestatus method is not available, so treat
    * it like a generic BreakIterator.
    */
@@ -71,7 +71,7 @@ abstract class BreakIteratorWrapper {
   }
 
   /**
-   * RuleBasedBreakIterator wrapper: RuleBasedBreakIterator (as long as its not
+   * RuleBasedBreakIterator wrapper: RuleBasedBreakIterator (as long as it's not
    * a DictionaryBasedBreakIterator) behaves correctly.
    */
   static final class RBBIWrapper extends BreakIteratorWrapper {

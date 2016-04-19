@@ -1,8 +1,3 @@
-package org.apache.solr.handler.dataimport;
-
-import org.junit.Ignore;
-import org.junit.Test;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -19,6 +14,10 @@ import org.junit.Test;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.dataimport;
+
+import org.junit.Ignore;
+import org.junit.Test;
 
 /**
  * Test with various combinations of parameters, child entities, caches, transformers.
@@ -45,6 +44,60 @@ public class TestSqlEntityProcessor extends AbstractSqlEntityProcessorTestCase {
   public void testCachedChildEntities() throws Exception {
     withChildEntities(true, true);
   }
+  
+  @Test
+  public void testSportZipperChildEntities() throws Exception {
+    sportsZipper = true;
+    withChildEntities(true, true);
+  }
+
+  @Test
+  public void testCountryZipperChildEntities() throws Exception {
+    countryZipper = true;
+    withChildEntities(true, true);
+  }
+  
+  @Test
+  public void testBothZipperChildEntities() throws Exception {
+    countryZipper = true;
+    sportsZipper = true;
+    withChildEntities(true, true);
+  }
+  
+  @Test(expected=RuntimeException.class /* DIH exceptions are not propagated, here we capturing assertQ exceptions */)
+  public void testSportZipperChildEntitiesWrongOrder() throws Exception {
+    if(random().nextBoolean()){
+      wrongPeopleOrder = true;
+    }else{
+      wrongSportsOrder = true;
+    }
+    testSportZipperChildEntities();
+  }
+
+  @Test(expected=RuntimeException.class )
+  public void testCountryZipperChildEntitiesWrongOrder() throws Exception {
+    if(random().nextBoolean()){
+      wrongPeopleOrder = true;
+    }else{
+      wrongCountryOrder = true;
+    }
+    testCountryZipperChildEntities();
+  }
+  
+  @Test(expected=RuntimeException.class)
+  public void testBothZipperChildEntitiesWrongOrder() throws Exception {
+    if(random().nextBoolean()){
+      wrongPeopleOrder = true;
+    }else{
+      if(random().nextBoolean()){
+        wrongSportsOrder = true;
+      }else{
+        wrongCountryOrder = true;
+      }
+    }
+    testBothZipperChildEntities();
+  }
+  
   @Test
   @Ignore("broken see SOLR-3857")
   public void testSimpleCacheChildEntities() throws Exception {

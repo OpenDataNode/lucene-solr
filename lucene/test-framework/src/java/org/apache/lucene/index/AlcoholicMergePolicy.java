@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.util.Calendar;
@@ -58,7 +57,7 @@ public class AlcoholicMergePolicy extends LogMergePolicy {
     int hourOfDay = calendar.get(Calendar.HOUR_OF_DAY);
     if (hourOfDay < 6 || 
         hourOfDay > 20 || 
-        // its 5 o'clock somewhere
+        // it's 5 o'clock somewhere
         random.nextInt(23) == 5) {
       
       Drink[] values = Drink.values();

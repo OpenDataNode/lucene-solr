@@ -1,5 +1,3 @@
-package org.apache.lucene.queries;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,22 +14,33 @@ package org.apache.lucene.queries;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import org.apache.lucene.index.*;
-import org.apache.lucene.search.DocIdSet;
-import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.search.Filter;
-import org.apache.lucene.util.ArrayUtil;
-import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.FixedBitSet;
+package org.apache.lucene.queries;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+
+import org.apache.lucene.index.PostingsEnum;
+import org.apache.lucene.index.Fields;
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.Terms;
+import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.search.BitsFilteredDocIdSet;
+import org.apache.lucene.search.DocIdSet;
+import org.apache.lucene.search.Filter;
+import org.apache.lucene.search.QueryWrapperFilter;
+import org.apache.lucene.util.Accountable;
+import org.apache.lucene.util.ArrayUtil;
+import org.apache.lucene.util.BitDocIdSet;
+import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.RamUsageEstimator;
 
 /**
  * Constructs a filter for docs matching any of the terms added to this class.
@@ -39,8 +48,12 @@ import java.util.List;
  * a sequence. An example might be a collection of primary keys from a database query result or perhaps
  * a choice of "category" labels picked by the end user. As a filter, this is much faster than the
  * equivalent query (a BooleanQuery with many "should" TermQueries)
+ * @deprecated Use a {@link QueryWrapperFilter} over a {@link TermsQuery} instead
  */
-public final class TermsFilter extends Filter {
+@Deprecated
+public final class TermsFilter extends Filter implements Accountable {
+
+  private static final long BASE_RAM_BYTES_USED = RamUsageEstimator.shallowSizeOfInstance(TermsFilter.class);
 
   /*
    * this class is often used for large number of terms in a single field.
@@ -173,43 +186,43 @@ public final class TermsFilter extends Filter {
     this.hashCode = hash;
     
   }
-  
-  
+
   @Override
-  public DocIdSet getDocIdSet(AtomicReaderContext context, Bits acceptDocs) throws IOException {
-    final AtomicReader reader = context.reader();
-    FixedBitSet result = null;  // lazy init if needed - no need to create a big bitset ahead of time
+  public long ramBytesUsed() {
+    return BASE_RAM_BYTES_USED
+        + RamUsageEstimator.sizeOf(termsAndFields)
+        + RamUsageEstimator.sizeOf(termsBytes)
+        + RamUsageEstimator.sizeOf(offsets);
+  }
+
+  @Override
+  public Collection<Accountable> getChildResources() {
+    return Collections.emptyList();
+  }
+
+  @Override
+  public DocIdSet getDocIdSet(LeafReaderContext context, Bits acceptDocs) throws IOException {
+    final LeafReader reader = context.reader();
+    BitDocIdSet.Builder builder = new BitDocIdSet.Builder(reader.maxDoc());
     final Fields fields = reader.fields();
     final BytesRef spare = new BytesRef(this.termsBytes);
-    if (fields == null) {
-      return result;
-    }
     Terms terms = null;
     TermsEnum termsEnum = null;
-    DocsEnum docs = null;
+    PostingsEnum docs = null;
     for (TermsAndField termsAndField : this.termsAndFields) {
       if ((terms = fields.terms(termsAndField.field)) != null) {
-        termsEnum = terms.iterator(termsEnum); // this won't return null
+        termsEnum = terms.iterator(); // this won't return null
         for (int i = termsAndField.start; i < termsAndField.end; i++) {
           spare.offset = offsets[i];
           spare.length = offsets[i+1] - offsets[i];
           if (termsEnum.seekExact(spare)) {
-            docs = termsEnum.docs(acceptDocs, docs, DocsEnum.FLAG_NONE); // no freq since we don't need them
-            if (result == null) {
-              if (docs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
-                result = new FixedBitSet(reader.maxDoc());
-                // lazy init but don't do it in the hot loop since we could read many docs
-                result.set(docs.docID());
-              }
-            }
-            while (docs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
-              result.set(docs.docID());
-            }
+            docs = termsEnum.postings(docs, PostingsEnum.NONE); // no freq since we don't need them
+            builder.or(docs);
           }
         }
       }
     }
-    return result;
+    return BitsFilteredDocIdSet.wrap(builder.build(), acceptDocs);
   }
 
   @Override
@@ -217,7 +230,7 @@ public final class TermsFilter extends Filter {
     if (this == obj) {
       return true;
     }
-    if ((obj == null) || (obj.getClass() != this.getClass())) {
+    if (super.equals(obj) == false) {
       return false;
     }
     
@@ -236,11 +249,11 @@ public final class TermsFilter extends Filter {
 
   @Override
   public int hashCode() {
-    return hashCode;
+    return 31 * super.hashCode() + hashCode;
   }
   
   @Override
-  public String toString() {
+  public String toString(String defaultField) {
     StringBuilder builder = new StringBuilder();
     BytesRef spare = new BytesRef(termsBytes);
     boolean first = true;
@@ -261,7 +274,13 @@ public final class TermsFilter extends Filter {
     return builder.toString();
   }
   
-  private static final class TermsAndField {
+  private static final class TermsAndField implements Accountable {
+
+    private static final long BASE_RAM_BYTES_USED =
+        RamUsageEstimator.shallowSizeOfInstance(TermsAndField.class)
+        + RamUsageEstimator.shallowSizeOfInstance(String.class)
+        + RamUsageEstimator.NUM_BYTES_ARRAY_HEADER; // header of the array held by the String
+
     final int start;
     final int end;
     final String field;
@@ -272,6 +291,18 @@ public final class TermsFilter extends Filter {
       this.start = start;
       this.end = end;
       this.field = field;
+    }
+
+    @Override
+    public long ramBytesUsed() {
+      // this is an approximation since we don't actually know how strings store
+      // their data, which can be JVM-dependent
+      return BASE_RAM_BYTES_USED + field.length() * RamUsageEstimator.NUM_BYTES_CHAR;
+    }
+
+    @Override
+    public Collection<Accountable> getChildResources() {
+      return Collections.emptyList();
     }
 
     @Override
@@ -324,4 +355,5 @@ public final class TermsFilter extends Filter {
     Collections.sort(toSort);
     return toSort;
   }
+
 }

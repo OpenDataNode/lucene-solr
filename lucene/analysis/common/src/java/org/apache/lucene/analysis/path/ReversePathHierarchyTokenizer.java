@@ -1,4 +1,3 @@
-package org.apache.lucene.analysis.path;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,9 +14,9 @@ package org.apache.lucene.analysis.path;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.path;
 
 import java.io.IOException;
-import java.io.Reader;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -48,45 +47,45 @@ import org.apache.lucene.util.AttributeFactory;
  */
 public class ReversePathHierarchyTokenizer extends Tokenizer {
 
-  public ReversePathHierarchyTokenizer(Reader input) {
-    this(input, DEFAULT_BUFFER_SIZE, DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+  public ReversePathHierarchyTokenizer() {
+    this(DEFAULT_BUFFER_SIZE, DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
   }
 
-  public ReversePathHierarchyTokenizer(Reader input, int skip) {
-    this(input, DEFAULT_BUFFER_SIZE, DEFAULT_DELIMITER, DEFAULT_DELIMITER, skip);
+  public ReversePathHierarchyTokenizer(int skip) {
+    this(DEFAULT_BUFFER_SIZE, DEFAULT_DELIMITER, DEFAULT_DELIMITER, skip);
   }
 
-  public ReversePathHierarchyTokenizer(Reader input, int bufferSize, char delimiter) {
-    this(input, bufferSize, delimiter, delimiter, DEFAULT_SKIP);
+  public ReversePathHierarchyTokenizer(int bufferSize, char delimiter) {
+    this(bufferSize, delimiter, delimiter, DEFAULT_SKIP);
   }
 
-  public ReversePathHierarchyTokenizer(Reader input, char delimiter, char replacement) {
-    this(input, DEFAULT_BUFFER_SIZE, delimiter, replacement, DEFAULT_SKIP);
+  public ReversePathHierarchyTokenizer(char delimiter, char replacement) {
+    this(DEFAULT_BUFFER_SIZE, delimiter, replacement, DEFAULT_SKIP);
   }
 
-  public ReversePathHierarchyTokenizer(Reader input, int bufferSize, char delimiter, char replacement) {
-    this(input, bufferSize, delimiter, replacement, DEFAULT_SKIP);
+  public ReversePathHierarchyTokenizer(int bufferSize, char delimiter, char replacement) {
+    this(bufferSize, delimiter, replacement, DEFAULT_SKIP);
   }
 
-  public ReversePathHierarchyTokenizer(Reader input, char delimiter, int skip) {
-    this(input, DEFAULT_BUFFER_SIZE, delimiter, delimiter, skip);
+  public ReversePathHierarchyTokenizer(char delimiter, int skip) {
+    this( DEFAULT_BUFFER_SIZE, delimiter, delimiter, skip);
   }
 
-  public ReversePathHierarchyTokenizer(Reader input, char delimiter, char replacement, int skip) {
-    this(input, DEFAULT_BUFFER_SIZE, delimiter, replacement, skip);
+  public ReversePathHierarchyTokenizer(char delimiter, char replacement, int skip) {
+    this(DEFAULT_BUFFER_SIZE, delimiter, replacement, skip);
   }
 
   public ReversePathHierarchyTokenizer
-      (AttributeFactory factory, Reader input, char delimiter, char replacement, int skip) {
-    this(factory, input, DEFAULT_BUFFER_SIZE, delimiter, replacement, skip);
+      (AttributeFactory factory, char delimiter, char replacement, int skip) {
+    this(factory, DEFAULT_BUFFER_SIZE, delimiter, replacement, skip);
   }
 
-  public ReversePathHierarchyTokenizer(Reader input, int bufferSize, char delimiter, char replacement, int skip) {
-    this(DEFAULT_TOKEN_ATTRIBUTE_FACTORY, input, bufferSize, delimiter, replacement, skip);
+  public ReversePathHierarchyTokenizer( int bufferSize, char delimiter, char replacement, int skip) {
+    this(DEFAULT_TOKEN_ATTRIBUTE_FACTORY, bufferSize, delimiter, replacement, skip);
   }
   public ReversePathHierarchyTokenizer
-      (AttributeFactory factory, Reader input, int bufferSize, char delimiter, char replacement, int skip) {
-    super(factory, input);
+      (AttributeFactory factory, int bufferSize, char delimiter, char replacement, int skip) {
+    super(factory);
     if (bufferSize < 0) {
       throw new IllegalArgumentException("bufferSize cannot be negative");
     }
@@ -155,7 +154,7 @@ public class ReversePathHierarchyTokenizer extends Tokenizer {
       resultToken.setLength(0);
       int idx = delimitersCount-1 - skip;
       if (idx >= 0) {
-        // otherwise its ok, because we will skip and return false
+        // otherwise it's ok, because we will skip and return false
         endPosition = delimiterPositions.get(idx);
       }
       finalOffset = correctOffset(length);

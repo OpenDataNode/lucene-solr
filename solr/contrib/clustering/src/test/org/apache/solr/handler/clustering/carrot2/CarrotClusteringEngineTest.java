@@ -1,5 +1,3 @@
-package org.apache.solr.handler.clustering.carrot2;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.handler.clustering.carrot2;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.clustering.carrot2;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -376,7 +375,7 @@ public class CarrotClusteringEngineTest extends AbstractClusteringTestCase {
     params.add(CarrotParams.SNIPPET_FIELD_NAME, "snippet");
 
     final List<String> labels = getLabels(checkEngine(
-        getClusteringEngine("custom-duplicating-tokenizer"), 1, 16, new TermQuery(new Term("title",
+        getClusteringEngine("custom-duplicating-tokenizer"), 1, 15, new TermQuery(new Term("title",
             "field")), params).get(0));
     
     // The custom test tokenizer duplicates each token's text
@@ -414,7 +413,7 @@ public class CarrotClusteringEngineTest extends AbstractClusteringTestCase {
     ClusteringComponent comp = (ClusteringComponent) h.getCore().getSearchComponent("clustering-name-decl-order");
     Map<String,SearchClusteringEngine> engines = getSearchClusteringEngines(comp);
     assertEquals(
-        Lists.newArrayList("lingo", "stc", "mock", "default"),
+        Lists.newArrayList("unavailable", "lingo", "stc", "mock", "default"),
         Lists.newArrayList(engines.keySet()));
     assertEquals(
         LingoClusteringAlgorithm.class,

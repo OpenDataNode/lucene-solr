@@ -1,5 +1,3 @@
-package org.apache.lucene.search.vectorhighlight;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,17 @@ package org.apache.lucene.search.vectorhighlight;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.vectorhighlight;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
@@ -25,18 +34,9 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.StoredFieldVisitor;
 import org.apache.lucene.search.highlight.DefaultEncoder;
 import org.apache.lucene.search.highlight.Encoder;
-import org.apache.lucene.search.vectorhighlight.FieldFragList.WeightedFragInfo;
 import org.apache.lucene.search.vectorhighlight.FieldFragList.WeightedFragInfo.SubInfo;
+import org.apache.lucene.search.vectorhighlight.FieldFragList.WeightedFragInfo;
 import org.apache.lucene.search.vectorhighlight.FieldPhraseList.WeightedPhraseInfo.Toffs;
-
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
 
 /**
  * Base FragmentsBuilder implementation that supports colored pre/post
@@ -152,7 +152,8 @@ public abstract class BaseFragmentsBuilder implements FragmentsBuilder {
     reader.document(docId, new StoredFieldVisitor() {
         
         @Override
-        public void stringField(FieldInfo fieldInfo, String value) {
+        public void stringField(FieldInfo fieldInfo, byte[] bytes) {
+          String value = new String(bytes, StandardCharsets.UTF_8);
           FieldType ft = new FieldType(TextField.TYPE_STORED);
           ft.setStoreTermVectors(fieldInfo.hasVectors());
           fields.add(new Field(fieldInfo.name, value, ft));
@@ -266,10 +267,39 @@ public abstract class BaseFragmentsBuilder implements FragmentsBuilder {
           Iterator<Toffs> toffsIterator = subInfo.getTermsOffsets().iterator();
           while (toffsIterator.hasNext()) {
             Toffs toffs = toffsIterator.next();
-            if (toffs.getStartOffset() >= fieldStart && toffs.getEndOffset() <= fieldEnd) {
-
+            if (toffs.getStartOffset() >= fieldEnd) {
+              // We've gone past this value so its not worth iterating any more.
+              break;
+            }
+            boolean startsAfterField = toffs.getStartOffset() >= fieldStart;
+            boolean endsBeforeField = toffs.getEndOffset() < fieldEnd;
+            if (startsAfterField && endsBeforeField) {
+              // The Toff is entirely within this value.
               toffsList.add(toffs);
               toffsIterator.remove();
+            } else if (startsAfterField) {
+              /*
+               * The Toffs starts within this value but ends after this value
+               * so we clamp the returned Toffs to this value and leave the
+               * Toffs in the iterator for the next value of this field.
+               */
+              toffsList.add(new Toffs(toffs.getStartOffset(), fieldEnd - 1));
+            } else if (endsBeforeField) {
+              /*
+               * The Toffs starts before this value but ends in this value
+               * which means we're really continuing from where we left off
+               * above. Since we use the remainder of the offset we can remove
+               * it from the iterator.
+               */
+              toffsList.add(new Toffs(fieldStart, toffs.getEndOffset()));
+              toffsIterator.remove();
+            } else {
+              /*
+               * The Toffs spans the whole value so we clamp on both sides.
+               * This is basically a combination of both arms of the loop
+               * above.
+               */
+              toffsList.add(new Toffs(fieldStart, fieldEnd - 1));
             }
           }
           if (!toffsList.isEmpty()) {

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.standard;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.analysis.standard;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.standard;
 
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 
@@ -24,7 +23,7 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
  * algorithm, as specified in 
  * <a href="http://unicode.org/reports/tr29/">Unicode Standard Annex #29</a> 
  * URLs and email addresses are also tokenized according to the relevant RFCs.
- * <p/>
+ * <p>
  * Tokens produced are of the following types:
  * <ul>
  *   <li>&lt;ALPHANUM&gt;: A sequence of alphabetic and numeric characters</li>
@@ -39,6 +38,7 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
  *   <li>&lt;HANGUL&gt;: A sequence of Hangul characters</li>
  * </ul>
  */
+@SuppressWarnings("fallthrough")
 %%
 
 %unicode 6.3
@@ -46,7 +46,6 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 %final
 %public
 %class UAX29URLEmailTokenizerImpl
-%implements StandardTokenizerInterface
 %function getNextToken
 %char
 %xstate AVOID_BAD_URL
@@ -208,7 +207,7 @@ EMAIL = {EMAILlocalPart} "@" ({DomainNameStrict} | {EMAILbracketedHost})
 // UAX#29 WB1.   sot   ÷
 //        WB2.     ÷   eot
 //
-  <<EOF>> { return StandardTokenizerInterface.YYEOF; }
+  <<EOF>> { return YYEOF; }
 
   {URL}   { yybegin(YYINITIAL); return URL_TYPE; }
 

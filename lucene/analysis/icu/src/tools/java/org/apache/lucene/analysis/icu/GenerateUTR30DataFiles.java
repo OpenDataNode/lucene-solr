@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.icu;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.icu;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.icu;
+
 
 import com.ibm.icu.lang.UCharacter;
 import com.ibm.icu.lang.UProperty;
@@ -56,14 +56,14 @@ import java.util.regex.Pattern;
  *   <li>
  *     Converts round-trip mappings in nfc.txt (containing '=')
  *     that map to at least one [:Diacritic:] character
- *     into one-way mappings ('>' instead of '=').
+ *     into one-way mappings ('&gt;' instead of '=').
  *   </li>
  * </ol>
  */
 public class GenerateUTR30DataFiles {
   private static final String ICU_SVN_TAG_URL
       = "http://source.icu-project.org/repos/icu/icu/tags";
-  private static final String ICU_RELEASE_TAG = "release-52-1";
+  private static final String ICU_RELEASE_TAG = "release-54-1";
   private static final String ICU_DATA_NORM2_PATH = "source/data/unidata/norm2";
   private static final String NFC_TXT = "nfc.txt";
   private static final String NFKC_TXT = "nfkc.txt";

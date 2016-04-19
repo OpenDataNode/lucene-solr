@@ -1,4 +1,3 @@
-package org.apache.solr.handler.component;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.handler.component;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.handler.component;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -61,7 +60,7 @@ public class DebugComponentTest extends SolrTestCaseJ4 {
             "//lst[@name='explain']/str[@name='3']",
             "//str[@name='QParser']",// make sure the QParser is specified
             "count(//lst[@name='timing']/*)=3", //should be three pieces to timings
-            "//lst[@name='timing']/double[@name='time']", //make sure we have a time value, but don't specify it's result
+            "//lst[@name='timing']/double[@name='time']", //make sure we have a time value, but don't specify its result
             "count(//lst[@name='prepare']/*)>0",
             "//lst[@name='prepare']/double[@name='time']",
             "count(//lst[@name='process']/*)>0",
@@ -85,7 +84,7 @@ public class DebugComponentTest extends SolrTestCaseJ4 {
             "//lst[@name='explain']/str[@name='2']",
             "//lst[@name='explain']/str[@name='3']",
             "count(//lst[@name='timing']/*)=3", //should be three pieces to timings
-            "//lst[@name='timing']/double[@name='time']", //make sure we have a time value, but don't specify it's result
+            "//lst[@name='timing']/double[@name='time']", //make sure we have a time value, but don't specify its result
             "count(//lst[@name='prepare']/*)>0",
             "//lst[@name='prepare']/double[@name='time']",
             "count(//lst[@name='process']/*)>0",
@@ -100,7 +99,7 @@ public class DebugComponentTest extends SolrTestCaseJ4 {
             "count(//lst[@name='explain']/*)=0",
             "count(//str[@name='QParser'])=0",// make sure the QParser is specified
             "count(//lst[@name='timing']/*)=3", //should be three pieces to timings
-            "//lst[@name='timing']/double[@name='time']", //make sure we have a time value, but don't specify it's result
+            "//lst[@name='timing']/double[@name='time']", //make sure we have a time value, but don't specify its result
             "count(//lst[@name='prepare']/*)>0",
             "//lst[@name='prepare']/double[@name='time']",
             "count(//lst[@name='process']/*)>0",

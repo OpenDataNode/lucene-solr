@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,13 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 
 import org.apache.lucene.document.Document;
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.store.Directory;
@@ -58,13 +58,9 @@ public class TestEarlyTermination extends LuceneTestCase {
 
     for (int i = 0; i < iters; ++i) {
       final IndexSearcher searcher = newSearcher(reader);
-      final Collector collector = new Collector() {
+      final Collector collector = new SimpleCollector() {
 
-        final boolean outOfOrder = random().nextBoolean();
         boolean collectionTerminated = true;
-
-        @Override
-        public void setScorer(Scorer scorer) throws IOException {}
 
         @Override
         public void collect(int doc) throws IOException {
@@ -76,7 +72,7 @@ public class TestEarlyTermination extends LuceneTestCase {
         }
 
         @Override
-        public void setNextReader(AtomicReaderContext context) throws IOException {
+        protected void doSetNextReader(LeafReaderContext context) throws IOException {
           if (random().nextBoolean()) {
             collectionTerminated = true;
             throw new CollectionTerminatedException();
@@ -84,12 +80,11 @@ public class TestEarlyTermination extends LuceneTestCase {
             collectionTerminated = false;
           }
         }
-
+        
         @Override
-        public boolean acceptsDocsOutOfOrder() {
-          return outOfOrder;
+        public boolean needsScores() {
+          return false;
         }
-
       };
 
       searcher.search(new MatchAllDocsQuery(), collector);

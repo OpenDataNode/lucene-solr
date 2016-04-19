@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,11 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
+
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.RejectedExecutionException;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
@@ -65,6 +68,9 @@ public class TestReaderClosed extends LuceneTestCase {
       searcher.search(query, 5);
     } catch (AlreadyClosedException ace) {
       // expected
+    } catch (RejectedExecutionException ree) {
+      // expected if the searcher has been created with threads since LuceneTestCase
+      // closes the thread-pool in a reader close listener
     }
   }
 
@@ -72,21 +78,29 @@ public class TestReaderClosed extends LuceneTestCase {
   public void testReaderChaining() throws Exception {
     assertTrue(reader.getRefCount() > 0);
     IndexReader wrappedReader = SlowCompositeReaderWrapper.wrap(reader);
-    wrappedReader = new ParallelAtomicReader((AtomicReader) wrappedReader);
+    wrappedReader = new ParallelLeafReader((LeafReader) wrappedReader);
 
     IndexSearcher searcher = newSearcher(wrappedReader);
+
     TermRangeQuery query = TermRangeQuery.newStringRange("field", "a", "z", true, true);
     searcher.search(query, 5);
     reader.close(); // close original child reader
     try {
       searcher.search(query, 5);
-    } catch (AlreadyClosedException ace) {
+    } catch (Exception e) {
+      AlreadyClosedException ace = null;
+      for (Throwable t = e; t != null; t = t.getCause()) {
+        if (t instanceof AlreadyClosedException) {
+          ace = (AlreadyClosedException) t;
+        }
+      }
+      assertNotNull("Query failed, but not due to an AlreadyClosedException", ace);
       assertEquals(
         "this IndexReader cannot be used anymore as one of its child readers was closed",
         ace.getMessage()
       );
     } finally {
-      // shutdown executor: in case of wrap-wrap-wrapping
+      // close executor: in case of wrap-wrap-wrapping
       searcher.getIndexReader().close();
     }
   }

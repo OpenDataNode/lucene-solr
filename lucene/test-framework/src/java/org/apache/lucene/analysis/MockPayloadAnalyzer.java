@@ -1,4 +1,3 @@
-package org.apache.lucene.analysis;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,8 +14,7 @@ package org.apache.lucene.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
+package org.apache.lucene.analysis;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.PayloadAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
@@ -35,8 +33,8 @@ import java.nio.charset.StandardCharsets;
 public final class MockPayloadAnalyzer extends Analyzer {
 
   @Override
-  public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-    Tokenizer result = new MockTokenizer(reader, MockTokenizer.WHITESPACE, true);
+  public TokenStreamComponents createComponents(String fieldName) {
+    Tokenizer result = new MockTokenizer( MockTokenizer.WHITESPACE, true);
     return new TokenStreamComponents(result, new MockPayloadFilter(result, fieldName));
   }
 }

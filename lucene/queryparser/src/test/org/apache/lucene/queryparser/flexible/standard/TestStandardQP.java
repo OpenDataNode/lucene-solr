@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard;
 
 import java.io.Reader;
 
@@ -118,10 +117,8 @@ public class TestStandardQP extends QueryParserTestBase {
     // TODO implement LUCENE-2566 and remove this (override)method
     Analyzer a = new Analyzer() {
       @Override
-      public TokenStreamComponents createComponents(String fieldName,
-          Reader reader) {
-        return new TokenStreamComponents(new MockTokenizer(reader,
-            MockTokenizer.WHITESPACE, false));
+      public TokenStreamComponents createComponents(String fieldName) {
+        return new TokenStreamComponents(new MockTokenizer(MockTokenizer.WHITESPACE, false));
       }
     };
     assertQueryEquals("a - b", a, "a -b");
@@ -196,14 +193,15 @@ public class TestStandardQP extends QueryParserTestBase {
   public void testNewFieldQuery() throws Exception {
     /** ordinary behavior, synonyms form uncoordinated boolean query */
     StandardQueryParser dumb = getParser(new Analyzer1());
-    BooleanQuery expanded = new BooleanQuery(true);
+    BooleanQuery.Builder expanded = new BooleanQuery.Builder();
+    expanded.setDisableCoord(true);
     expanded.add(new TermQuery(new Term("field", "dogs")),
         BooleanClause.Occur.SHOULD);
     expanded.add(new TermQuery(new Term("field", "dog")),
         BooleanClause.Occur.SHOULD);
-    assertEquals(expanded, dumb.parse("\"dogs\"","field"));
+    assertEquals(expanded.build(), dumb.parse("\"dogs\"","field"));
     /** even with the phrase operator the behavior is the same */
-    assertEquals(expanded, dumb.parse("dogs","field"));
+    assertEquals(expanded.build(), dumb.parse("dogs","field"));
     
     /**
      * custom behavior, the synonyms are expanded, unless you use quote operator

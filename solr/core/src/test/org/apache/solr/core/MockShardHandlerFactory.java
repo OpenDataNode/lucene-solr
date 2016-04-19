@@ -1,5 +1,3 @@
-package org.apache.solr.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.core;
 
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
@@ -39,11 +38,11 @@ public class MockShardHandlerFactory extends ShardHandlerFactory implements Plug
   public ShardHandler getShardHandler() {
     return new ShardHandler() {
       @Override
-      public void checkDistributed(ResponseBuilder rb) {}
+      public void prepDistributed(ResponseBuilder rb) {}
 
       @Override
       public void submit(ShardRequest sreq, String shard,
-          ModifiableSolrParams params) {}
+          ModifiableSolrParams params, String preferredHostAddress) {}
 
       @Override
       public ShardResponse takeCompletedIncludingErrors() {

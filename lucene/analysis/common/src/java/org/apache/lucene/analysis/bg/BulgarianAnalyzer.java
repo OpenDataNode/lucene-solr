@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.bg;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.bg;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.bg;
+
 
 import java.io.IOException;
 import java.io.Reader;
@@ -28,6 +28,7 @@ import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.standard.StandardFilter;
 import org.apache.lucene.analysis.standard.StandardTokenizer;
+import org.apache.lucene.analysis.standard.std40.StandardTokenizer40;
 import org.apache.lucene.analysis.util.CharArraySet;
 import org.apache.lucene.analysis.util.StopwordAnalyzerBase;
 import org.apache.lucene.util.Version;
@@ -38,7 +39,6 @@ import org.apache.lucene.util.Version;
  * This analyzer implements light-stemming as specified by: <i> Searching
  * Strategies for the Bulgarian Language </i>
  * http://members.unine.ch/jacques.savoy/Papers/BUIR.pdf
- * <p>
  */
 public final class BulgarianAnalyzer extends StopwordAnalyzerBase {
 
@@ -87,28 +87,12 @@ public final class BulgarianAnalyzer extends StopwordAnalyzerBase {
   public BulgarianAnalyzer() {
     this(DefaultSetHolder.DEFAULT_STOP_SET);
   }
-
-  /**
-   * @deprecated Use {@link #BulgarianAnalyzer()}
-   */
-  @Deprecated
-  public BulgarianAnalyzer(Version matchVersion) {
-    this(matchVersion, DefaultSetHolder.DEFAULT_STOP_SET);
-  }
   
   /**
    * Builds an analyzer with the given stop words.
    */
   public BulgarianAnalyzer(CharArraySet stopwords) {
     this(stopwords, CharArraySet.EMPTY_SET);
-  }
-
-  /**
-   * @deprecated Use {@link #BulgarianAnalyzer(CharArraySet)}
-   */
-  @Deprecated
-  public BulgarianAnalyzer(Version matchVersion, CharArraySet stopwords) {
-    this(matchVersion, stopwords, CharArraySet.EMPTY_SET);
   }
   
   /**
@@ -119,16 +103,6 @@ public final class BulgarianAnalyzer extends StopwordAnalyzerBase {
   public BulgarianAnalyzer(CharArraySet stopwords, CharArraySet stemExclusionSet) {
     super(stopwords);
     this.stemExclusionSet = CharArraySet.unmodifiableSet(CharArraySet.copy(stemExclusionSet));  
-  }
-
-  /**
-   * @deprecated Use {@link #BulgarianAnalyzer(CharArraySet,CharArraySet)}
-   */
-  @Deprecated
-  public BulgarianAnalyzer(Version matchVersion, CharArraySet stopwords, CharArraySet stemExclusionSet) {
-    super(matchVersion, stopwords);
-    this.stemExclusionSet = CharArraySet.unmodifiableSet(CharArraySet.copy(
-        matchVersion, stemExclusionSet));
   }
 
   /**
@@ -144,11 +118,16 @@ public final class BulgarianAnalyzer extends StopwordAnalyzerBase {
    *         provided and {@link BulgarianStemFilter}.
    */
   @Override
-  public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-    final Tokenizer source = new StandardTokenizer(getVersion(), reader);
-    TokenStream result = new StandardFilter(getVersion(), source);
-    result = new LowerCaseFilter(getVersion(), result);
-    result = new StopFilter(getVersion(), result, stopwords);
+  public TokenStreamComponents createComponents(String fieldName) {
+    final Tokenizer source;
+    if (getVersion().onOrAfter(Version.LUCENE_4_7_0)) {
+      source = new StandardTokenizer();
+    } else {
+      source = new StandardTokenizer40();
+    }
+    TokenStream result = new StandardFilter(source);
+    result = new LowerCaseFilter(result);
+    result = new StopFilter(result, stopwords);
     if(!stemExclusionSet.isEmpty())
       result = new SetKeywordMarkerFilter(result, stemExclusionSet);
     result = new BulgarianStemFilter(result);

@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,15 +14,20 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.apache.commons.lang.StringUtils;
+import org.apache.solr.cloud.ZkController.ContextKey;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkCmdExecutor;
@@ -53,7 +56,7 @@ import org.slf4j.LoggerFactory;
  * 
  */
 public  class LeaderElector {
-  private static Logger log = LoggerFactory.getLogger(LeaderElector.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   static final String ELECTION_NODE = "/election";
   
@@ -69,11 +72,21 @@ public  class LeaderElector {
 
   private ElectionWatcher watcher;
 
+  private Map<ContextKey,ElectionContext> electionContexts;
+  private ContextKey contextKey;
+
   public LeaderElector(SolrZkClient zkClient) {
     this.zkClient = zkClient;
     zkCmdExecutor = new ZkCmdExecutor(zkClient.getZkClientTimeout());
   }
   
+  public LeaderElector(SolrZkClient zkClient, ContextKey key, Map<ContextKey,ElectionContext> electionContexts) {
+    this.zkClient = zkClient;
+    zkCmdExecutor = new ZkCmdExecutor(zkClient.getZkClientTimeout());
+    this.electionContexts = electionContexts;
+    this.contextKey = key;
+  }
+
   public ElectionContext getContext() {
     return context;
   }
@@ -86,7 +99,7 @@ public  class LeaderElector {
    *
    * @param replacement has someone else been the leader already?
    */
-  private void checkIfIamLeader(final int seq, final ElectionContext context, boolean replacement) throws KeeperException,
+  private void checkIfIamLeader(final ElectionContext context, boolean replacement) throws KeeperException,
       InterruptedException, IOException {
     context.checkIfIamLeaderFired();
     // get all other numbers...
@@ -99,26 +112,45 @@ public  class LeaderElector {
       log.warn("Our node is no longer in line to be leader");
       return;
     }
-    if (seq <= intSeqs.get(0)) {
-      if(seq == intSeqs.get(0) && !context.leaderSeqPath.equals(holdElectionPath+"/"+seqs.get(0)) ) {//somebody else already  became the leader with the same sequence id , not me
-        log.info("was going be leader {} , seq(0) {}",context.leaderSeqPath,holdElectionPath+"/"+seqs.get(0));//but someone else jumped the line
-        retryElection(context,false);//join at the tail again
-        return;
+    // We can't really rely on the sequence number stored in the old watcher, it may be stale, thus this check.
+
+    int seq = -1;
+
+    // See if we've already been re-added, and this is an old context. In which case, use our current sequence number.
+    String newLeaderSeq = "";
+    for (String elec : seqs) {
+      if (getNodeName(elec).equals(getNodeName(context.leaderSeqPath)) && seq < getSeq(elec)) {
+        seq = getSeq(elec); // so use the current sequence number.
+        newLeaderSeq = elec;
+        break;
       }
-      // first we delete the node advertising the old leader in case the ephem is still there
-      // first we delete the node advertising the old leader in case the ephem is still there
-      try {
-        zkClient.delete(context.leaderPath, -1, true);
-      }catch (KeeperException.NoNodeException nne){
-        //no problem
-      }catch (InterruptedException e){
-        throw e;
-      } catch (Exception e) {
-        //failed to delete the leader node
-        log.error("leader elect delete error",e);
-        retryElection(context, false);
+    }
+
+    // Now, if we've been re-added, presumably we've also set up watchers and all that kind of thing, so we're done
+    if (StringUtils.isNotBlank(newLeaderSeq) && seq > getSeq(context.leaderSeqPath)) {
+      log.info("Node " + context.leaderSeqPath + " already in queue as " + newLeaderSeq + " nothing to do.");
+      return;
+    }
+
+    // Fallback in case we're all coming in here fresh and there is no node for this core already in the election queue.
+    if (seq == -1) {
+      seq = getSeq(context.leaderSeqPath);
+    }
+
+    if (seq <= intSeqs.get(0)) {
+      if (seq == intSeqs.get(0) && !context.leaderSeqPath.equals(holdElectionPath + "/" + seqs.get(0))) {//somebody else already  became the leader with the same sequence id , not me
+        log.info("was going to be leader {} , seq(0) {}", context.leaderSeqPath, holdElectionPath + "/" + seqs.get(0));//but someone else jumped the line
+
+        // The problem is that deleting the ZK node that's watched by others
+        // results in an unpredictable sequencing of the events and sometime the context that comes in for checking
+        // this happens to be after the node has already taken over leadership. So just leave out of here.
+        // This caused one of the tests to fail on having two nodes with the same name in the queue. I'm not sure
+        // the assumption that this is a bad state is valid.
+        if (getNodeName(context.leaderSeqPath).equals(getNodeName(seqs.get(0)))) {
+          return;
+        }
+        retryElection(context, false);//join at the tail again
         return;
-        // fine
       }
 
       try {
@@ -130,29 +162,31 @@ public  class LeaderElector {
       }
     } else {
       // I am not the leader - watch the node below me
-      int i = 1;
-      for (; i < intSeqs.size(); i++) {
-        int s = intSeqs.get(i);
-        if (seq < s) {
-          // we found who we come before - watch the guy in front
+      int toWatch = -1;
+      for (int idx = 0; idx < intSeqs.size(); idx++) {
+        if (intSeqs.get(idx) < seq && ! getNodeName(context.leaderSeqPath).equals(getNodeName(seqs.get(idx)))) {
+          toWatch = idx;
+        }
+        if (intSeqs.get(idx) >= seq) {
           break;
         }
       }
-      int index = i - 2;
-      if (index < 0) {
+      if (toWatch < 0) {
         log.warn("Our node is no longer in line to be leader");
         return;
       }
       try {
-        String watchedNode = holdElectionPath + "/" + seqs.get(index);
+        String watchedNode = holdElectionPath + "/" + seqs.get(toWatch);
+
         zkClient.getData(watchedNode, watcher = new ElectionWatcher(context.leaderSeqPath , watchedNode,seq, context) , null, true);
+        log.info("Watching path {} to know if I could be the leader", watchedNode);
       } catch (KeeperException.SessionExpiredException e) {
         throw e;
       } catch (KeeperException e) {
         log.warn("Failed setting watch", e);
         // we couldn't set our watch - the node before us may already be down?
         // we need to check if we are the leader again
-        checkIfIamLeader(seq, context, true);
+        checkIfIamLeader(context, true);
       }
     }
   }
@@ -243,8 +277,8 @@ public  class LeaderElector {
     while (cont) {
       try {
         if(joinAtHead){
-          log.info("node {} Trying to join election at the head ", id);
-          List<String> nodes = OverseerCollectionProcessor.getSortedElectionNodes(zkClient);
+          log.info("Node {} trying to join election at the head", id);
+          List<String> nodes = OverseerTaskProcessor.getSortedElectionNodes(zkClient, shardsElectZkPath);
           if(nodes.size() <2){
             leaderSeqPath = zkClient.create(shardsElectZkPath + "/" + id + "-n_", null,
                 CreateMode.EPHEMERAL_SEQUENTIAL, false);
@@ -258,14 +292,13 @@ public  class LeaderElector {
             }
             leaderSeqPath = shardsElectZkPath + "/" + id + "-n_"+ m.group(1);
             zkClient.create(leaderSeqPath, null, CreateMode.EPHEMERAL, false);
-            log.info("Joined at the head  {}", leaderSeqPath );
-
           }
         } else {
           leaderSeqPath = zkClient.create(shardsElectZkPath + "/" + id + "-n_", null,
               CreateMode.EPHEMERAL_SEQUENTIAL, false);
         }
 
+        log.info("Joined leadership election with path: {}", leaderSeqPath);
         context.leaderSeqPath = leaderSeqPath;
         cont = false;
       } catch (ConnectionLossException e) {
@@ -310,15 +343,13 @@ public  class LeaderElector {
         }
       }
     }
-    int seq = getSeq(leaderSeqPath);
-    checkIfIamLeader(seq, context, replacement);
-    
-    return seq;
+    checkIfIamLeader(context, replacement);
+
+    return getSeq(context.leaderSeqPath);
   }
 
   private class ElectionWatcher implements Watcher {
     final String myNode,watchedNode;
-    final int seq;
     final ElectionContext context;
 
     private boolean canceled = false;
@@ -326,11 +357,10 @@ public  class LeaderElector {
     private ElectionWatcher(String myNode, String watchedNode, int seq, ElectionContext context) {
       this.myNode = myNode;
       this.watchedNode = watchedNode;
-      this.seq = seq;
       this.context = context;
     }
 
-    void cancel(String leaderSeqPath){
+    void cancel() {
       canceled = true;
 
     }
@@ -355,7 +385,7 @@ public  class LeaderElector {
       }
       try {
         // am I the next leader?
-        checkIfIamLeader(seq, context, true);
+        checkIfIamLeader(context, true);
       } catch (Exception e) {
         log.warn("", e);
       }
@@ -391,7 +421,10 @@ public  class LeaderElector {
   void retryElection(ElectionContext context, boolean joinAtHead) throws KeeperException, InterruptedException, IOException {
     ElectionWatcher watcher = this.watcher;
     ElectionContext ctx = context.copy();
-    if(watcher!= null) watcher.cancel(this.context.leaderSeqPath);
+    if (electionContexts != null) {
+      electionContexts.put(contextKey, ctx);
+    }
+    if (watcher != null) watcher.cancel();
     this.context.cancelElection();
     this.context = ctx;
     joinElection(ctx, true, joinAtHead);

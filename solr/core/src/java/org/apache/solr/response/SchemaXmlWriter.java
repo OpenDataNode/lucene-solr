@@ -1,4 +1,3 @@
-package org.apache.solr.response;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,9 +14,10 @@ package org.apache.solr.response;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.response;
 import java.io.IOException;
 import java.io.Writer;
+import java.lang.invoke.MethodHandles;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
@@ -36,11 +36,13 @@ import org.apache.solr.search.ReturnFields;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.solr.common.params.CommonParams.NAME;
+
 /**
  * @lucene.internal
  */
 public class SchemaXmlWriter extends TextResponseWriter {
-  private static final Logger log = LoggerFactory.getLogger(SchemaXmlWriter.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   private static final char[] XML_DECLARATION = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>".toCharArray();
   private static final char[] MANAGED_SCHEMA_DO_NOT_EDIT_WARNING 
       = "<!-- Solr managed schema - automatically generated - DO NOT EDIT -->".toCharArray();
@@ -327,7 +329,7 @@ public class SchemaXmlWriter extends TextResponseWriter {
     writer.write('<');
     writer.write(tag);
     if (name!=null) {
-      writeAttr("name", name);
+      writeAttr(NAME, name);
       if (closeTag) {
         writer.write("/>");
       } else {

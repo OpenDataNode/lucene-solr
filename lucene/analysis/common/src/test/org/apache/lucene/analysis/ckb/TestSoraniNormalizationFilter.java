@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.ckb;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,10 @@ package org.apache.lucene.analysis.ckb;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.ckb;
+
 
 import java.io.IOException;
-import java.io.Reader;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
@@ -30,13 +29,25 @@ import org.apache.lucene.analysis.core.KeywordTokenizer;
  * Tests normalization for Sorani (this is more critical than stemming...)
  */
 public class TestSoraniNormalizationFilter extends BaseTokenStreamTestCase {
-  Analyzer a = new Analyzer() {
-    @Override
-    protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.KEYWORD, false);
-      return new TokenStreamComponents(tokenizer, new SoraniNormalizationFilter(tokenizer));
-    }
-  };
+  Analyzer a;
+  
+  @Override
+  public void setUp() throws Exception {
+    super.setUp();
+    a = new Analyzer() {
+      @Override
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.KEYWORD, false);
+        return new TokenStreamComponents(tokenizer, new SoraniNormalizationFilter(tokenizer));
+      }
+    };
+  }
+  
+  @Override
+  public void tearDown() throws Exception {
+    a.close();
+    super.tearDown();
+  }
   
   public void testY() throws Exception {
     checkOneTerm(a, "\u064A", "\u06CC");
@@ -90,11 +101,12 @@ public class TestSoraniNormalizationFilter extends BaseTokenStreamTestCase {
   public void testEmptyTerm() throws IOException {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new KeywordTokenizer(reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new KeywordTokenizer();
         return new TokenStreamComponents(tokenizer, new SoraniNormalizationFilter(tokenizer));
       }
     };
     checkOneTerm(a, "", "");
+    a.close();
   }
 }

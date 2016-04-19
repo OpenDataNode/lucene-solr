@@ -1,5 +1,3 @@
-package org.apache.lucene.replicator.http;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,10 @@ package org.apache.lucene.replicator.http;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.replicator.http;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Collections;
 
 import org.apache.http.impl.conn.BasicHttpClientConnectionManager;
@@ -48,11 +47,7 @@ import org.junit.rules.TestRule;
 import com.carrotsearch.randomizedtesting.rules.SystemPropertiesRestoreRule;
 
 public class HttpReplicatorTest extends ReplicatorTestCase {
-  @Rule
-  public TestRule testRules = 
-    RuleChain.outerRule(new SystemPropertiesRestoreRule());
-
-  private File clientWorkDir;
+  private Path clientWorkDir;
   private Replicator serverReplicator;
   private IndexWriter writer;
   private DirectoryReader reader;
@@ -89,13 +84,14 @@ public class HttpReplicatorTest extends ReplicatorTestCase {
     IndexWriterConfig conf = newIndexWriterConfig(null);
     conf.setIndexDeletionPolicy(new SnapshotDeletionPolicy(conf.getIndexDeletionPolicy()));
     writer = new IndexWriter(serverIndexDir, conf);
-    reader = DirectoryReader.open(writer, false);
+    reader = DirectoryReader.open(writer);
   }
   
   @Override
   public void tearDown() throws Exception {
     stopHttpServer(server);
-    IOUtils.close(reader, writer, handlerIndexDir, serverIndexDir);
+    writer.rollback();
+    IOUtils.close(reader, handlerIndexDir, serverIndexDir);
     super.tearDown();
   }
   

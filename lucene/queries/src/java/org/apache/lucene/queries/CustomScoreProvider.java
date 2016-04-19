@@ -1,5 +1,3 @@
-package org.apache.lucene.queries;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,16 @@ package org.apache.lucene.queries;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queries;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader; // for javadocs
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.queries.function.FunctionQuery;
 import org.apache.lucene.search.Explanation;
-import org.apache.lucene.search.FieldCache; // for javadocs
 
 /**
  * An instance of this subclass should be returned by
@@ -32,19 +32,19 @@ import org.apache.lucene.search.FieldCache; // for javadocs
  * <p>Since Lucene 2.9, queries operate on each segment of an index separately,
  * so the protected {@link #context} field can be used to resolve doc IDs,
  * as the supplied <code>doc</code> ID is per-segment and without knowledge
- * of the IndexReader you cannot access the document or {@link FieldCache}.
+ * of the IndexReader you cannot access the document or DocValues.
  * 
  * @lucene.experimental
  * @since 2.9.2
  */
 public class CustomScoreProvider {
 
-  protected final AtomicReaderContext context;
+  protected final LeafReaderContext context;
 
   /**
    * Creates a new instance of the provider class for the given {@link IndexReader}.
    */
-  public CustomScoreProvider(AtomicReaderContext context) {
+  public CustomScoreProvider(LeafReaderContext context) {
     this.context = context;
   }
 
@@ -131,12 +131,13 @@ public class CustomScoreProvider {
     for (Explanation valSrcExpl : valSrcExpls) {
       valSrcScore *= valSrcExpl.getValue();
     }
-    Explanation exp = new Explanation( valSrcScore * subQueryExpl.getValue(), "custom score: product of:");
-    exp.addDetail(subQueryExpl);
+    
+    List<Explanation> subs = new ArrayList<>();
+    subs.add(subQueryExpl);
     for (Explanation valSrcExpl : valSrcExpls) {
-      exp.addDetail(valSrcExpl);
+      subs.add(valSrcExpl);
     }
-    return exp;
+    return Explanation.match(valSrcScore * subQueryExpl.getValue(), "custom score: product of:", subs);
   }
   
   /**
@@ -155,10 +156,7 @@ public class CustomScoreProvider {
     if (valSrcExpl != null) {
       valSrcScore *= valSrcExpl.getValue();
     }
-    Explanation exp = new Explanation( valSrcScore * subQueryExpl.getValue(), "custom score: product of:");
-    exp.addDetail(subQueryExpl);
-    exp.addDetail(valSrcExpl);
-    return exp;
+    return Explanation.match(valSrcScore * subQueryExpl.getValue(), "custom score: product of:", subQueryExpl, valSrcExpl);
   }
 
 }

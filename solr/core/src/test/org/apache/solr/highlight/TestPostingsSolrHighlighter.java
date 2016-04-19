@@ -1,5 +1,3 @@
-package org.apache.solr.highlight;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,15 +14,14 @@ package org.apache.solr.highlight;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.highlight;
 
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.handler.component.HighlightComponent;
 import org.apache.solr.schema.IndexSchema;
 import org.junit.BeforeClass;
 
 /** simple tests for PostingsSolrHighlighter */
-@SuppressCodecs({"MockFixedIntBlock", "MockVariableIntBlock", "MockSep", "MockRandom", "Lucene3x"})
 public class TestPostingsSolrHighlighter extends SolrTestCaseJ4 {
   
   @BeforeClass

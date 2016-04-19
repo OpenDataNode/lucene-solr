@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.de;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.de;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.de;
+
 
 import java.io.IOException;
 import java.io.StringReader;
@@ -33,14 +33,16 @@ public class TestGermanAnalyzer extends BaseTokenStreamTestCase {
     checkOneTerm(a, "Tisch", "tisch");
     checkOneTerm(a, "Tische", "tisch");
     checkOneTerm(a, "Tischen", "tisch");
+    a.close();
   }
   
   public void testWithKeywordAttribute() throws IOException {
     CharArraySet set = new CharArraySet( 1, true);
     set.add("fischen");
+    final LowerCaseTokenizer in = new LowerCaseTokenizer();
+    in.setReader(new StringReader("Fischen Trinken"));
     GermanStemFilter filter = new GermanStemFilter(
-        new SetKeywordMarkerFilter(new LowerCaseTokenizer(new StringReader(
-            "Fischen Trinken")), set));
+        new SetKeywordMarkerFilter(in, set));
     assertTokenStreamContents(filter, new String[] { "fischen", "trink" });
   }
 
@@ -48,6 +50,7 @@ public class TestGermanAnalyzer extends BaseTokenStreamTestCase {
     GermanAnalyzer a = new GermanAnalyzer( CharArraySet.EMPTY_SET, 
         new CharArraySet( asSet("tischen"), false));
     checkOneTerm(a, "tischen", "tischen");
+    a.close();
   }
   
   /** test some features of the new snowball filter
@@ -58,14 +61,20 @@ public class TestGermanAnalyzer extends BaseTokenStreamTestCase {
     // a/o/u + e is equivalent to the umlaut form
     checkOneTerm(a, "Schaltflächen", "schaltflach");
     checkOneTerm(a, "Schaltflaechen", "schaltflach");
-    // here they are with the old stemmer
-    a = new GermanAnalyzer(Version.LUCENE_3_0);
-    checkOneTerm(a, "Schaltflächen", "schaltflach");
-    checkOneTerm(a, "Schaltflaechen", "schaltflaech");
+    a.close();
   }
   
   /** blast some random strings through the analyzer */
   public void testRandomStrings() throws Exception {
-    checkRandomData(random(), new GermanAnalyzer(), 1000*RANDOM_MULTIPLIER);
+    GermanAnalyzer a = new GermanAnalyzer();
+    checkRandomData(random(), a, 1000*RANDOM_MULTIPLIER);
+    a.close();
+  }
+
+  public void testBackcompat40() throws IOException {
+    GermanAnalyzer a = new GermanAnalyzer();
+    a.setVersion(Version.LUCENE_4_6_1);
+    // this is just a test to see the correct unicode version is being used, not actually testing hebrew
+    assertAnalyzesTo(a, "א\"א", new String[] {"א", "א"});
   }
 }

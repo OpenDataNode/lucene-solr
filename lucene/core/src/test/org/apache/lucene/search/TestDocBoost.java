@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,14 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.*;
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
@@ -59,7 +59,7 @@ public class TestDocBoost extends LuceneTestCase {
     IndexSearcher searcher = newSearcher(reader);
     searcher.search
       (new TermQuery(new Term("field", "word")),
-       new Collector() {
+       new SimpleCollector() {
          private int base = 0;
          private Scorer scorer;
          @Override
@@ -71,11 +71,11 @@ public class TestDocBoost extends LuceneTestCase {
            scores[doc + base] = scorer.score();
          }
          @Override
-         public void setNextReader(AtomicReaderContext context) {
+         protected void doSetNextReader(LeafReaderContext context) throws IOException {
            base = context.docBase;
          }
          @Override
-         public boolean acceptsDocsOutOfOrder() {
+         public boolean needsScores() {
            return true;
          }
        });
@@ -86,7 +86,9 @@ public class TestDocBoost extends LuceneTestCase {
       if (VERBOSE) {
         System.out.println(searcher.explain(new TermQuery(new Term("field", "word")), i));
       }
-      assertTrue("score: " + scores[i] + " should be > lastScore: " + lastScore, scores[i] > lastScore);
+      if (scores[i] != 0.0) {
+        assertTrue("score: " + scores[i] + " should be > lastScore: " + lastScore, scores[i] > lastScore);
+      }
       lastScore = scores[i];
     }
     

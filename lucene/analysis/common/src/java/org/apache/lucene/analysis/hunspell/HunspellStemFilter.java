@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.hunspell;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.hunspell;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.hunspell;
+
 
 import java.io.IOException;
 import java.util.Collections;
@@ -136,11 +136,12 @@ public final class HunspellStemFilter extends TokenFilter {
   static final Comparator<CharsRef> lengthComparator = new Comparator<CharsRef>() {
     @Override
     public int compare(CharsRef o1, CharsRef o2) {
-      if (o2.length == o1.length) {
+      int cmp = Integer.compare(o2.length, o1.length);
+      if (cmp == 0) {
         // tie break on text
         return o2.compareTo(o1);
       } else {
-        return o2.length < o1.length ? -1 : 1;
+        return cmp;
       }
     }
   };

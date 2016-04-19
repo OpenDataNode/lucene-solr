@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.compound;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.compound;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.compound;
+
 
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.util.CharArraySet;
@@ -49,7 +49,6 @@ public class DictionaryCompoundWordTokenFilterFactory extends TokenFilterFactory
   /** Creates a new DictionaryCompoundWordTokenFilterFactory */
   public DictionaryCompoundWordTokenFilterFactory(Map<String, String> args) {
     super(args);
-    assureMatchVersion();
     dictFile = require(args, "dictionary");
     minWordSize = getInt(args, "minWordSize", CompoundWordTokenFilterBase.DEFAULT_MIN_WORD_SIZE);
     minSubwordSize = getInt(args, "minSubwordSize", CompoundWordTokenFilterBase.DEFAULT_MIN_SUBWORD_SIZE);

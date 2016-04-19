@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,19 +14,27 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.util.DocIdBitSet;
-import org.apache.lucene.util.FixedBitSet;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.util.BitDocIdSet;
 import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.FixedBitSet;
 
+@Deprecated
 public class MockFilter extends Filter {
   private boolean wasCalled;
 
   @Override
-  public DocIdSet getDocIdSet(AtomicReaderContext context, Bits acceptDocs) {
+  public DocIdSet getDocIdSet(LeafReaderContext context, Bits acceptDocs) {
     wasCalled = true;
-    return new FixedBitSet(context.reader().maxDoc());
+    FixedBitSet bits = new FixedBitSet(context.reader().maxDoc());
+    return new BitDocIdSet(bits);
+  }
+
+  @Override
+  public String toString(String field) {
+    return "MockFilter";
   }
 
   public void clear() {

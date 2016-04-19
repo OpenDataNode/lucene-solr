@@ -1,5 +1,3 @@
-package org.apache.solr.common.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.common.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.common.cloud;
 
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
@@ -193,7 +192,7 @@ public abstract class DocRouter {
   }
 
   /** Returns the Slice that the document should reside on, or null if there is not enough information */
-  public abstract Slice getTargetSlice(String id, SolrInputDocument sdoc, SolrParams params, DocCollection collection);
+  public abstract Slice getTargetSlice(String id, SolrInputDocument sdoc, String route, SolrParams params, DocCollection collection);
 
   /** This method is consulted to determine what slices should be queried for a request when
    *  an explicit shards parameter was not used.

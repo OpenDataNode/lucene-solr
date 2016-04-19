@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.core;
 
 import javax.script.ScriptEngineManager;
@@ -27,10 +26,6 @@ public class TestBadConfig extends AbstractBadConfigTestBase {
     assertConfigs("bad_solrconfig.xml","schema.xml","unset.sys.property");
   }
 
-  public void testSegmentMergerWithoutReopen() throws Exception {
-      assertConfigs("bad-solrconfig-warmer-no-reopen.xml", "schema12.xml",
-                    "mergedSegmentWarmer");
-  }
   public void testMultipleDirectoryFactories() throws Exception {
       assertConfigs("bad-solrconfig-multiple-dirfactory.xml", "schema12.xml",
                     "directoryFactory");
@@ -79,6 +74,8 @@ public class TestBadConfig extends AbstractBadConfigTestBase {
   public void testBogusMergePolicy() throws Exception {
     assertConfigs("bad-mp-solrconfig.xml", "schema-minimal.xml",
                   "DummyMergePolicy");
+    assertConfigs("bad-mpf-solrconfig.xml", "schema-minimal.xml",
+                  "DummyMergePolicyFactory");
   }
 
   public void testSchemaMutableButNotManaged() throws Exception {

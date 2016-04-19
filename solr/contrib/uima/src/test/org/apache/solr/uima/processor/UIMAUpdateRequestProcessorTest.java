@@ -1,5 +1,3 @@
-package org.apache.solr.uima.processor;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.uima.processor;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.uima.processor;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -83,7 +82,7 @@ public class UIMAUpdateRequestProcessorTest extends SolrTestCaseJ4 {
     assertNotNull(factory);
     UpdateRequestProcessor processor = factory.getInstance(req(), null, null);
     assertTrue(processor instanceof UIMAUpdateRequestProcessor);
-    SolrUIMAConfiguration conf = ((UIMAUpdateRequestProcessor)processor).solrUIMAConfiguration;
+    SolrUIMAConfiguration conf = ((UIMAUpdateRequestProcessor)processor).getConfiguration();
     Map<String, Map<String, MapField>> map = conf.getTypesFeaturesFieldsMapping();
     Map<String, MapField> subMap = map.get("a-type-which-can-have-multiple-features");
     assertEquals(2, subMap.size());

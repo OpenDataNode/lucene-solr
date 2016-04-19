@@ -1,5 +1,3 @@
-package org.apache.lucene.search.suggest.analyzing;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,15 +14,17 @@ package org.apache.lucene.search.suggest.analyzing;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.suggest.analyzing;
 
 // TODO
 //   - test w/ syns
 //   - add pruning of low-freq ngrams?
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -45,7 +45,7 @@ import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -59,22 +59,23 @@ import org.apache.lucene.store.DataInput;
 import org.apache.lucene.store.DataOutput;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.util.Accountable;
+import org.apache.lucene.util.Accountables;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.CharsRefBuilder;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.IntsRefBuilder;
-import org.apache.lucene.util.Version;
 import org.apache.lucene.util.fst.Builder;
+import org.apache.lucene.util.fst.FST;
 import org.apache.lucene.util.fst.FST.Arc;
 import org.apache.lucene.util.fst.FST.BytesReader;
-import org.apache.lucene.util.fst.FST;
 import org.apache.lucene.util.fst.Outputs;
 import org.apache.lucene.util.fst.PositiveIntOutputs;
+import org.apache.lucene.util.fst.Util;
 import org.apache.lucene.util.fst.Util.Result;
 import org.apache.lucene.util.fst.Util.TopResults;
-import org.apache.lucene.util.fst.Util;
 
 //import java.io.PrintWriter;
 
@@ -210,6 +211,15 @@ public class FreeTextSuggester extends Lookup {
     return fst.ramBytesUsed();
   }
 
+  @Override
+  public Collection<Accountable> getChildResources() {
+    if (fst == null) {
+      return Collections.emptyList();
+    } else {
+      return Collections.singletonList(Accountables.namedAccountable("fst", fst));
+    }
+  }
+
   private static class AnalyzingComparator implements Comparator<BytesRef> {
 
     private final ByteArrayDataInput readerA = new ByteArrayDataInput();
@@ -293,11 +303,11 @@ public class FreeTextSuggester extends Lookup {
     }
 
     String prefix = getClass().getSimpleName();
-    File tempIndexPath = Files.createTempDirectory(prefix + ".index.").toFile();
+    Path tempIndexPath = Files.createTempDirectory(prefix + ".index.");
 
     Directory dir = FSDirectory.open(tempIndexPath);
 
-    IndexWriterConfig iwc = new IndexWriterConfig(Version.LUCENE_CURRENT, indexAnalyzer);
+    IndexWriterConfig iwc = new IndexWriterConfig(indexAnalyzer);
     iwc.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
     iwc.setRAMBufferSizeMB(ramBufferSizeMB);
     IndexWriter writer = new IndexWriter(dir, iwc);
@@ -327,7 +337,7 @@ public class FreeTextSuggester extends Lookup {
         writer.addDocument(doc);
         count++;
       }
-      reader = DirectoryReader.open(writer, false);
+      reader = DirectoryReader.open(writer);
 
       Terms terms = MultiFields.getTerms(reader, "body");
       if (terms == null) {
@@ -335,7 +345,7 @@ public class FreeTextSuggester extends Lookup {
       }
 
       // Move all ngrams into an FST:
-      TermsEnum termsEnum = terms.iterator(null);
+      TermsEnum termsEnum = terms.iterator();
 
       Outputs<Long> outputs = PositiveIntOutputs.getSingleton();
       Builder<Long> builder = new Builder<>(FST.INPUT_TYPE.BYTE1, outputs);
@@ -369,27 +379,20 @@ public class FreeTextSuggester extends Lookup {
       pw.close();
       */
 
+      // Writer was only temporary, to count up bigrams,
+      // which we transferred to the FST, so now we
+      // rollback:
+      writer.rollback();
       success = true;
     } finally {
       try {
         if (success) {
-          IOUtils.close(writer, reader);
+          IOUtils.close(reader, dir);
         } else {
-          IOUtils.closeWhileHandlingException(writer, reader);
+          IOUtils.closeWhileHandlingException(reader, writer, dir);
         }
       } finally {
-        for(String file : dir.listAll()) {
-          File path = new File(tempIndexPath, file);
-          if (path.delete() == false) {
-            throw new IllegalStateException("failed to remove " + path);
-          }
-        }
-
-        if (tempIndexPath.delete() == false) {
-          throw new IllegalStateException("failed to remove " + tempIndexPath);
-        }
-
-        dir.close();
+        IOUtils.rm(tempIndexPath);
       }
     }
   }
@@ -465,9 +468,11 @@ public class FreeTextSuggester extends Lookup {
     if (contexts != null) {
       throw new IllegalArgumentException("this suggester doesn't support contexts");
     }
+    if (fst == null) {
+      throw new IllegalStateException("Lookup not supported at this time");
+    }
 
-    TokenStream ts = queryAnalyzer.tokenStream("", key.toString());
-    try {
+    try (TokenStream ts = queryAnalyzer.tokenStream("", key.toString())) {
       TermToBytesRefAttribute termBytesAtt = ts.addAttribute(TermToBytesRefAttribute.class);
       OffsetAttribute offsetAtt = ts.addAttribute(OffsetAttribute.class);
       PositionLengthAttribute posLenAtt = ts.addAttribute(PositionLengthAttribute.class);
@@ -479,11 +484,10 @@ public class FreeTextSuggester extends Lookup {
       
       // Run full analysis, but save only the
       // last 1gram, last 2gram, etc.:
-      BytesRef tokenBytes = termBytesAtt.getBytesRef();
       int maxEndOffset = -1;
       boolean sawRealToken = false;
       while(ts.incrementToken()) {
-        termBytesAtt.fillBytesRef();
+        BytesRef tokenBytes = termBytesAtt.getBytesRef();
         sawRealToken |= tokenBytes.length > 0;
         // TODO: this is somewhat iffy; today, ShingleFilter
         // sets posLen to the gram count; maybe we should make
@@ -728,17 +732,15 @@ public class FreeTextSuggester extends Lookup {
       }
       
       return results;
-    } finally {
-      IOUtils.closeWhileHandlingException(ts);
     }
   }
 
-  /** weight -> cost */
+  /** weight -&gt; cost */
   private long encodeWeight(long ngramCount) {
     return Long.MAX_VALUE - ngramCount;
   }
 
-  /** cost -> weight */
+  /** cost -&gt; weight */
   //private long decodeWeight(Pair<Long,BytesRef> output) {
   private long decodeWeight(Long output) {
     assert output != null;

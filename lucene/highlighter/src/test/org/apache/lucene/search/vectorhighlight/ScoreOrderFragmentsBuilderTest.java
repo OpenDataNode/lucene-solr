@@ -1,5 +1,3 @@
-package org.apache.lucene.search.vectorhighlight;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.vectorhighlight;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.vectorhighlight;
 
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
@@ -26,11 +25,11 @@ import org.apache.lucene.search.TermQuery;
 public class ScoreOrderFragmentsBuilderTest extends AbstractTestCase {
   
   public void test3Frags() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(new TermQuery(new Term(F, "a")), BooleanClause.Occur.SHOULD);
     query.add(new TermQuery(new Term(F, "c")), BooleanClause.Occur.SHOULD);
 
-    FieldFragList ffl = ffl(query, "a b b b b b b b b b b b a b a b b b b b c a a b b" );
+    FieldFragList ffl = ffl(query.build(), "a b b b b b b b b b b b a b a b b b b b c a a b b" );
     ScoreOrderFragmentsBuilder sofb = new ScoreOrderFragmentsBuilder();
     String[] f = sofb.createFragments( reader, 0, F, ffl, 3 );
     assertEquals( 3, f.length );

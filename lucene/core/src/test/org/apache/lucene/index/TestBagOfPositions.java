@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -28,7 +28,6 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
@@ -39,9 +38,8 @@ import org.apache.lucene.util.TestUtil;
  * Simple test that adds numeric terms, where each term has the 
  * totalTermFreq of its integer value, and checks that the totalTermFreq is correct. 
  */
-// TODO: somehow factor this with BagOfPostings? its almost the same
-@SuppressCodecs({"Direct", "Memory", "Lucene3x"}) // at night this makes like 200k/300k docs and will make Direct's heart beat!
-                                                  // Lucene3x doesnt have totalTermFreq, so the test isn't interesting there.
+// TODO: somehow factor this with BagOfPostings? it's almost the same
+@SuppressCodecs({"Direct", "Memory"}) // at night this makes like 200k/300k docs and will make Direct's heart beat!
 public class TestBagOfPositions extends LuceneTestCase {
   public void test() throws Exception {
     List<String> postingsList = new ArrayList<>();
@@ -49,7 +47,7 @@ public class TestBagOfPositions extends LuceneTestCase {
     final int maxTermsPerDoc = TestUtil.nextInt(random(), 10, 20);
     boolean isSimpleText = "SimpleText".equals(TestUtil.getPostingsFormat("field"));
 
-    IndexWriterConfig iwc = newIndexWriterConfig(random(), TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig iwc = newIndexWriterConfig(random(), new MockAnalyzer(random()));
 
     if ((isSimpleText || iwc.getMergePolicy() instanceof MockRandomMergePolicy) && (TEST_NIGHTLY || RANDOM_MULTIPLIER > 1)) {
       // Otherwise test can take way too long (> 2 hours)
@@ -88,7 +86,7 @@ public class TestBagOfPositions extends LuceneTestCase {
     if (options == 0) {
       fieldType.setIndexOptions(IndexOptions.DOCS_AND_FREQS); // we dont actually need positions
       fieldType.setStoreTermVectors(true); // but enforce term vectors when we do this so we check SOMETHING
-    } else if (options == 1 && !doesntSupportOffsets.contains(TestUtil.getPostingsFormat("field"))) {
+    } else if (options == 1) {
       fieldType.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS);
     }
     // else just positions
@@ -135,18 +133,18 @@ public class TestBagOfPositions extends LuceneTestCase {
     iw.forceMerge(1);
     DirectoryReader ir = iw.getReader();
     assertEquals(1, ir.leaves().size());
-    AtomicReader air = ir.leaves().get(0).reader();
+    LeafReader air = ir.leaves().get(0).reader();
     Terms terms = air.terms("field");
     // numTerms-1 because there cannot be a term 0 with 0 postings:
     assertEquals(numTerms-1, terms.size());
-    TermsEnum termsEnum = terms.iterator(null);
+    TermsEnum termsEnum = terms.iterator();
     BytesRef term;
     while ((term = termsEnum.next()) != null) {
       int value = Integer.parseInt(term.utf8ToString());
       assertEquals(value, termsEnum.totalTermFreq());
       // don't really need to check more than this, as CheckIndex
       // will verify that totalTermFreq == total number of positions seen
-      // from a docsAndPositionsEnum.
+      // from a postingsEnum.
     }
     ir.close();
     iw.close();

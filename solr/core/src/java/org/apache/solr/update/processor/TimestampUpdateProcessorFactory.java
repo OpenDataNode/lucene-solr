@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update.processor;
 
 import java.io.IOException;
@@ -42,7 +41,7 @@ import org.apache.solr.common.params.CommonParams; // javadoc
  * In the example configuration below, if a document does not contain a value 
  * in the <code>timestamp</code> field, a new <code>Date</code> will be 
  * generated and added as the value of that field.
- * <p>
+ * <br>
  *
  * <pre class="prettyprint">
  * &lt;processor class="solr.TimestampUpdateProcessorFactory"&gt;

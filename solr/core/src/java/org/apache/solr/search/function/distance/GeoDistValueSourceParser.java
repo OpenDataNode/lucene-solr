@@ -1,5 +1,3 @@
-package org.apache.solr.search.function.distance;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,11 @@ package org.apache.solr.search.function.distance;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search.function.distance;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 import com.spatial4j.core.context.SpatialContext;
 import com.spatial4j.core.distance.DistanceUtils;
@@ -33,11 +36,8 @@ import org.apache.solr.schema.SchemaField;
 import org.apache.solr.search.FunctionQParser;
 import org.apache.solr.search.SyntaxError;
 import org.apache.solr.search.ValueSourceParser;
+import org.apache.solr.util.DistanceUnits;
 import org.apache.solr.util.SpatialUtils;
-
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
 
 /**
  * Parses "geodist" creating {@link HaversineConstFunction} or {@link HaversineFunction}
@@ -133,8 +133,11 @@ public class GeoDistValueSourceParser extends ValueSourceParser {
             " the point must be supplied as constants");
       // note: uses Haversine by default but can be changed via distCalc=...
       SpatialStrategy strategy = ((SpatialStrategyMultiValueSource) mv2).strategy;
+      DistanceUnits distanceUnits = ((SpatialStrategyMultiValueSource) mv2).distanceUnits;
       Point queryPoint = strategy.getSpatialContext().makePoint(constants[1], constants[0]);
-      return strategy.makeDistanceValueSource(queryPoint, DistanceUtils.DEG_TO_KM);
+      if (distanceUnits == DistanceUnits.BACKCOMPAT)
+        distanceUnits = DistanceUnits.KILOMETERS;
+      return strategy.makeDistanceValueSource(queryPoint, distanceUnits.multiplierFromDegreesToThisUnit());
     }
 
     if (constants != null && other instanceof VectorValueSource) {
@@ -180,7 +183,7 @@ public class GeoDistValueSourceParser extends ValueSourceParser {
     FieldType type = sf.getType();
     if (type instanceof AbstractSpatialFieldType) {
       AbstractSpatialFieldType asft = (AbstractSpatialFieldType) type;
-      return new SpatialStrategyMultiValueSource(asft.getStrategy(sfield));
+      return new SpatialStrategyMultiValueSource(asft.getStrategy(sfield), asft.getDistanceUnits());
     }
     ValueSource vs = type.getValueSource(sf, fp);
     if (vs instanceof MultiValueSource) {
@@ -194,10 +197,12 @@ public class GeoDistValueSourceParser extends ValueSourceParser {
   private static class SpatialStrategyMultiValueSource extends VectorValueSource {
 
     final SpatialStrategy strategy;
+    final DistanceUnits distanceUnits;
 
-    public SpatialStrategyMultiValueSource(SpatialStrategy strategy) {
+    public SpatialStrategyMultiValueSource(SpatialStrategy strategy, DistanceUnits distanceUnits) {
       super(Collections.EMPTY_LIST);
       this.strategy = strategy;
+      this.distanceUnits = distanceUnits;
     }
 
     @Override

@@ -14,10 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.search;
 
 
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.params.SolrParams;
@@ -25,10 +25,15 @@ import org.apache.solr.common.SolrException;
 import org.apache.solr.request.SolrQueryRequest;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.lang.invoke.MethodHandles;
 import java.util.*;
 
 public class TestFiltering extends SolrTestCaseJ4 {
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   @BeforeClass
   public static void beforeTests() throws Exception {
@@ -203,10 +208,18 @@ public class TestFiltering extends SolrTestCaseJ4 {
       return frangeStr(!positive, l, u, cache, cost, exclude);
     } else {
       // term or boolean query
-      FixedBitSet pset = new FixedBitSet(model.indexSize);
-      for (int i=0; i<pset.getBits().length; i++) {
-        pset.getBits()[i] = random().nextLong();    // set 50% of the bits on average
+      int numWords = FixedBitSet.bits2words(model.indexSize);
+      long[] psetBits = new long[numWords];
+      for (int i=0; i<psetBits.length; i++) {
+        psetBits[i] = random().nextLong();    // set 50% of the bits on average
       }
+      // Make sure no 'ghost' bits are set beyond model.indexSize (see FixedBitSet.verifyGhostBitsClear)
+      if ((model.indexSize & 0x3f) != 0) {
+        long mask = -1L << model.indexSize; // & 0x3f is implicit
+
+        psetBits[numWords - 1] &= ~mask;
+      }
+      FixedBitSet pset = new FixedBitSet(psetBits, model.indexSize);
       if (positive) {
         for (FixedBitSet set : sets) {
           set.and(pset);
@@ -222,7 +235,7 @@ public class TestFiltering extends SolrTestCaseJ4 {
       for (int doc=-1;;) {
         if (doc+1 >= model.indexSize) break;
         doc = pset.nextSetBit(doc+1);
-        if (doc < 0) break;
+        if (doc == DocIdSetIterator.NO_MORE_DOCS) break;
         sb.append((positive ? " ":" -") + f+":"+doc);
       }
 

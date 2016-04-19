@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,13 +14,15 @@ package org.apache.lucene.analysis.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.core;
+
 
 import java.io.Reader;
 import java.io.StringReader;
 import java.lang.reflect.Modifier;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,18 +39,17 @@ import org.apache.lucene.analysis.MockRandomLookaheadTokenFilter;
 import org.apache.lucene.analysis.MockTokenFilter;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.MockVariableLengthPayloadFilter;
+import org.apache.lucene.analysis.SimplePayloadFilter;
 import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.ValidatingTokenFilter;
 import org.apache.lucene.analysis.miscellaneous.PatternKeywordMarkerFilter;
 import org.apache.lucene.analysis.miscellaneous.SetKeywordMarkerFilter;
-import org.apache.lucene.analysis.fr.FrenchStemFilter;
-import org.apache.lucene.analysis.in.IndicTokenizer;
-import org.apache.lucene.analysis.nl.DutchStemFilter;
 import org.apache.lucene.analysis.path.ReversePathHierarchyTokenizer;
 import org.apache.lucene.analysis.sinks.TeeSinkTokenFilter;
 import org.apache.lucene.analysis.snowball.SnowballFilter;
+import org.apache.lucene.analysis.sr.SerbianNormalizationRegularFilter;
 import org.apache.lucene.analysis.util.CharFilterFactory;
 import org.apache.lucene.analysis.util.ResourceLoader;
 import org.apache.lucene.analysis.util.ResourceLoaderAware;
@@ -58,6 +57,7 @@ import org.apache.lucene.analysis.util.StringMockResourceLoader;
 import org.apache.lucene.analysis.util.TokenFilterFactory;
 import org.apache.lucene.analysis.util.TokenizerFactory;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.Version;
 
 /**
  * Tests that any newly added Tokenizers/TokenFilters/CharFilters have a
@@ -78,7 +78,8 @@ public class TestAllAnalyzersHaveFactories extends LuceneTestCase {
       MockTokenFilter.class,
       MockVariableLengthPayloadFilter.class,
       ValidatingTokenFilter.class,
-      CrankyTokenFilter.class
+      CrankyTokenFilter.class,
+      SimplePayloadFilter.class
     );
   }
   
@@ -91,17 +92,6 @@ public class TestAllAnalyzersHaveFactories extends LuceneTestCase {
     );
   }
   
-  // these are deprecated components that are just exact dups of other functionality: they dont need factories
-  // (they never had them)
-  private static final Set<Class<?>> deprecatedDuplicatedComponents = Collections.newSetFromMap(new IdentityHashMap<Class<?>,Boolean>());
-  static {
-    Collections.<Class<?>>addAll(deprecatedDuplicatedComponents,
-      DutchStemFilter.class,
-      FrenchStemFilter.class,
-      IndicTokenizer.class
-    );
-  }
-  
   // these are oddly-named (either the actual analyzer, or its factory)
   // they do actually have factories.
   // TODO: clean this up!
@@ -111,16 +101,21 @@ public class TestAllAnalyzersHaveFactories extends LuceneTestCase {
       ReversePathHierarchyTokenizer.class, // this is supported via an option to PathHierarchyTokenizer's factory
       SnowballFilter.class, // this is called SnowballPorterFilterFactory
       PatternKeywordMarkerFilter.class,
-      SetKeywordMarkerFilter.class
+      SetKeywordMarkerFilter.class,
+      UnicodeWhitespaceTokenizer.class // a supported option via WhitespaceTokenizerFactory
     );
   }
-  
+
+  // The following token filters are excused from having their factory.
+  private static final Set<Class<?>> tokenFiltersWithoutFactory = new HashSet<>();
+  static {
+    tokenFiltersWithoutFactory.add(SerbianNormalizationRegularFilter.class);
+  }
+
   private static final ResourceLoader loader = new StringMockResourceLoader("");
   
   public void test() throws Exception {
-    List<Class<?>> analysisClasses = new ArrayList<>();
-    analysisClasses.addAll(TestRandomChains.getClassesForPackage("org.apache.lucene.analysis"));
-    analysisClasses.addAll(TestRandomChains.getClassesForPackage("org.apache.lucene.collation"));
+    List<Class<?>> analysisClasses = TestRandomChains.getClassesForPackage("org.apache.lucene.analysis");
     
     for (final Class<?> c : analysisClasses) {
       final int modifiers = c.getModifiers();
@@ -131,15 +126,15 @@ public class TestAllAnalyzersHaveFactories extends LuceneTestCase {
         || testComponents.contains(c)
         || crazyComponents.contains(c)
         || oddlyNamedComponents.contains(c)
-        || deprecatedDuplicatedComponents.contains(c)
+        || tokenFiltersWithoutFactory.contains(c)
         || c.isAnnotationPresent(Deprecated.class) // deprecated ones are typically back compat hacks
         || !(Tokenizer.class.isAssignableFrom(c) || TokenFilter.class.isAssignableFrom(c) || CharFilter.class.isAssignableFrom(c))
       ) {
         continue;
       }
-      
+
       Map<String,String> args = new HashMap<>();
-      args.put("luceneMatchVersion", TEST_VERSION_CURRENT.toString());
+      args.put("luceneMatchVersion", Version.LATEST.toString());
       
       if (Tokenizer.class.isAssignableFrom(c)) {
         String clazzName = c.getSimpleName();
@@ -153,12 +148,8 @@ public class TestAllAnalyzersHaveFactories extends LuceneTestCase {
           if (instance instanceof ResourceLoaderAware) {
             ((ResourceLoaderAware) instance).inform(loader);
           }
-          assertSame(c, instance.create(new StringReader("")).getClass());
+          assertSame(c, instance.create().getClass());
         } catch (IllegalArgumentException e) {
-          if (e.getCause() instanceof NoSuchMethodException) {
-            // there is no corresponding ctor available
-            throw e;
-          }
           // TODO: For now pass because some factories have not yet a default config that always works
         }
       } else if (TokenFilter.class.isAssignableFrom(c)) {
@@ -173,16 +164,12 @@ public class TestAllAnalyzersHaveFactories extends LuceneTestCase {
           if (instance instanceof ResourceLoaderAware) {
             ((ResourceLoaderAware) instance).inform(loader);
           }
-          Class<? extends TokenStream> createdClazz = instance.create(new KeywordTokenizer(new StringReader(""))).getClass();
+          Class<? extends TokenStream> createdClazz = instance.create(new KeywordTokenizer()).getClass();
           // only check instance if factory have wrapped at all!
           if (KeywordTokenizer.class != createdClazz) {
             assertSame(c, createdClazz);
           }
         } catch (IllegalArgumentException e) {
-          if (e.getCause() instanceof NoSuchMethodException) {
-            // there is no corresponding ctor available
-            throw e;
-          }
           // TODO: For now pass because some factories have not yet a default config that always works
         }
       } else if (CharFilter.class.isAssignableFrom(c)) {
@@ -203,10 +190,6 @@ public class TestAllAnalyzersHaveFactories extends LuceneTestCase {
             assertSame(c, createdClazz);
           }
         } catch (IllegalArgumentException e) {
-          if (e.getCause() instanceof NoSuchMethodException) {
-            // there is no corresponding ctor available
-            throw e;
-          }
           // TODO: For now pass because some factories have not yet a default config that always works
         }
       }

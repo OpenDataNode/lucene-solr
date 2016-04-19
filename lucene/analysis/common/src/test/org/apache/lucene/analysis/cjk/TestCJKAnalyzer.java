@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.cjk;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,11 @@ package org.apache.lucene.analysis.cjk;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.cjk;
+
 
 import java.io.IOException;
 import java.io.Reader;
-import java.util.Random;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
@@ -34,12 +33,25 @@ import org.apache.lucene.analysis.core.StopFilter;
 import org.apache.lucene.analysis.standard.StandardTokenizer;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
 import org.apache.lucene.analysis.util.CharArraySet;
+import org.apache.lucene.util.Version;
 
 /**
  * Most tests adopted from TestCJKTokenizer
  */
 public class TestCJKAnalyzer extends BaseTokenStreamTestCase {
-  private Analyzer analyzer = new CJKAnalyzer();
+  private Analyzer analyzer;
+  
+  @Override
+  public void setUp() throws Exception {
+    super.setUp();
+    analyzer = new CJKAnalyzer();
+  }
+  
+  @Override
+  public void tearDown() throws Exception {
+    analyzer.close();
+    super.tearDown();
+  }
   
   public void testJa1() throws IOException {
     assertAnalyzesTo(analyzer, "一二三四五六七八九十",
@@ -208,8 +220,8 @@ public class TestCJKAnalyzer extends BaseTokenStreamTestCase {
     final NormalizeCharMap norm = builder.build();
     Analyzer analyzer = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new StandardTokenizer(reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new StandardTokenizer();
         return new TokenStreamComponents(tokenizer, new CJKBigramFilter(tokenizer));
       }
 
@@ -228,6 +240,8 @@ public class TestCJKAnalyzer extends BaseTokenStreamTestCase {
     // before bigramming, the 4 tokens look like:
     //   { 0, 0, 1, 1 },
     //   { 0, 1, 1, 2 }
+    
+    analyzer.close();
   }
 
   private static class FakeStandardTokenizer extends TokenFilter {
@@ -252,8 +266,8 @@ public class TestCJKAnalyzer extends BaseTokenStreamTestCase {
     Analyzer analyzer = new Analyzer() {
 
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
         TokenFilter filter = new FakeStandardTokenizer(tokenizer);
         filter = new StopFilter(filter, CharArraySet.EMPTY_SET);
         filter = new CJKBigramFilter(filter);
@@ -267,27 +281,39 @@ public class TestCJKAnalyzer extends BaseTokenStreamTestCase {
         new int[] { 1 },
         new String[] { "<SINGLE>" },
         new int[] { 1 });
+    analyzer.close();
   }
   
   /** blast some random strings through the analyzer */
   public void testRandomStrings() throws Exception {
-    checkRandomData(random(), new CJKAnalyzer(), 1000*RANDOM_MULTIPLIER);
+    Analyzer a = new CJKAnalyzer();
+    checkRandomData(random(), a, 1000*RANDOM_MULTIPLIER);
+    a.close();
   }
   
   /** blast some random strings through the analyzer */
   public void testRandomHugeStrings() throws Exception {
-    Random random = random();
-    checkRandomData(random, new CJKAnalyzer(), 100*RANDOM_MULTIPLIER, 8192);
+    Analyzer a = new CJKAnalyzer();
+    checkRandomData(random(), a, 100*RANDOM_MULTIPLIER, 8192);
+    a.close();
   }
   
   public void testEmptyTerm() throws IOException {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new KeywordTokenizer(reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new KeywordTokenizer();
         return new TokenStreamComponents(tokenizer, new CJKBigramFilter(tokenizer));
       }
     };
     checkOneTerm(a, "", "");
+    a.close();
+  }
+
+  public void testBackcompat40() throws IOException {
+    CJKAnalyzer a = new CJKAnalyzer();
+    a.setVersion(Version.LUCENE_4_6_1);
+    // this is just a test to see the correct unicode version is being used, not actually testing hebrew
+    assertAnalyzesTo(a, "א\"א", new String[] {"א", "א"});
   }
 }

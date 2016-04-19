@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.util; // from org.apache.solr.util rev 555343
 
 /**  A variety of high efficiency bit twiddling routines.
@@ -46,7 +45,7 @@ public final class BitUtil {
   // packed inside a 32 bit integer (8 4 bit numbers).  That
   // should be faster than accessing an array for each index, and
   // the total array size is kept smaller (256*sizeof(int))=1K
-  /***** the python code that generated bitlist
+  /* the python code that generated bitlist
   def bits2int(val):
   arr=0
   for shift in range(8,0,-1):
@@ -58,7 +57,7 @@ public final class BitUtil {
   def int_table():
     tbl = [ hex(bits2int(val)).strip('L') for val in range(256) ]
     return ','.join(tbl)
-  ******/
+  */
   private static final int[] BIT_LISTS = {
     0x0, 0x1, 0x2, 0x21, 0x3, 0x31, 0x32, 0x321, 0x4, 0x41, 0x42, 0x421, 0x43, 
     0x431, 0x432, 0x4321, 0x5, 0x51, 0x52, 0x521, 0x53, 0x531, 0x532, 0x5321, 
@@ -90,21 +89,37 @@ public final class BitUtil {
     0x8765421, 0x876543, 0x8765431, 0x8765432, 0x87654321
   };
 
+  // magic numbers for bit interleaving
+  private static final long MAGIC[] = {
+      0x5555555555555555L, 0x3333333333333333L,
+      0x0F0F0F0F0F0F0F0FL, 0x00FF00FF00FF00FFL,
+      0x0000FFFF0000FFFFL, 0x00000000FFFFFFFFL,
+      0xAAAAAAAAAAAAAAAAL
+  };
+  // shift values for bit interleaving
+  private static final short SHIFT[] = {1, 2, 4, 8, 16};
+
   private BitUtil() {} // no instance
 
-  /** Return the number of bits sets in b. */
+  /** Return the number of bits sets in b. 
+   * @deprecated Use {@link Integer#bitCount(int)} instead.
+   */
+  @Deprecated
   public static int bitCount(byte b) {
     return BYTE_COUNTS[b & 0xFF];
   }
 
   /** Return the list of bits which are set in b encoded as followed:
-   * <code>(i >>> (4 * n)) & 0x0F</code> is the offset of the n-th set bit of
+   * {@code (i >>> (4 * n)) & 0x0F} is the offset of the n-th set bit of
    * the given byte plus one, or 0 if there are n or less bits set in the given
    * byte. For example <code>bitList(12)</code> returns 0x43:<ul>
-   * <li><code>0x43 & 0x0F</code> is 3, meaning the the first bit set is at offset 3-1 = 2,</li>
-   * <li><code>(0x43 >>> 4) & 0x0F</code> is 4, meaning there is a second bit set at offset 4-1=3,</li>
-   * <li><code>(0x43 >>> 8) & 0x0F</code> is 0, meaning there is no more bit set in this byte.</li>
-   * </ul>*/
+   * <li>{@code 0x43 & 0x0F} is 3, meaning the the first bit set is at offset 3-1 = 2,</li>
+   * <li>{@code (0x43 >>> 4) & 0x0F} is 4, meaning there is a second bit set at offset 4-1=3,</li>
+   * <li>{@code (0x43 >>> 8) & 0x0F} is 0, meaning there is no more bit set in this byte.</li>
+   * </ul>
+   * @deprecated do not use.
+   */
+  @Deprecated
   public static int bitList(byte b) {
     return BIT_LISTS[b & 0xFF];
   }
@@ -142,7 +157,7 @@ public final class BitUtil {
      return popCount;
    }
 
-  /** Returns the popcount or cardinality of A & ~B.
+  /** Returns the popcount or cardinality of {@code A & ~B}.
    *  Neither array is modified. */
   public static long pop_andnot(long[] arr1, long[] arr2, int wordOffset, int numWords) {
     long popCount = 0;
@@ -185,6 +200,46 @@ public final class BitUtil {
     v |= v >> 32;
     v++;
     return v;
+  }
+
+  /**
+   * Interleaves the first 32 bits of each long value
+   *
+   * Adapted from: http://graphics.stanford.edu/~seander/bithacks.html#InterleaveBMN
+   */
+  public static long interleave(long v1, long v2) {
+    v1 = (v1 | (v1 << SHIFT[4])) & MAGIC[4];
+    v1 = (v1 | (v1 << SHIFT[3])) & MAGIC[3];
+    v1 = (v1 | (v1 << SHIFT[2])) & MAGIC[2];
+    v1 = (v1 | (v1 << SHIFT[1])) & MAGIC[1];
+    v1 = (v1 | (v1 << SHIFT[0])) & MAGIC[0];
+    v2 = (v2 | (v2 << SHIFT[4])) & MAGIC[4];
+    v2 = (v2 | (v2 << SHIFT[3])) & MAGIC[3];
+    v2 = (v2 | (v2 << SHIFT[2])) & MAGIC[2];
+    v2 = (v2 | (v2 << SHIFT[1])) & MAGIC[1];
+    v2 = (v2 | (v2 << SHIFT[0])) & MAGIC[0];
+
+    return (v2<<1) | v1;
+  }
+
+  /**
+   * Deinterleaves long value back to two concatenated 32bit values
+   */
+  public static long deinterleave(long b) {
+    b &= MAGIC[0];
+    b = (b ^ (b >>> SHIFT[0])) & MAGIC[1];
+    b = (b ^ (b >>> SHIFT[1])) & MAGIC[2];
+    b = (b ^ (b >>> SHIFT[2])) & MAGIC[3];
+    b = (b ^ (b >>> SHIFT[3])) & MAGIC[4];
+    b = (b ^ (b >>> SHIFT[4])) & MAGIC[5];
+    return b;
+  }
+
+  /**
+   * flip flops odd with even bits
+   */
+  public static final long flipFlop(final long b) {
+    return ((b & MAGIC[6]) >>> 1) | ((b & MAGIC[0]) << 1 );
   }
 
    /** Same as {@link #zigZagEncode(long)} but on integers. */

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,30 +14,31 @@ package org.apache.lucene.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis;
+
+
+import java.io.Closeable;
+import java.io.Reader;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.util.CloseableThreadLocal;
 import org.apache.lucene.util.Version;
-
-import java.io.Closeable;
-import java.io.IOException;
-import java.io.Reader;
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * An Analyzer builds TokenStreams, which analyze text.  It thus represents a
  * policy for extracting index terms from text.
  * <p>
  * In order to define what analysis is done, subclasses must define their
- * {@link TokenStreamComponents TokenStreamComponents} in {@link #createComponents(String, Reader)}.
+ * {@link TokenStreamComponents TokenStreamComponents} in {@link #createComponents(String)}.
  * The components are then reused in each call to {@link #tokenStream(String, Reader)}.
  * <p>
  * Simple example:
  * <pre class="prettyprint">
  * Analyzer analyzer = new Analyzer() {
  *  {@literal @Override}
- *   protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
+ *   protected TokenStreamComponents createComponents(String fieldName) {
  *     Tokenizer source = new FooTokenizer(reader);
  *     TokenStream filter = new FooFilter(source);
  *     filter = new BarFilter(filter);
@@ -72,7 +71,7 @@ import java.util.Map;
 public abstract class Analyzer implements Closeable {
 
   private final ReuseStrategy reuseStrategy;
-  private Version version = Version.LUCENE_CURRENT;
+  private Version version = Version.LATEST;
 
   // non final as it gets nulled if closed; pkg private for access by ReuseStrategy's final helper methods:
   CloseableThreadLocal<Object> storedValue = new CloseableThreadLocal<>();
@@ -88,7 +87,7 @@ public abstract class Analyzer implements Closeable {
   /**
    * Expert: create a new Analyzer with a custom {@link ReuseStrategy}.
    * <p>
-   * NOTE: if you just want to reuse on a per-field basis, its easier to
+   * NOTE: if you just want to reuse on a per-field basis, it's easier to
    * use a subclass of {@link AnalyzerWrapper} such as 
    * <a href="{@docRoot}/../analyzers-common/org/apache/lucene/analysis/miscellaneous/PerFieldAnalyzerWrapper.html">
    * PerFieldAnalyerWrapper</a> instead.
@@ -103,18 +102,16 @@ public abstract class Analyzer implements Closeable {
    * @param fieldName
    *          the name of the fields content passed to the
    *          {@link TokenStreamComponents} sink as a reader
-   * @param reader
-   *          the reader passed to the {@link Tokenizer} constructor
+
    * @return the {@link TokenStreamComponents} for this analyzer.
    */
-  protected abstract TokenStreamComponents createComponents(String fieldName,
-      Reader reader);
+  protected abstract TokenStreamComponents createComponents(String fieldName);
 
   /**
    * Returns a TokenStream suitable for <code>fieldName</code>, tokenizing
    * the contents of <code>reader</code>.
    * <p>
-   * This method uses {@link #createComponents(String, Reader)} to obtain an
+   * This method uses {@link #createComponents(String)} to obtain an
    * instance of {@link TokenStreamComponents}. It returns the sink of the
    * components and stores the components internally. Subsequent calls to this
    * method will reuse the previously stored components after resetting them
@@ -133,19 +130,17 @@ public abstract class Analyzer implements Closeable {
    * @param reader the reader the streams source reads from
    * @return TokenStream for iterating the analyzed content of <code>reader</code>
    * @throws AlreadyClosedException if the Analyzer is closed.
-   * @throws IOException if an i/o error occurs.
    * @see #tokenStream(String, String)
    */
   public final TokenStream tokenStream(final String fieldName,
-                                       final Reader reader) throws IOException {
+                                       final Reader reader) {
     TokenStreamComponents components = reuseStrategy.getReusableComponents(this, fieldName);
     final Reader r = initReader(fieldName, reader);
     if (components == null) {
-      components = createComponents(fieldName, r);
+      components = createComponents(fieldName);
       reuseStrategy.setReusableComponents(this, fieldName, components);
-    } else {
-      components.setReader(r);
     }
+    components.setReader(r);
     return components.getTokenStream();
   }
   
@@ -153,7 +148,7 @@ public abstract class Analyzer implements Closeable {
    * Returns a TokenStream suitable for <code>fieldName</code>, tokenizing
    * the contents of <code>text</code>.
    * <p>
-   * This method uses {@link #createComponents(String, Reader)} to obtain an
+   * This method uses {@link #createComponents(String)} to obtain an
    * instance of {@link TokenStreamComponents}. It returns the sink of the
    * components and stores the components internally. Subsequent calls to this
    * method will reuse the previously stored components after resetting them
@@ -168,10 +163,9 @@ public abstract class Analyzer implements Closeable {
    * @param text the String the streams source reads from
    * @return TokenStream for iterating the analyzed content of <code>reader</code>
    * @throws AlreadyClosedException if the Analyzer is closed.
-   * @throws IOException if an i/o error occurs (may rarely happen for strings).
    * @see #tokenStream(String, Reader)
    */
-  public final TokenStream tokenStream(final String fieldName, final String text) throws IOException {
+  public final TokenStream tokenStream(final String fieldName, final String text) {
     TokenStreamComponents components = reuseStrategy.getReusableComponents(this, fieldName);
     @SuppressWarnings("resource") final ReusableStringReader strReader = 
         (components == null || components.reusableStringReader == null) ?
@@ -179,11 +173,11 @@ public abstract class Analyzer implements Closeable {
     strReader.setValue(text);
     final Reader r = initReader(fieldName, strReader);
     if (components == null) {
-      components = createComponents(fieldName, r);
+      components = createComponents(fieldName);
       reuseStrategy.setReusableComponents(this, fieldName, components);
-    } else {
-      components.setReader(r);
     }
+
+    components.setReader(r);
     components.reusableStringReader = strReader;
     return components.getTokenStream();
   }
@@ -316,10 +310,8 @@ public abstract class Analyzer implements Closeable {
      * 
      * @param reader
      *          a reader to reset the source component
-     * @throws IOException
-     *           if the component's reset method throws an {@link IOException}
      */
-    protected void setReader(final Reader reader) throws IOException {
+    protected void setReader(final Reader reader) {
       source.setReader(reader);
     }
 
@@ -405,21 +397,7 @@ public abstract class Analyzer implements Closeable {
    * A predefined {@link ReuseStrategy}  that reuses the same components for
    * every field.
    */
-  public static final ReuseStrategy GLOBAL_REUSE_STRATEGY = new GlobalReuseStrategy();
-  
-  /**
-   * Implementation of {@link ReuseStrategy} that reuses the same components for
-   * every field.
-   * @deprecated This implementation class will be hidden in Lucene 5.0.
-   *   Use {@link Analyzer#GLOBAL_REUSE_STRATEGY} instead!
-   */
-  @Deprecated
-  public final static class GlobalReuseStrategy extends ReuseStrategy {
-    
-    /** Sole constructor. (For invocation by subclass constructors, typically implicit.)
-     * @deprecated Don't create instances of this class, use {@link Analyzer#GLOBAL_REUSE_STRATEGY} */
-    @Deprecated
-    public GlobalReuseStrategy() {}
+  public static final ReuseStrategy GLOBAL_REUSE_STRATEGY = new ReuseStrategy() {
 
     @Override
     public TokenStreamComponents getReusableComponents(Analyzer analyzer, String fieldName) {
@@ -430,27 +408,13 @@ public abstract class Analyzer implements Closeable {
     public void setReusableComponents(Analyzer analyzer, String fieldName, TokenStreamComponents components) {
       setStoredValue(analyzer, components);
     }
-  }
+  };
 
   /**
    * A predefined {@link ReuseStrategy} that reuses components per-field by
    * maintaining a Map of TokenStreamComponent per field name.
    */
-  public static final ReuseStrategy PER_FIELD_REUSE_STRATEGY = new PerFieldReuseStrategy();
-  
-  /**
-   * Implementation of {@link ReuseStrategy} that reuses components per-field by
-   * maintaining a Map of TokenStreamComponent per field name.
-   * @deprecated This implementation class will be hidden in Lucene 5.0.
-   *   Use {@link Analyzer#PER_FIELD_REUSE_STRATEGY} instead!
-   */
-  @Deprecated
-  public static class PerFieldReuseStrategy extends ReuseStrategy {
-
-    /** Sole constructor. (For invocation by subclass constructors, typically implicit.)
-     * @deprecated Don't create instances of this class, use {@link Analyzer#PER_FIELD_REUSE_STRATEGY} */
-    @Deprecated
-    public PerFieldReuseStrategy() {}
+  public static final ReuseStrategy PER_FIELD_REUSE_STRATEGY = new ReuseStrategy() {
 
     @SuppressWarnings("unchecked")
     @Override
@@ -469,6 +433,6 @@ public abstract class Analyzer implements Closeable {
       }
       componentsPerField.put(fieldName, components);
     }
-  }
+  };
 
 }

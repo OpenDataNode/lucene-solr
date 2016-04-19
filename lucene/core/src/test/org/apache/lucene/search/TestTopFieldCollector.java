@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,24 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
+
+import java.io.IOException;
 
 import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field.Store;
+import org.apache.lucene.document.NumericDocValuesField;
+import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
+import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.FieldValueHitQueue.Entry;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.TestUtil;
 
 public class TestTopFieldCollector extends LuceneTestCase {
   private IndexSearcher is;
@@ -63,7 +71,7 @@ public class TestTopFieldCollector extends LuceneTestCase {
     for(int i = 0; i < sort.length; i++) {
       Query q = new MatchAllDocsQuery();
       TopDocsCollector<Entry> tdc = TopFieldCollector.create(sort[i], 10, false,
-          false, false, true);
+          false, false);
       
       is.search(q, tdc);
       
@@ -82,7 +90,7 @@ public class TestTopFieldCollector extends LuceneTestCase {
     for(int i = 0; i < sort.length; i++) {
       Query q = new MatchAllDocsQuery();
       TopDocsCollector<Entry> tdc = TopFieldCollector.create(sort[i], 10, true, false,
-          false, true);
+          false);
       
       is.search(q, tdc);
       
@@ -102,7 +110,7 @@ public class TestTopFieldCollector extends LuceneTestCase {
     for(int i = 0; i < sort.length; i++) {
       Query q = new MatchAllDocsQuery();
       TopDocsCollector<Entry> tdc = TopFieldCollector.create(sort[i], 10, true, true,
-          false, true);
+          false);
       
       is.search(q, tdc);
       
@@ -123,7 +131,7 @@ public class TestTopFieldCollector extends LuceneTestCase {
     for(int i = 0; i < sort.length; i++) {
       Query q = new MatchAllDocsQuery();
       TopDocsCollector<Entry> tdc = TopFieldCollector.create(sort[i], 10, true, true,
-          false, true);
+          false);
 
       is.search(q, tdc);
       
@@ -143,7 +151,7 @@ public class TestTopFieldCollector extends LuceneTestCase {
     for(int i = 0; i < sort.length; i++) {
       Query q = new MatchAllDocsQuery();
       TopDocsCollector<Entry> tdc = TopFieldCollector.create(sort[i], 10, true, true,
-          true, true);
+          true);
       
       is.search(q, tdc);
       
@@ -155,113 +163,100 @@ public class TestTopFieldCollector extends LuceneTestCase {
       assertTrue(!Float.isNaN(td.getMaxScore()));
     }
   }
-  
-  public void testOutOfOrderDocsScoringSort() throws Exception {
 
-    // Two Sort criteria to instantiate the multi/single comparators.
-    Sort[] sort = new Sort[] {new Sort(SortField.FIELD_DOC), new Sort() };
-    boolean[][] tfcOptions = new boolean[][] {
-        new boolean[] { false, false, false },
-        new boolean[] { false, false, true },
-        new boolean[] { false, true, false },
-        new boolean[] { false, true, true },
-        new boolean[] { true, false, false },
-        new boolean[] { true, false, true },
-        new boolean[] { true, true, false },
-        new boolean[] { true, true, true },
-    };
-    String[] actualTFCClasses = new String[] {
-        "OutOfOrderOneComparatorNonScoringCollector", 
-        "OutOfOrderOneComparatorScoringMaxScoreCollector", 
-        "OutOfOrderOneComparatorScoringNoMaxScoreCollector", 
-        "OutOfOrderOneComparatorScoringMaxScoreCollector", 
-        "OutOfOrderOneComparatorNonScoringCollector", 
-        "OutOfOrderOneComparatorScoringMaxScoreCollector", 
-        "OutOfOrderOneComparatorScoringNoMaxScoreCollector", 
-        "OutOfOrderOneComparatorScoringMaxScoreCollector" 
-    };
-    
-    BooleanQuery bq = new BooleanQuery();
-    // Add a Query with SHOULD, since bw.scorer() returns BooleanScorer2
-    // which delegates to BS if there are no mandatory clauses.
-    bq.add(new MatchAllDocsQuery(), Occur.SHOULD);
-    // Set minNrShouldMatch to 1 so that BQ will not optimize rewrite to return
-    // the clause instead of BQ.
-    bq.setMinimumNumberShouldMatch(1);
-    for(int i = 0; i < sort.length; i++) {
-      for(int j = 0; j < tfcOptions.length; j++) {
-        TopDocsCollector<Entry> tdc = TopFieldCollector.create(sort[i], 10,
-            tfcOptions[j][0], tfcOptions[j][1], tfcOptions[j][2], false);
-
-        assertTrue(tdc.getClass().getName().endsWith("$"+actualTFCClasses[j]));
-        
-        is.search(bq, tdc);
-        
-        TopDocs td = tdc.topDocs();
-        ScoreDoc[] sd = td.scoreDocs;
-        assertEquals(10, sd.length);
-      }
-    }
-  }
-  
-  // OutOfOrderMulti*Collector
-  public void testOutOfOrderDocsScoringSortMulti() throws Exception {
-
-    // Two Sort criteria to instantiate the multi/single comparators.
-    Sort[] sort = new Sort[] {new Sort(SortField.FIELD_DOC, SortField.FIELD_SCORE) };
-    boolean[][] tfcOptions = new boolean[][] {
-        new boolean[] { false, false, false },
-        new boolean[] { false, false, true },
-        new boolean[] { false, true, false },
-        new boolean[] { false, true, true },
-        new boolean[] { true, false, false },
-        new boolean[] { true, false, true },
-        new boolean[] { true, true, false },
-        new boolean[] { true, true, true },
-    };
-    String[] actualTFCClasses = new String[] {
-        "OutOfOrderMultiComparatorNonScoringCollector", 
-        "OutOfOrderMultiComparatorScoringMaxScoreCollector", 
-        "OutOfOrderMultiComparatorScoringNoMaxScoreCollector", 
-        "OutOfOrderMultiComparatorScoringMaxScoreCollector", 
-        "OutOfOrderMultiComparatorNonScoringCollector", 
-        "OutOfOrderMultiComparatorScoringMaxScoreCollector", 
-        "OutOfOrderMultiComparatorScoringNoMaxScoreCollector", 
-        "OutOfOrderMultiComparatorScoringMaxScoreCollector" 
-    };
-    
-    BooleanQuery bq = new BooleanQuery();
-    // Add a Query with SHOULD, since bw.scorer() returns BooleanScorer2
-    // which delegates to BS if there are no mandatory clauses.
-    bq.add(new MatchAllDocsQuery(), Occur.SHOULD);
-    // Set minNrShouldMatch to 1 so that BQ will not optimize rewrite to return
-    // the clause instead of BQ.
-    bq.setMinimumNumberShouldMatch(1);
-    for(int i = 0; i < sort.length; i++) {
-      for(int j = 0; j < tfcOptions.length; j++) {
-        TopDocsCollector<Entry> tdc = TopFieldCollector.create(sort[i], 10,
-            tfcOptions[j][0], tfcOptions[j][1], tfcOptions[j][2], false);
-
-        assertTrue(tdc.getClass().getName().endsWith("$"+actualTFCClasses[j]));
-        
-        is.search(bq, tdc);
-        
-        TopDocs td = tdc.topDocs();
-        ScoreDoc[] sd = td.scoreDocs;
-        assertEquals(10, sd.length);
-      }
-    }
-  }
-  
   public void testSortWithScoreAndMaxScoreTrackingNoResults() throws Exception {
     
     // Two Sort criteria to instantiate the multi/single comparators.
     Sort[] sort = new Sort[] {new Sort(SortField.FIELD_DOC), new Sort() };
     for(int i = 0; i < sort.length; i++) {
-      TopDocsCollector<Entry> tdc = TopFieldCollector.create(sort[i], 10, true, true, true, true);
+      TopDocsCollector<Entry> tdc = TopFieldCollector.create(sort[i], 10, true, true, true);
       TopDocs td = tdc.topDocs();
       assertEquals(0, td.totalHits);
       assertTrue(Float.isNaN(td.getMaxScore()));
     }
-  }  
+  }
+
+  public void testComputeScoresOnlyOnce() throws Exception {
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    Document doc = new Document();
+    StringField text = new StringField("text", "foo", Store.NO);
+    doc.add(text);
+    NumericDocValuesField relevance = new NumericDocValuesField("relevance", 1);
+    doc.add(relevance);
+    w.addDocument(doc);
+    text.setStringValue("bar");
+    w.addDocument(doc);
+    text.setStringValue("baz");
+    w.addDocument(doc);
+    IndexReader reader = w.getReader();
+    Query foo = new TermQuery(new Term("text", "foo"));
+    Query bar = new TermQuery(new Term("text", "bar"));
+    foo = new BoostQuery(foo, 2);
+    Query baz = new TermQuery(new Term("text", "baz"));
+    baz = new BoostQuery(baz, 3);
+    Query query = new BooleanQuery.Builder()
+        .add(foo, Occur.SHOULD)
+        .add(bar, Occur.SHOULD)
+        .add(baz, Occur.SHOULD)
+        .build();
+    final IndexSearcher searcher = new IndexSearcher(reader);
+    for (Sort sort : new Sort[] {new Sort(SortField.FIELD_SCORE), new Sort(new SortField("f", SortField.Type.SCORE))}) {
+      for (boolean doDocScores : new boolean[] {false, true}) {
+        for (boolean doMaxScore : new boolean[] {false, true}) {
+          final TopFieldCollector topCollector = TopFieldCollector.create(sort, TestUtil.nextInt(random(), 1, 2), true, doDocScores, doMaxScore);
+          final Collector assertingCollector = new Collector() {
+            @Override
+            public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
+              final LeafCollector in = topCollector.getLeafCollector(context);
+              return new FilterLeafCollector(in) {
+                @Override
+                public void setScorer(final Scorer scorer) throws IOException {
+                  Scorer s = new Scorer(null) {
+
+                    int lastComputedDoc = -1;
+                    
+                    @Override
+                    public float score() throws IOException {
+                      if (lastComputedDoc == docID()) {
+                        throw new AssertionError("Score computed twice on " + docID());
+                      }
+                      lastComputedDoc = docID();
+                      return scorer.score();
+                    }
+
+                    @Override
+                    public int freq() throws IOException {
+                      return scorer.freq();
+                    }
+
+                    @Override
+                    public int docID() {
+                      return scorer.docID();
+                    }
+
+                    @Override
+                    public DocIdSetIterator iterator() {
+                      return scorer.iterator();
+                    }
+                    
+                  };
+                  super.setScorer(s);
+                }
+              };
+            }
+            @Override
+            public boolean needsScores() {
+              return topCollector.needsScores();
+            }
+          };
+          searcher.search(query, assertingCollector);
+        }
+      }
+    }
+    reader.close();
+    w.close();
+    dir.close();
+  }
+
 }

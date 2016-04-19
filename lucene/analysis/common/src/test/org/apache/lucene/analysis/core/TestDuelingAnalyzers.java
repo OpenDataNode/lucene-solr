@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.core;
+
 
 import java.io.Reader;
 import java.io.StringReader;
@@ -30,6 +30,7 @@ import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
+import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.automaton.Operations;
 import org.apache.lucene.util.automaton.CharacterRunAutomaton;
@@ -68,8 +69,8 @@ public class TestDuelingAnalyzers extends BaseTokenStreamTestCase {
     Analyzer left = new MockAnalyzer(random, jvmLetter, false);
     Analyzer right = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new LetterTokenizer(newAttributeFactory(), reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new LetterTokenizer(newAttributeFactory());
         return new TokenStreamComponents(tokenizer, tokenizer);
       }
     };
@@ -78,9 +79,10 @@ public class TestDuelingAnalyzers extends BaseTokenStreamTestCase {
       assertEquals(s, left.tokenStream("foo", newStringReader(s)), 
                    right.tokenStream("foo", newStringReader(s)));
     }
+    IOUtils.close(left, right);
   }
   
-  // not so useful since its all one token?!
+  // not so useful since it's all one token?!
   public void testLetterAsciiHuge() throws Exception {
     Random random = random();
     int maxLength = 8192; // CharTokenizer.IO_BUFFER_SIZE*2
@@ -88,8 +90,8 @@ public class TestDuelingAnalyzers extends BaseTokenStreamTestCase {
     left.setMaxTokenLength(255); // match CharTokenizer's max token length
     Analyzer right = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new LetterTokenizer(newAttributeFactory(), reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new LetterTokenizer(newAttributeFactory());
         return new TokenStreamComponents(tokenizer, tokenizer);
       }
     };
@@ -99,6 +101,7 @@ public class TestDuelingAnalyzers extends BaseTokenStreamTestCase {
       assertEquals(s, left.tokenStream("foo", newStringReader(s)), 
                    right.tokenStream("foo", newStringReader(s)));
     }
+    IOUtils.close(left, right);
   }
   
   public void testLetterHtmlish() throws Exception {
@@ -106,8 +109,8 @@ public class TestDuelingAnalyzers extends BaseTokenStreamTestCase {
     Analyzer left = new MockAnalyzer(random, jvmLetter, false);
     Analyzer right = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new LetterTokenizer(newAttributeFactory(), reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new LetterTokenizer(newAttributeFactory());
         return new TokenStreamComponents(tokenizer, tokenizer);
       }
     };
@@ -116,6 +119,7 @@ public class TestDuelingAnalyzers extends BaseTokenStreamTestCase {
       assertEquals(s, left.tokenStream("foo", newStringReader(s)), 
                    right.tokenStream("foo", newStringReader(s)));
     }
+    IOUtils.close(left, right);
   }
   
   public void testLetterHtmlishHuge() throws Exception {
@@ -125,8 +129,8 @@ public class TestDuelingAnalyzers extends BaseTokenStreamTestCase {
     left.setMaxTokenLength(255); // match CharTokenizer's max token length
     Analyzer right = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new LetterTokenizer(newAttributeFactory(), reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new LetterTokenizer(newAttributeFactory());
         return new TokenStreamComponents(tokenizer, tokenizer);
       }
     };
@@ -136,6 +140,7 @@ public class TestDuelingAnalyzers extends BaseTokenStreamTestCase {
       assertEquals(s, left.tokenStream("foo", newStringReader(s)), 
                    right.tokenStream("foo", newStringReader(s)));
     }
+    IOUtils.close(left, right);
   }
   
   public void testLetterUnicode() throws Exception {
@@ -143,8 +148,8 @@ public class TestDuelingAnalyzers extends BaseTokenStreamTestCase {
     Analyzer left = new MockAnalyzer(random(), jvmLetter, false);
     Analyzer right = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new LetterTokenizer(newAttributeFactory(), reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new LetterTokenizer(newAttributeFactory());
         return new TokenStreamComponents(tokenizer, tokenizer);
       }
     };
@@ -153,6 +158,7 @@ public class TestDuelingAnalyzers extends BaseTokenStreamTestCase {
       assertEquals(s, left.tokenStream("foo", newStringReader(s)), 
                    right.tokenStream("foo", newStringReader(s)));
     }
+    IOUtils.close(left, right);
   }
   
   public void testLetterUnicodeHuge() throws Exception {
@@ -162,8 +168,8 @@ public class TestDuelingAnalyzers extends BaseTokenStreamTestCase {
     left.setMaxTokenLength(255); // match CharTokenizer's max token length
     Analyzer right = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new LetterTokenizer(newAttributeFactory(), reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new LetterTokenizer(newAttributeFactory());
         return new TokenStreamComponents(tokenizer, tokenizer);
       }
     };
@@ -173,6 +179,7 @@ public class TestDuelingAnalyzers extends BaseTokenStreamTestCase {
       assertEquals(s, left.tokenStream("foo", newStringReader(s)), 
                    right.tokenStream("foo", newStringReader(s)));
     }
+    IOUtils.close(left, right);
   }
   
   // we only check a few core attributes here.
@@ -202,7 +209,7 @@ public class TestDuelingAnalyzers extends BaseTokenStreamTestCase {
     right.close();
   }
   
-  // TODO: maybe push this out to TestUtil or LuceneTestCase and always use it instead?
+  // TODO: maybe push this out to _TestUtil or LuceneTestCase and always use it instead?
   private static Reader newStringReader(String s) {
     Random random = random();
     Reader r = new StringReader(s);

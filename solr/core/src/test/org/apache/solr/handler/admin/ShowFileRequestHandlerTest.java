@@ -1,5 +1,3 @@
-package org.apache.solr.handler.admin;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,16 +14,16 @@ package org.apache.solr.handler.admin;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.admin;
 
-import org.apache.solr.client.solrj.ResponseParser;
 import org.apache.solr.SolrJettyTestBase;
-import org.apache.solr.client.solrj.SolrServer;
+import org.apache.solr.client.solrj.ResponseParser;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.client.solrj.response.QueryResponse;
-import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.SolrException;
-import org.apache.solr.util.ExternalPaths;
+import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.response.SolrQueryResponse;
 import org.junit.BeforeClass;
@@ -43,16 +41,16 @@ public class ShowFileRequestHandlerTest extends SolrJettyTestBase {
 
   @BeforeClass
   public static void beforeTest() throws Exception {
-    createJetty(ExternalPaths.EXAMPLE_HOME, null, null);
+    createJetty(legacyExampleCollection1SolrHome());
   }
 
-  public void test404ViaHttp() throws SolrServerException {
-    SolrServer server = getSolrServer();
+  public void test404ViaHttp() throws SolrServerException, IOException {
+    SolrClient client = getSolrClient();
     QueryRequest request = new QueryRequest(params("file",
                                                    "does-not-exist-404.txt"));
     request.setPath("/admin/file");
     try {
-      QueryResponse resp = request.process(server);
+      QueryResponse resp = request.process(client);
       fail("didn't get 404 exception");
     } catch (SolrException e) {
       assertEquals(404, e.code());
@@ -81,20 +79,20 @@ public class ShowFileRequestHandlerTest extends SolrJettyTestBase {
     }
   }
 
-  public void testDirList() throws SolrServerException {
-    SolrServer server = getSolrServer();
+  public void testDirList() throws SolrServerException, IOException {
+    SolrClient client = getSolrClient();
     //assertQ(req("qt", "/admin/file")); TODO file bug that SolrJettyTestBase extends SolrTestCaseJ4
     QueryRequest request = new QueryRequest();
     request.setPath("/admin/file");
-    QueryResponse resp = request.process(server);
+    QueryResponse resp = request.process(client);
     assertEquals(0,resp.getStatus());
     assertTrue(((NamedList) resp.getResponse().get("files")).size() > 0);//some files
   }
 
   public void testGetRawFile() throws SolrServerException, IOException {
-    SolrServer server = getSolrServer();
+    SolrClient client = getSolrClient();
     //assertQ(req("qt", "/admin/file")); TODO file bug that SolrJettyTestBase extends SolrTestCaseJ4
-    QueryRequest request = new QueryRequest(params("file","schema.xml"));
+    QueryRequest request = new QueryRequest(params("file", "managed-schema"));
     request.setPath("/admin/file");
     final AtomicBoolean readFile = new AtomicBoolean();
     request.setResponseParser(new ResponseParser() {
@@ -120,8 +118,8 @@ public class ShowFileRequestHandlerTest extends SolrJettyTestBase {
       }
     });
 
-    server.request( request );//runs request
-    //request.process(server); but we don't have a NamedList response
+    client.request(request);//runs request
+    //request.process(client); but we don't have a NamedList response
     assertTrue(readFile.get());
   }
 }

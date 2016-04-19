@@ -34,18 +34,16 @@
   <modules>
     <module>core</module>
     <module>solrj</module>
-    <module>webapp</module>
     <module>test-framework</module>
     <module>contrib</module>
   </modules>
   <properties>
-    <tests.luceneMatchVersion>LUCENE_CURRENT</tests.luceneMatchVersion>
     <module-directory>solr</module-directory>
   </properties>
   <scm>
-    <connection>scm:svn:${vc-anonymous-base-url}/${module-directory}</connection>
-    <developerConnection>scm:svn:${vc-dev-base-url}/${module-directory}</developerConnection>
-    <url>${vc-browse-base-url}/${module-directory}</url>
+    <connection>scm:git:${vc-anonymous-base-url}</connection>
+    <developerConnection>scm:git:${vc-dev-base-url}</developerConnection>
+    <url>${vc-browse-base-url};f=${module-directory}</url>
   </scm>
   <issueManagement>
     <system>JIRA</system>
@@ -105,7 +103,6 @@
           <artifactId>maven-surefire-plugin</artifactId>
           <configuration>
             <systemPropertyVariables>
-              <tests.jettyConnector>${tests.jettyConnector}</tests.jettyConnector>
               <tests.disableHdfs>${tests.disableHdfs}</tests.disableHdfs>
             </systemPropertyVariables>
           </configuration>
@@ -122,12 +119,17 @@
             <configuration>
               <!-- disallow undocumented classes like sun.misc.Unsafe: -->
               <internalRuntimeForbidden>true</internalRuntimeForbidden>
+              <!-- for simplicty with servlet-api and commons-io checks, disable this: -->
+              <failOnUnresolvableSignatures>false</failOnUnresolvableSignatures>
               <bundledSignatures>
                 <bundledSignature>jdk-unsafe</bundledSignature>
                 <bundledSignature>jdk-deprecated</bundledSignature>
+                <bundledSignature>commons-io-unsafe-@commons-io:commons-io.version@</bundledSignature>
               </bundledSignatures>
               <signaturesFiles>
                 <signaturesFile>${top-level}/lucene/tools/forbiddenApis/base.txt</signaturesFile>
+                <signaturesFile>${top-level}/lucene/tools/forbiddenApis/servlet-api.txt</signaturesFile>
+                <signaturesFile>${top-level}/lucene/tools/forbiddenApis/solr.txt</signaturesFile>
               </signaturesFiles>
             </configuration>
             <goals>
@@ -139,15 +141,18 @@
             <configuration>
               <!-- disallow undocumented classes like sun.misc.Unsafe: -->
               <internalRuntimeForbidden>true</internalRuntimeForbidden>
+              <!-- for simplicty with servlet-api and commons-io checks, disable this: -->
+              <failOnUnresolvableSignatures>false</failOnUnresolvableSignatures>
               <bundledSignatures>
                 <bundledSignature>jdk-unsafe</bundledSignature>
                 <bundledSignature>jdk-deprecated</bundledSignature>
-                <!-- Include commons-io-unsafe only in those modules with commons-io on their classpath -->
-                <!-- <bundledSignature>commons-io-unsafe-@commons-io:commons-io.version@</bundledSignature>       -->
+                <bundledSignature>commons-io-unsafe-@commons-io:commons-io.version@</bundledSignature>
               </bundledSignatures>
               <signaturesFiles>
-                <signaturesFile>${top-level}/lucene/tools/forbiddenApis/tests.txt</signaturesFile>
                 <signaturesFile>${top-level}/lucene/tools/forbiddenApis/base.txt</signaturesFile>
+                <signaturesFile>${top-level}/lucene/tools/forbiddenApis/servlet-api.txt</signaturesFile>
+                <signaturesFile>${top-level}/lucene/tools/forbiddenApis/solr.txt</signaturesFile>
+                <signaturesFile>${top-level}/lucene/tools/forbiddenApis/tests.txt</signaturesFile>
               </signaturesFiles>
             </configuration>
             <goals>

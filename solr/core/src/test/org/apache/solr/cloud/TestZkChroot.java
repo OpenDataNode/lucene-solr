@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,24 +14,24 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
-import java.io.File;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
+import org.apache.solr.SolrJettyTestBase;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.cloud.SolrZkClient;
+import org.apache.solr.common.cloud.ZkConfigManager;
 import org.apache.solr.common.cloud.ZooKeeperException;
 import org.apache.solr.core.CoreContainer;
-import org.apache.solr.util.ExternalPaths;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class TestZkChroot extends SolrTestCaseJ4 {
-  protected static Logger log = LoggerFactory.getLogger(TestZkChroot.class);
   protected CoreContainer cores = null;
-  private String home;
+  private Path home;
   
   protected ZkTestServer zkServer;
   protected String zkDir;
@@ -43,10 +41,10 @@ public class TestZkChroot extends SolrTestCaseJ4 {
   public void setUp() throws Exception {
     super.setUp();
 
-    zkDir = createTempDir("zkData").getAbsolutePath();
+    zkDir = createTempDir("zkData").toFile().getAbsolutePath();
     zkServer = new ZkTestServer(zkDir);
     zkServer.run();
-    home = ExternalPaths.EXAMPLE_HOME;
+    home = Paths.get(SolrJettyTestBase.legacyExampleCollection1SolrHome());
     
   }
   
@@ -78,7 +76,7 @@ public class TestZkChroot extends SolrTestCaseJ4 {
     SolrZkClient zkClient2 = null;
     
     try {
-      cores = CoreContainer.createAndLoad(home, new File(home, "solr.xml"));
+      cores = CoreContainer.createAndLoad(home);
       zkClient = cores.getZkController().getZkClient();
       
       assertTrue(zkClient.exists("/clusterstate.json", true));
@@ -109,7 +107,7 @@ public class TestZkChroot extends SolrTestCaseJ4 {
           AbstractZkTestCase.TIMEOUT);
       assertFalse("Path '" + chroot + "' should not exist before the test",
           zkClient.exists(chroot, true));
-      cores = CoreContainer.createAndLoad(home, new File(home, "solr.xml"));
+      cores = CoreContainer.createAndLoad(home);
       fail("There should be a zk exception, as the initial path doesn't exist");
     } catch (ZooKeeperException e) {
       // expected
@@ -137,10 +135,10 @@ public class TestZkChroot extends SolrTestCaseJ4 {
           AbstractZkTestCase.TIMEOUT);
       assertFalse("Path '" + chroot + "' should not exist before the test",
           zkClient.exists(chroot, true));
-      cores = CoreContainer.createAndLoad(home, new File(home, "solr.xml"));
+      cores = CoreContainer.createAndLoad(home);
       assertTrue(
           "solrconfig.xml should have been uploaded to zk to the correct config directory",
-          zkClient.exists(chroot + ZkController.CONFIGS_ZKNODE + "/"
+          zkClient.exists(chroot + ZkConfigManager.CONFIGS_ZKNODE + "/"
               + configName + "/solrconfig.xml", true));
     } finally {
       if (cores != null) cores.shutdown();
@@ -163,7 +161,7 @@ public class TestZkChroot extends SolrTestCaseJ4 {
       assertTrue(zkClient.exists(chroot, true));
       assertFalse(zkClient.exists(chroot + "/clusterstate.json", true));
       
-      cores = CoreContainer.createAndLoad(home, new File(home, "solr.xml"));
+      cores = CoreContainer.createAndLoad(home);
       assertTrue(zkClient.exists(chroot + "/clusterstate.json", true));
     } finally {
       if (cores != null) cores.shutdown();

@@ -1,5 +1,3 @@
-package org.apache.lucene.benchmark.byTask.utils;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.benchmark.byTask.utils;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.benchmark.byTask.utils;
+
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -30,11 +30,11 @@ import java.util.StringTokenizer;
 
 /**
  * Perf run configuration properties.
- * <p/>
+ * <p>
  * Numeric property containing ":", e.g. "10:100:5" is interpreted
  * as array of numeric values. It is extracted once, on first use, and
  * maintain a round number to return the appropriate value.
- * <p/>
+ * <p>
  * The config property "work.dir" tells where is the root of
  * docs data dirs and indexes dirs. It is set to either of: <ul>
  * <li>value supplied for it in the alg file;</li>

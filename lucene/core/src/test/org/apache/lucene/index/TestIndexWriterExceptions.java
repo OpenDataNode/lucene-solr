@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -24,18 +24,19 @@ import java.io.StringReader;
 import java.nio.file.NoSuchFileException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.CannedTokenStream;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
-import org.apache.lucene.analysis.Token;
 import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.document.BinaryDocValuesField;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -47,7 +48,6 @@ import org.apache.lucene.document.SortedSetDocValuesField;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.PhraseQuery;
@@ -57,15 +57,17 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
-import org.apache.lucene.store.MockDirectoryWrapper.FakeIOException;
 import org.apache.lucene.store.MockDirectoryWrapper;
+import org.apache.lucene.store.MockDirectoryWrapper.FakeIOException;
 import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.TestUtil;
 
+@SuppressCodecs("SimpleText") // too slow here
 public class TestIndexWriterExceptions extends LuceneTestCase {
 
   private static class DocCopyIterator implements Iterable<Document> {
@@ -88,7 +90,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       custom1.setStoreTermVectorOffsets(true);
       
       custom2.setStored(true);
-      custom2.setIndexed(true);
+      custom2.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
       
       custom3.setStored(true);
 
@@ -154,19 +156,13 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
 
       doc.add(newTextField(r, "content4", "aaa bbb ccc ddd", Field.Store.NO));
       doc.add(newStringField(r, "content5", "aaa bbb ccc ddd", Field.Store.NO));
-      if (defaultCodecSupportsDocValues()) {
-        doc.add(new NumericDocValuesField("numericdv", 5));
-        doc.add(new BinaryDocValuesField("binarydv", new BytesRef("hello")));
-        doc.add(new SortedDocValuesField("sorteddv", new BytesRef("world")));
-      }
-      if (defaultCodecSupportsSortedSet()) {
-        doc.add(new SortedSetDocValuesField("sortedsetdv", new BytesRef("hellllo")));
-        doc.add(new SortedSetDocValuesField("sortedsetdv", new BytesRef("again")));
-      }
-      if (defaultCodecSupportsSortedNumeric()) {
-        doc.add(new SortedNumericDocValuesField("sortednumericdv", 10));
-        doc.add(new SortedNumericDocValuesField("sortednumericdv", 5));
-      }
+      doc.add(new NumericDocValuesField("numericdv", 5));
+      doc.add(new BinaryDocValuesField("binarydv", new BytesRef("hello")));
+      doc.add(new SortedDocValuesField("sorteddv", new BytesRef("world")));
+      doc.add(new SortedSetDocValuesField("sortedsetdv", new BytesRef("hellllo")));
+      doc.add(new SortedSetDocValuesField("sortedsetdv", new BytesRef("again")));
+      doc.add(new SortedNumericDocValuesField("sortednumericdv", 10));
+      doc.add(new SortedNumericDocValuesField("sortednumericdv", 5));
 
       doc.add(newField(r, "content7", "aaa bbb ccc ddd", DocCopyIterator.custom4));
 
@@ -251,7 +247,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     MockAnalyzer analyzer = new MockAnalyzer(random());
     analyzer.setEnableChecks(false); // disable workflow checking as we forcefully close() in exceptional cases.
     
-    IndexWriter writer  = RandomIndexWriter.mockIndexWriter(dir, newIndexWriterConfig(analyzer)
+    IndexWriter writer  = RandomIndexWriter.mockIndexWriter(random(), dir, newIndexWriterConfig(analyzer)
                                                                    .setRAMBufferSizeMB(0.1)
                                                                    .setMergeScheduler(new ConcurrentMergeScheduler()), new TestPoint1());
     ((ConcurrentMergeScheduler) writer.getConfig().getMergeScheduler()).setSuppressExceptions();
@@ -295,7 +291,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     Directory dir = newDirectory();
     MockAnalyzer analyzer = new MockAnalyzer(random());
     analyzer.setEnableChecks(false); // disable workflow checking as we forcefully close() in exceptional cases.
-    IndexWriter writer  = RandomIndexWriter.mockIndexWriter(dir, newIndexWriterConfig(analyzer)
+    IndexWriter writer  = RandomIndexWriter.mockIndexWriter(random(), dir, newIndexWriterConfig(analyzer)
                                                  .setRAMBufferSizeMB(0.2)
                                                  .setMergeScheduler(new ConcurrentMergeScheduler()), new TestPoint1());
     ((ConcurrentMergeScheduler) writer.getConfig().getMergeScheduler()).setSuppressExceptions();
@@ -377,7 +373,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
   public void testExceptionDocumentsWriterInit() throws IOException {
     Directory dir = newDirectory();
     TestPoint2 testPoint = new TestPoint2();
-    IndexWriter w = RandomIndexWriter.mockIndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random())), testPoint);
+    IndexWriter w = RandomIndexWriter.mockIndexWriter(random(), dir, newIndexWriterConfig(new MockAnalyzer(random())), testPoint);
     Document doc = new Document();
     doc.add(newTextField("field", "a field", Field.Store.YES));
     w.addDocument(doc);
@@ -395,27 +391,35 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
   // LUCENE-1208
   public void testExceptionJustBeforeFlush() throws IOException {
     Directory dir = newDirectory();
-    IndexWriter w = RandomIndexWriter.mockIndexWriter(dir, 
-                                                      newIndexWriterConfig(new MockAnalyzer(random()))
+
+    final AtomicBoolean doCrash = new AtomicBoolean();
+
+    Analyzer analyzer = new Analyzer(Analyzer.PER_FIELD_REUSE_STRATEGY) {
+      @Override
+      public TokenStreamComponents createComponents(String fieldName) {
+        MockTokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+        tokenizer.setEnableChecks(false); // disable workflow checking as we forcefully close() in exceptional cases.
+        TokenStream stream = tokenizer;
+        if (doCrash.get()) {
+          stream = new CrashingFilter(fieldName, stream);
+        }
+        return new TokenStreamComponents(tokenizer, stream);
+      }
+    };
+
+    IndexWriter w = RandomIndexWriter.mockIndexWriter(random(), dir, 
+                                                      newIndexWriterConfig(analyzer)
                                                         .setMaxBufferedDocs(2), 
                                                       new TestPoint1());
     Document doc = new Document();
     doc.add(newTextField("field", "a field", Field.Store.YES));
     w.addDocument(doc);
 
-    Analyzer analyzer = new Analyzer(Analyzer.PER_FIELD_REUSE_STRATEGY) {
-      @Override
-      public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        MockTokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
-        tokenizer.setEnableChecks(false); // disable workflow checking as we forcefully close() in exceptional cases.
-        return new TokenStreamComponents(tokenizer, new CrashingFilter(fieldName, tokenizer));
-      }
-    };
-
     Document crashDoc = new Document();
     crashDoc.add(newTextField("crash", "do it on token 4", Field.Store.YES));
+    doCrash.set(true);
     try {
-      w.addDocument(crashDoc, analyzer);
+      w.addDocument(crashDoc);
       fail("did not hit expected exception");
     } catch (IOException ioe) {
       // expected
@@ -449,18 +453,23 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     conf.setMergeScheduler(cms);
     ((LogMergePolicy) conf.getMergePolicy()).setMergeFactor(2);
     TestPoint3 testPoint = new TestPoint3();
-    IndexWriter w = RandomIndexWriter.mockIndexWriter(dir, conf, testPoint);
+    IndexWriter w = RandomIndexWriter.mockIndexWriter(random(), dir, conf, testPoint);
     testPoint.doFail = true;
     Document doc = new Document();
     doc.add(newTextField("field", "a field", Field.Store.YES));
-    for(int i=0;i<10;i++)
+    for(int i=0;i<10;i++) {
       try {
         w.addDocument(doc);
       } catch (RuntimeException re) {
         break;
       }
+    }
 
-    ((ConcurrentMergeScheduler) w.getConfig().getMergeScheduler()).sync();
+    try {
+      ((ConcurrentMergeScheduler) w.getConfig().getMergeScheduler()).sync();
+    } catch (IllegalStateException ise) {
+      // OK: merge exc causes tragedy
+    }
     assertTrue(testPoint.failed);
     w.close();
     dir.close();
@@ -472,8 +481,8 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     IndexWriterConfig conf = newIndexWriterConfig(new Analyzer() {
 
       @Override
-      public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        MockTokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+      public TokenStreamComponents createComponents(String fieldName) {
+        MockTokenizer tokenizer = new MockTokenizer(MockTokenizer.SIMPLE, true);
         tokenizer.setEnableChecks(false); // disable workflow checking as we forcefully close() in exceptional cases.
         return new TokenStreamComponents(tokenizer, new TokenFilter(tokenizer) {
           private int count = 0;
@@ -525,16 +534,18 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
 
     // Make sure the doc that hit the exception was marked
     // as deleted:
-    DocsEnum tdocs = TestUtil.docs(random(), reader,
+    PostingsEnum tdocs = TestUtil.docs(random(), reader,
         t.field(),
         new BytesRef(t.text()),
-        MultiFields.getLiveDocs(reader),
         null,
         0);
 
+    final Bits liveDocs = MultiFields.getLiveDocs(reader);
     int count = 0;
     while(tdocs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
-      count++;
+      if (liveDocs == null || liveDocs.get(tdocs.docID())) {
+        count++;
+      }
     }
     assertEquals(2, count);
 
@@ -560,16 +571,9 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     public void eval(MockDirectoryWrapper dir)  throws IOException {
       if (doFail) {
         StackTraceElement[] trace = new Exception().getStackTrace();
-        boolean sawAppend = false;
         boolean sawFlush = false;
         boolean sawFinishDocument = false;
         for (int i = 0; i < trace.length; i++) {
-          if (sawAppend && sawFlush) {
-            break;
-          }
-          if (FreqProxTermsWriterPerField.class.getName().equals(trace[i].getClassName()) && "flush".equals(trace[i].getMethodName())) {
-            sawAppend = true;
-          }
           if ("flush".equals(trace[i].getMethodName())) {
             sawFlush = true;
           }
@@ -586,8 +590,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     }
   }
 
-  // LUCENE-1072: make sure an errant exception on flushing
-  // one segment only takes out those docs in that one flush
+  // make sure an aborting exception closes the writer:
   public void testDocumentsWriterAbort() throws IOException {
     MockDirectoryWrapper dir = newMockDirectory();
     FailOnlyOnFlush failure = new FailOnlyOnFlush();
@@ -600,28 +603,26 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     String contents = "aa bb cc dd ee ff gg hh ii jj kk";
     doc.add(newTextField("content", contents, Field.Store.NO));
     boolean hitError = false;
-    for(int i=0;i<200;i++) {
-      try {
-        writer.addDocument(doc);
-      } catch (IOException ioe) {
-        // only one flush should fail:
-        assertFalse(hitError);
-        hitError = true;
-      }
+    writer.addDocument(doc);
+    try {
+      writer.addDocument(doc);
+      fail("did not hit exception");
+    } catch (IOException ioe) {
+      // only one flush should fail:
+      assertFalse(hitError);
+      hitError = true;
+      assertTrue(writer.deleter.isClosed());
+      assertTrue(writer.isClosed());
     }
-    assertTrue(hitError);
-    writer.close();
-    IndexReader reader = DirectoryReader.open(dir);
-    assertEquals(198, reader.docFreq(new Term("content", "aa")));
-    reader.close();
+    assertFalse(DirectoryReader.indexExists(dir));
     dir.close();
   }
 
   public void testDocumentsWriterExceptions() throws IOException {
     Analyzer analyzer = new Analyzer(Analyzer.PER_FIELD_REUSE_STRATEGY) {
       @Override
-      public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        MockTokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+      public TokenStreamComponents createComponents(String fieldName) {
+        MockTokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
         tokenizer.setEnableChecks(false); // disable workflow checking as we forcefully close() in exceptional cases.
         return new TokenStreamComponents(tokenizer, new CrashingFilter(fieldName, tokenizer));
       }
@@ -716,8 +717,8 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
   public void testDocumentsWriterExceptionThreads() throws Exception {
     Analyzer analyzer = new Analyzer(Analyzer.PER_FIELD_REUSE_STRATEGY) {
       @Override
-      public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        MockTokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+      public TokenStreamComponents createComponents(String fieldName) {
+        MockTokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
         tokenizer.setEnableChecks(false); // disable workflow checking as we forcefully close() in exceptional cases.
         return new TokenStreamComponents(tokenizer, new CrashingFilter(fieldName, tokenizer));
       }
@@ -950,6 +951,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       MockDirectoryWrapper dir = newMockDirectory();
       dir.setFailOnCreateOutput(false);
       dir.setEnableVirusScanner(false); // we check for specific list of files
+      int fileCount = dir.listAll().length;
       IndexWriter w = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random())));
       Document doc = new Document();
       doc.add(newTextField("field", "a field", Field.Store.YES));
@@ -966,7 +968,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       assertTrue(failure.failOnCommit && failure.failOnDeleteFile);
       w.rollback();
       String files[] = dir.listAll();
-      assertTrue(files.length == 0 || Arrays.equals(files, new String[] { IndexWriter.WRITE_LOCK_NAME }));
+      assertTrue(files.length == fileCount || (files.length == fileCount+1 && Arrays.asList(files).contains(IndexWriter.WRITE_LOCK_NAME)));
       dir.close();
     }
   }
@@ -978,16 +980,17 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
                                .setMergePolicy(newLogMergePolicy());
     ((LogMergePolicy) conf.getMergePolicy()).setMergeFactor(100);
     IndexWriter w = new IndexWriter(startDir, conf);
-    for(int i=0;i<27;i++)
+    for(int i=0;i<27;i++) {
       addDoc(w);
+    }
     w.close();
 
     int iter = TEST_NIGHTLY ? 200 : 10;
     for(int i=0;i<iter;i++) {
       if (VERBOSE) {
-        System.out.println("TEST: iter " + i);
+        System.out.println("\nTEST: iter " + i);
       }
-      MockDirectoryWrapper dir = new MockDirectoryWrapper(random(), new RAMDirectory(startDir, newIOContext(random())));
+      MockDirectoryWrapper dir = new MockDirectoryWrapper(random(), TestUtil.ramCopyOf(startDir));
       conf = newIndexWriterConfig(new MockAnalyzer(random()))
                .setMergeScheduler(new ConcurrentMergeScheduler());
       ((ConcurrentMergeScheduler) conf.getMergeScheduler()).setSuppressExceptions();
@@ -995,12 +998,20 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       dir.setRandomIOExceptionRate(0.5);
       try {
         w.forceMerge(1);
+      } catch (IllegalStateException ise) {
+        // expected
       } catch (IOException ioe) {
-        if (ioe.getCause() == null)
+        if (ioe.getCause() == null) {
           fail("forceMerge threw IOException without root cause");
+        }
       }
       dir.setRandomIOExceptionRate(0);
-      w.close();
+      //System.out.println("TEST: now close IW");
+      try {
+        w.close();
+      } catch (IllegalStateException ise) {
+        // ok
+      }
       dir.close();
     }
     startDir.close();
@@ -1106,7 +1117,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
   public void testRollbackExceptionHang() throws Throwable {
     Directory dir = newDirectory();
     TestPoint4 testPoint = new TestPoint4();
-    IndexWriter w = RandomIndexWriter.mockIndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random())), testPoint);
+    IndexWriter w = RandomIndexWriter.mockIndexWriter(random(), dir, newIndexWriterConfig(new MockAnalyzer(random())), testPoint);
     
 
     addDoc(w);
@@ -1125,7 +1136,8 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
 
   // LUCENE-1044: Simulate checksum error in segments_N
   public void testSegmentsChecksumError() throws IOException {
-    Directory dir = newDirectory();
+    BaseDirectoryWrapper dir = newDirectory();
+    dir.setCheckIndexOnClose(false); // we corrupt the index
 
     IndexWriter writer = null;
 
@@ -1151,17 +1163,12 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     out.close();
     in.close();
 
-    IndexReader reader = null;
     try {
-      reader = DirectoryReader.open(dir);
-    } catch (IOException e) {
-      e.printStackTrace(System.out);
-      fail("segmentInfos failed to retry fallback to correct segments_N file");
+      DirectoryReader.open(dir);
+      fail("didn't get expected checksum error");
+    } catch (CorruptIndexException expected) {
     }
-    reader.close();
-    
-    // should remove the corrumpted segments_N
-    new IndexWriter(dir, newIndexWriterConfig(null)).close();
+
     dir.close();
   }
 
@@ -1217,7 +1224,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       dir.close();
   }
 
-  // Simulate a corrupt index by removing one of the cfs
+  // Simulate a corrupt index by removing one of the
   // files and make sure we get an IOException trying to
   // open the index:
   public void testSimulatedCorruptIndex2() throws IOException {
@@ -1250,17 +1257,19 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
 
     long gen = SegmentInfos.getLastCommitGeneration(dir);
     assertTrue("segment generation should be > 0 but got " + gen, gen > 0);
-
-    String[] files = dir.listAll();
+    
     boolean corrupted = false;
-    for(int i=0;i<files.length;i++) {
-      if (files[i].endsWith(".cfs")) {
-        dir.deleteFile(files[i]);
-        corrupted = true;
-        break;
-      }
+    SegmentInfos sis = SegmentInfos.readLatestCommit(dir);
+    for (SegmentCommitInfo si : sis) {
+      assertTrue(si.info.getUseCompoundFile());
+      List<String> victims = new ArrayList<String>(si.info.files());
+      Collections.shuffle(victims, random());
+      dir.deleteFile(victims.get(0));
+      corrupted = true;
+      break;
     }
-    assertTrue("failed to find cfs file to remove", corrupted);
+
+    assertTrue("failed to find cfs file to remove: ", corrupted);
 
     IndexReader reader = null;
     try {
@@ -1274,78 +1283,12 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     dir.close();
   }
 
-  // Simulate a writer that crashed while writing segments
-  // file: make sure we can still open the index (ie,
-  // gracefully fallback to the previous segments file),
-  // and that we can add to the index:
-  public void testSimulatedCrashedWriter() throws IOException {
-      Directory dir = newDirectory();
-      if (dir instanceof MockDirectoryWrapper) {
-        ((MockDirectoryWrapper)dir).setPreventDoubleWrite(false);
-      }
-
-      IndexWriter writer = null;
-
-      writer  = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random())));
-
-      // add 100 documents
-      for (int i = 0; i < 100; i++) {
-          addDoc(writer);
-      }
-
-      // close
-      writer.close();
-
-      long gen = SegmentInfos.getLastCommitGeneration(dir);
-      assertTrue("segment generation should be > 0 but got " + gen, gen > 0);
-
-      // Make the next segments file, with last byte
-      // missing, to simulate a writer that crashed while
-      // writing segments file:
-      String fileNameIn = SegmentInfos.getLastCommitSegmentsFileName(dir);
-      String fileNameOut = IndexFileNames.fileNameFromGeneration(IndexFileNames.SEGMENTS,
-                                                                 "",
-                                                                 1+gen);
-      IndexInput in = dir.openInput(fileNameIn, newIOContext(random()));
-      IndexOutput out = dir.createOutput(fileNameOut, newIOContext(random()));
-      long length = in.length();
-      for(int i=0;i<length-1;i++) {
-        out.writeByte(in.readByte());
-      }
-      in.close();
-      out.close();
-
-      IndexReader reader = null;
-      try {
-        reader = DirectoryReader.open(dir);
-      } catch (Exception e) {
-        fail("reader failed to open on a crashed index");
-      }
-      reader.close();
-
-      try {
-        writer  = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random()))
-                                         .setOpenMode(OpenMode.CREATE));
-      } catch (Exception e) {
-        e.printStackTrace(System.out);
-        fail("writer failed to open on a crashed index");
-      }
-
-      // add 100 documents
-      for (int i = 0; i < 100; i++) {
-          addDoc(writer);
-      }
-
-      // close
-      writer.close();
-      dir.close();
-  }
-
   public void testTermVectorExceptions() throws IOException {
     FailOnTermVectors[] failures = new FailOnTermVectors[] {
         new FailOnTermVectors(FailOnTermVectors.AFTER_INIT_STAGE),
         new FailOnTermVectors(FailOnTermVectors.INIT_STAGE), };
     int num = atLeast(1);
+    iters:
     for (int j = 0; j < num; j++) {
       for (FailOnTermVectors failure : failures) {
         MockDirectoryWrapper dir = newMockDirectory();
@@ -1354,14 +1297,19 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
         int numDocs = 10 + random().nextInt(30);
         for (int i = 0; i < numDocs; i++) {
           Document doc = new Document();
+          // random TV
           Field field = newTextField(random(), "field", "a field", Field.Store.YES);
           doc.add(field);
-          // random TV
           try {
             w.addDocument(doc);
             assertFalse(field.fieldType().storeTermVectors());
           } catch (RuntimeException e) {
             assertTrue(e.getMessage().startsWith(FailOnTermVectors.EXC_MSG));
+            // This is an aborting exception, so writer is closed:
+            assertTrue(w.deleter.isClosed());
+            assertTrue(w.isClosed());
+            dir.close();
+            continue iters;
           }
           if (random().nextInt(20) == 0) {
             w.commit();
@@ -1395,9 +1343,8 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
         w.close();
         IndexReader reader = DirectoryReader.open(dir);
         assertTrue(reader.numDocs() > 0);
-        SegmentInfos sis = new SegmentInfos();
-        sis.read(dir);
-        for(AtomicReaderContext context : reader.leaves()) {
+        SegmentInfos sis = SegmentInfos.readLatestCommit(dir);
+        for(LeafReaderContext context : reader.leaves()) {
           assertFalse(context.reader().getFieldInfos().hasVectors());
         }
         reader.close();
@@ -1454,7 +1401,8 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       if (docCount == 4) {
         Field f = newTextField("crash", "", Field.Store.NO);
         doc.add(f);
-        MockTokenizer tokenizer = new MockTokenizer(new StringReader("crash me on the 4th token"), MockTokenizer.WHITESPACE, false);
+        MockTokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+        tokenizer.setReader(new StringReader("crash me on the 4th token"));
         tokenizer.setEnableChecks(false); // disable workflow checking as we forcefully close() in exceptional cases.
         f.setTokenStream(new CrashingFilter("crash", tokenizer));
       }
@@ -1479,14 +1427,10 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     w.close();
 
     final IndexSearcher s = newSearcher(r);
-    PhraseQuery pq = new PhraseQuery();
-    pq.add(new Term("content", "silly"));
-    pq.add(new Term("content", "content"));
+    PhraseQuery pq = new PhraseQuery("content", "silly", "good");
     assertEquals(0, s.search(pq, 1).totalHits);
 
-    pq = new PhraseQuery();
-    pq.add(new Term("content", "good"));
-    pq.add(new Term("content", "content"));
+    pq = new PhraseQuery("content", "good", "content");
     assertEquals(numDocs1+numDocs2, s.search(pq, 1).totalHits);
     r.close();
     dir.close();
@@ -1533,7 +1477,8 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       if (docCount == crashAt) {
         Field f = newTextField("crash", "", Field.Store.NO);
         doc.add(f);
-        MockTokenizer tokenizer = new MockTokenizer(new StringReader("crash me on the 4th token"), MockTokenizer.WHITESPACE, false);
+        MockTokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+        tokenizer.setReader(new StringReader("crash me on the 4th token"));
         tokenizer.setEnableChecks(false); // disable workflow checking as we forcefully close() in exceptional cases.
         f.setTokenStream(new CrashingFilter("crash", tokenizer));
       }
@@ -1559,14 +1504,10 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     w.close();
 
     final IndexSearcher s = newSearcher(r);
-    PhraseQuery pq = new PhraseQuery();
-    pq.add(new Term("content", "silly"));
-    pq.add(new Term("content", "content"));
+    PhraseQuery pq = new PhraseQuery("content", "silly", "content");
     assertEquals(numDocs2, s.search(pq, 1).totalHits);
 
-    pq = new PhraseQuery();
-    pq.add(new Term("content", "good"));
-    pq.add(new Term("content", "content"));
+    pq = new PhraseQuery("content", "good", "content");
     assertEquals(numDocs1+numDocs3+numDocs4, s.search(pq, 1).totalHits);
     r.close();
     dir.close();
@@ -1576,7 +1517,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
   public void testNullStoredField() throws Exception {
     Directory dir = newDirectory();
     Analyzer analyzer = new MockAnalyzer(random());
-    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, analyzer));
+    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(analyzer));
     // add good document
     Document doc = new Document();
     iw.addDocument(doc);
@@ -1587,6 +1528,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       iw.addDocument(doc);
       fail("didn't get expected exception");
     } catch (IllegalArgumentException expected) {}
+    assertNull(iw.getTragicException());
     iw.close();
     // make sure we see our good doc
     DirectoryReader r = DirectoryReader.open(dir);
@@ -1599,7 +1541,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
   public void testNullStoredFieldReuse() throws Exception {
     Directory dir = newDirectory();
     Analyzer analyzer = new MockAnalyzer(random());
-    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, analyzer));
+    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(analyzer));
     // add good document
     Document doc = new Document();
     Field theField = new StoredField("foo", "hello");
@@ -1611,6 +1553,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       iw.addDocument(doc);
       fail("didn't get expected exception");
     } catch (IllegalArgumentException expected) {}
+    assertNull(iw.getTragicException());
     iw.close();
     // make sure we see our good doc
     DirectoryReader r = DirectoryReader.open(dir);
@@ -1623,7 +1566,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
   public void testNullStoredBytesField() throws Exception {
     Directory dir = newDirectory();
     Analyzer analyzer = new MockAnalyzer(random());
-    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, analyzer));
+    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(analyzer));
     // add good document
     Document doc = new Document();
     iw.addDocument(doc);
@@ -1636,6 +1579,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       iw.addDocument(doc);
       fail("didn't get expected exception");
     } catch (NullPointerException expected) {}
+    assertNull(iw.getTragicException());
     iw.close();
     // make sure we see our good doc
     DirectoryReader r = DirectoryReader.open(dir);
@@ -1648,7 +1592,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
   public void testNullStoredBytesFieldReuse() throws Exception {
     Directory dir = newDirectory();
     Analyzer analyzer = new MockAnalyzer(random());
-    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, analyzer));
+    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(analyzer));
     // add good document
     Document doc = new Document();
     Field theField = new StoredField("foo", new BytesRef("hello").bytes);
@@ -1661,6 +1605,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       iw.addDocument(doc);
       fail("didn't get expected exception");
     } catch (NullPointerException expected) {}
+    assertNull(iw.getTragicException());
     iw.close();
     // make sure we see our good doc
     DirectoryReader r = DirectoryReader.open(dir);
@@ -1673,7 +1618,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
   public void testNullStoredBytesRefField() throws Exception {
     Directory dir = newDirectory();
     Analyzer analyzer = new MockAnalyzer(random());
-    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, analyzer));
+    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(analyzer));
     // add good document
     Document doc = new Document();
     iw.addDocument(doc);
@@ -1686,6 +1631,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       iw.addDocument(doc);
       fail("didn't get expected exception");
     } catch (IllegalArgumentException expected) {}
+    assertNull(iw.getTragicException());
     iw.close();
     // make sure we see our good doc
     DirectoryReader r = DirectoryReader.open(dir);
@@ -1698,7 +1644,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
   public void testNullStoredBytesRefFieldReuse() throws Exception {
     Directory dir = newDirectory();
     Analyzer analyzer = new MockAnalyzer(random());
-    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, analyzer));
+    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(analyzer));
     // add good document
     Document doc = new Document();
     Field theField = new StoredField("foo", new BytesRef("hello"));
@@ -1711,6 +1657,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       iw.addDocument(doc);
       fail("didn't get expected exception");
     } catch (IllegalArgumentException expected) {}
+    assertNull(iw.getTragicException());
     iw.close();
     // make sure we see our good doc
     DirectoryReader r = DirectoryReader.open(dir);
@@ -1723,8 +1670,8 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     Directory dir = newDirectory();
     Analyzer analyzer = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        return new TokenStreamComponents(new MockTokenizer(reader, MockTokenizer.KEYWORD, false));
+      protected TokenStreamComponents createComponents(String fieldName) {
+        return new TokenStreamComponents(new MockTokenizer(MockTokenizer.KEYWORD, false));
       }
 
       @Override
@@ -1732,7 +1679,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
         return -2;
       }
     };
-    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, analyzer));
+    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(analyzer));
     // add good document
     Document doc = new Document();
     iw.addDocument(doc);
@@ -1742,6 +1689,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       iw.addDocument(doc);
       fail("didn't get expected exception");
     } catch (IllegalArgumentException expected) {}
+    assertNull(iw.getTragicException());
     iw.close();
 
     // make sure we see our good doc
@@ -1761,7 +1709,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       if (doFail && name.startsWith("segments_")) {
         StackTraceElement[] trace = new Exception().getStackTrace();
         for (int i = 0; i < trace.length; i++) {
-          if ("read".equals(trace[i].getMethodName())) {
+          if ("readCommit".equals(trace[i].getMethodName()) || "readLatestCommit".equals(trace[i].getMethodName())) {
             throw new UnsupportedOperationException("expected UOE");
           }
         }
@@ -1786,52 +1734,10 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     uoe.doFail = false;
     d.close();
   }
-  
-  public void testIllegalPositions() throws Exception {
-    Directory dir = newDirectory();
-    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(null));
-    Document doc = new Document();
-    Token t1 = new Token("foo", 0, 3);
-    t1.setPositionIncrement(Integer.MAX_VALUE);
-    Token t2 = new Token("bar", 4, 7);
-    t2.setPositionIncrement(200);
-    TokenStream overflowingTokenStream = new CannedTokenStream(
-        new Token[] { t1, t2 }
-    );
-    Field field = new TextField("foo", overflowingTokenStream);
-    doc.add(field);
-    try {
-      iw.addDocument(doc);
-      fail();
-    } catch (IllegalArgumentException expected) {
-      // expected exception
-    }
-    iw.close();
-    dir.close();
-  }
-  
-  public void testLegalbutVeryLargePositions() throws Exception {
-    Directory dir = newDirectory();
-    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(null));
-    Document doc = new Document();
-    Token t1 = new Token("foo", 0, 3);
-    t1.setPositionIncrement(Integer.MAX_VALUE-500);
-    if (random().nextBoolean()) {
-      t1.setPayload(new BytesRef(new byte[] { 0x1 } ));
-    }
-    TokenStream overflowingTokenStream = new CannedTokenStream(
-        new Token[] { t1 }
-    );
-    Field field = new TextField("foo", overflowingTokenStream);
-    doc.add(field);
-    iw.addDocument(doc);
-    iw.close();
-    dir.close();
-  }
-  
+
   public void testBoostOmitNorms() throws Exception {
     Directory dir = newDirectory();
-    IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig iwc = new IndexWriterConfig(new MockAnalyzer(random()));
     iwc.setMergePolicy(newLogMergePolicy());
     IndexWriter iw = new IndexWriter(dir, iwc);
     Document doc = new Document();
@@ -1881,7 +1787,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
         }
 
         @Override
-        public TokenStream tokenStream(Analyzer analyzer, TokenStream reuse) throws IOException {
+        public TokenStream tokenStream(Analyzer analyzer, TokenStream reuse) {
           return null;
         }
       });
@@ -1890,7 +1796,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     } catch (UnsupportedOperationException expected) {
       // expected
     }
-    DirectoryReader ir = DirectoryReader.open(iw, false);
+    DirectoryReader ir = DirectoryReader.open(iw);
     assertEquals(1, ir.numDocs());
     assertEquals("sometext", ir.document(0).get("field1"));
     ir.close();
@@ -1927,7 +1833,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     dir.failOn(failure);
 
     // Create an index with one document
-    IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig iwc = new IndexWriterConfig(new MockAnalyzer(random()));
     IndexWriter iw = new IndexWriter(dir, iwc);
     Document doc = new Document();
     doc.add(new StringField("foo", "bar", Field.Store.NO));
@@ -1941,9 +1847,12 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     // Open and close the index a few times
     for (int i = 0; i < 10; i++) {
       failure.setDoFail();
-      iwc = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+      iwc = new IndexWriterConfig(new MockAnalyzer(random()));
       try {
         iw = new IndexWriter(dir, iwc);
+      } catch (AssertionError ex) {
+        // This is fine: we tripped IW's assert that all files it's about to fsync do exist:
+        assertTrue(ex.getMessage().matches("file .* does not exist; files=\\[.*\\]"));
       } catch (CorruptIndexException ex) {
         // Exceptions are fine - we are running out of file handlers here
         continue;
@@ -1970,7 +1879,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
   // full), and then the exception stops (e.g., disk frees
   // up), so we successfully close IW or open an NRT
   // reader, we don't lose any deletes or updates:
-  public void testNoLostDeletesOrUpdates() throws Exception {
+  public void testNoLostDeletesOrUpdates() throws Throwable {
     int deleteCount = 0;
     int docBase = 0;
     int docCount = 0;
@@ -1981,11 +1890,19 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       
       @Override
       public void eval(MockDirectoryWrapper dir) throws IOException {
-        StackTraceElement[] trace = new Exception().getStackTrace();
         if (shouldFail.get() == false) {
+          // Only sometimes throw the exc, so we get
+          // it sometimes on creating the file, on
+          // flushing buffer, on closing the file:
           return;
         }
         
+        if (random().nextInt(3) != 2) {
+          return;
+        }
+
+        StackTraceElement[] trace = Thread.currentThread().getStackTrace();
+
         boolean sawSeal = false;
         boolean sawWrite = false;
         for (int i = 0; i < trace.length; i++) {
@@ -2000,10 +1917,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
         
         // Don't throw exc if we are "flushing", else
         // the segment is aborted and docs are lost:
-        if (sawWrite && sawSeal == false && random().nextInt(3) == 2) {
-          // Only sometimes throw the exc, so we get
-          // it sometimes on creating the file, on
-          // flushing buffer, on closing the file:
+        if (sawWrite && sawSeal == false) {
           if (VERBOSE) {
             System.out.println("TEST: now fail; thread=" + Thread.currentThread().getName() + " exc:");
             new Throwable().printStackTrace(System.out);
@@ -2016,6 +1930,8 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     
     RandomIndexWriter w = null;
 
+    boolean tragic = false;
+
     for(int iter=0;iter<10*RANDOM_MULTIPLIER;iter++) {
       int numDocs = atLeast(100);
       if (VERBOSE) {
@@ -2023,23 +1939,6 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       }
       if (w == null) {
         IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random()));
-        final MergeScheduler ms = iwc.getMergeScheduler();
-        if (ms instanceof ConcurrentMergeScheduler) {
-          final ConcurrentMergeScheduler suppressFakeIOE = new ConcurrentMergeScheduler() {
-              @Override
-              protected void handleMergeException(Throwable exc) {
-                // suppress only FakeIOException:
-                if (!(exc instanceof FakeIOException)) {
-                  super.handleMergeException(exc);
-                }
-              }
-            };
-          final ConcurrentMergeScheduler cms = (ConcurrentMergeScheduler) ms;
-          suppressFakeIOE.setMaxMergesAndThreads(cms.getMaxMergeCount(), cms.getMaxThreadCount());
-          suppressFakeIOE.setMergeThreadPriority(cms.getMergeThreadPriority());
-          iwc.setMergeScheduler(suppressFakeIOE);
-        }
-        
         w = new RandomIndexWriter(random(), dir, iwc);
         // Since we hit exc during merging, a partial
         // forceMerge can easily return when there are still
@@ -2049,12 +1948,10 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       for(int i=0;i<numDocs;i++) {
         Document doc = new Document();
         doc.add(new StringField("id", ""+(docBase+i), Field.Store.NO));
-        if (defaultCodecSupportsDocValues()) {
-          doc.add(new NumericDocValuesField("f", 1L));
-          doc.add(new NumericDocValuesField("cf", 2L));
-          doc.add(new BinaryDocValuesField("bf", TestBinaryDocValuesUpdates.toBytes(1L)));
-          doc.add(new BinaryDocValuesField("bcf", TestBinaryDocValuesUpdates.toBytes(2L)));
-        }
+        doc.add(new NumericDocValuesField("f", 1L));
+        doc.add(new NumericDocValuesField("cf", 2L));
+        doc.add(new BinaryDocValuesField("bf", TestBinaryDocValuesUpdates.toBytes(1L)));
+        doc.add(new BinaryDocValuesField("bcf", TestBinaryDocValuesUpdates.toBytes(2L)));
         w.addDocument(doc);
       }
       docCount += numDocs;
@@ -2068,10 +1965,9 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       shouldFail.set(true);
       boolean doClose = false;
       try {
-        boolean defaultCodecSupportsFieldUpdates = defaultCodecSupportsFieldUpdates();
         for(int i=0;i<numDocs;i++) {
           if (random().nextInt(10) == 7) {
-            boolean fieldUpdate = defaultCodecSupportsFieldUpdates && random().nextBoolean();
+            boolean fieldUpdate = random().nextBoolean();
             int docid = docBase + i;
             if (fieldUpdate) {
               long value = iter;
@@ -2105,7 +2001,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
         }
 
         // Trigger writeLiveDocs + writeFieldUpdates so we hit fake exc:
-        IndexReader r = w.getReader(true);
+        IndexReader r = w.getReader();
 
         // Sometimes we will make it here (we only randomly
         // throw the exc):
@@ -2123,20 +2019,37 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
           w = null;
         }
 
-      } catch (IOException ioe) {
+      } catch (Throwable t) {
         // FakeIOException can be thrown from mergeMiddle, in which case IW
         // registers it before our CMS gets to suppress it. IW.forceMerge later
         // throws it as a wrapped IOE, so don't fail in this case.
-        if (ioe instanceof FakeIOException || (ioe.getCause() != null && ioe.getCause() instanceof FakeIOException)) {
+        if (t instanceof FakeIOException || (t.getCause() instanceof FakeIOException)) {
           // expected
           if (VERBOSE) {
-            System.out.println("TEST: w.close() hit expected IOE");
+            System.out.println("TEST: hit expected IOE");
+          }
+          if (t instanceof AlreadyClosedException) {
+            // FakeIOExc struck during merge and writer is now closed:
+            w = null;
+            tragic = true;
           }
         } else {
-          throw ioe;
+          throw t;
         }
       }
       shouldFail.set(false);
+
+      if (w != null) {
+        MergeScheduler ms = w.w.getConfig().getMergeScheduler();
+        if (ms instanceof ConcurrentMergeScheduler) {
+          ((ConcurrentMergeScheduler) ms).sync();
+        }
+
+        if (w.w.getTragicException() != null) {
+          // Tragic exc in CMS closed the writer
+          w = null;
+        }
+      }
 
       IndexReader r;
 
@@ -2164,20 +2077,21 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
         }
         r = w.getReader();
       }
-      assertEquals(docCount-deleteCount, r.numDocs());
-      if (defaultCodecSupportsDocValues()) {
-        for (AtomicReaderContext context : r.leaves()) {
-          AtomicReader reader = context.reader();
-          Bits liveDocs = reader.getLiveDocs();
-          NumericDocValues f = reader.getNumericDocValues("f");
-          NumericDocValues cf = reader.getNumericDocValues("cf");
-          BinaryDocValues bf = reader.getBinaryDocValues("bf");
-          BinaryDocValues bcf = reader.getBinaryDocValues("bcf");
-          for (int i = 0; i < reader.maxDoc(); i++) {
-            if (liveDocs == null || liveDocs.get(i)) {
-              assertEquals("doc=" + (docBase + i), cf.get(i), f.get(i) * 2);
-              assertEquals("doc=" + (docBase + i), TestBinaryDocValuesUpdates.getValue(bcf, i), TestBinaryDocValuesUpdates.getValue(bf, i) * 2);
-            }
+      if (tragic == false) {
+        assertEquals(docCount-deleteCount, r.numDocs());
+      }
+      BytesRef scratch = new BytesRef();
+      for (LeafReaderContext context : r.leaves()) {
+        LeafReader reader = context.reader();
+        Bits liveDocs = reader.getLiveDocs();
+        NumericDocValues f = reader.getNumericDocValues("f");
+        NumericDocValues cf = reader.getNumericDocValues("cf");
+        BinaryDocValues bf = reader.getBinaryDocValues("bf");
+        BinaryDocValues bcf = reader.getBinaryDocValues("bcf");
+        for (int i = 0; i < reader.maxDoc(); i++) {
+          if (liveDocs == null || liveDocs.get(i)) {
+            assertEquals("doc=" + (docBase + i), cf.get(i), f.get(i) * 2);
+            assertEquals("doc=" + (docBase + i), TestBinaryDocValuesUpdates.getValue(bcf, i), TestBinaryDocValuesUpdates.getValue(bf, i) * 2);
           }
         }
       }
@@ -2201,10 +2115,54 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     }
 
     // Final verify:
-    IndexReader r = DirectoryReader.open(dir);
-    assertEquals(docCount-deleteCount, r.numDocs());
-    r.close();
+    if (tragic == false) {
+      IndexReader r = DirectoryReader.open(dir);
+      assertEquals(docCount-deleteCount, r.numDocs());
+      r.close();
+    }
 
+    dir.close();
+  }
+  
+  // kind of slow, but omits positions, so just CPU
+  @Nightly
+  public void testTooManyTokens() throws Exception {
+    Directory dir = newDirectory();
+    IndexWriter iw = new IndexWriter(dir, newIndexWriterConfig(null));
+    Document doc = new Document();
+    FieldType ft = new FieldType(TextField.TYPE_NOT_STORED);
+    ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS);
+    doc.add(new Field("foo", new TokenStream() {
+      CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
+      PositionIncrementAttribute posIncAtt = addAttribute(PositionIncrementAttribute.class);
+      long num = 0;
+      
+      @Override
+      public boolean incrementToken() throws IOException {
+        if (num == Integer.MAX_VALUE + 1) {
+          return false;
+        }
+        clearAttributes();
+        if (num == 0) {
+          posIncAtt.setPositionIncrement(1);
+        } else {
+          posIncAtt.setPositionIncrement(0);
+        }
+        termAtt.append("a");
+        num++;
+        if (VERBOSE && num % 1000000 == 0) {
+          System.out.println("indexed: " + num);
+        }
+        return true;
+      }
+    }, ft));
+    try {
+      iw.addDocument(doc);
+      fail("didn't hit exception");
+    } catch (IllegalArgumentException expected) {
+      assertTrue(expected.getMessage().contains("too many tokens"));
+    }
+    iw.close();
     dir.close();
   }
   
@@ -2232,9 +2190,11 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     };
     
     Directory dir = newMockDirectory(); // we want to ensure we don't leak any locks or file handles
-    IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT, null);
+    IndexWriterConfig iwc = new IndexWriterConfig(null);
     iwc.setInfoStream(evilInfoStream);
     IndexWriter iw = new IndexWriter(dir, iwc);
+    // TODO: cutover to RandomIndexWriter.mockIndexWriter?
+    iw.enableTestPoints = true;
     Document doc = new Document();
     for (int i = 0; i < 10; i++) {
       iw.addDocument(doc);
@@ -2244,7 +2204,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     iw.addDocument(doc);
     
     // pool readers
-    DirectoryReader r = DirectoryReader.open(iw, false);
+    DirectoryReader r = DirectoryReader.open(iw);
 
     // sometimes sneak in a pending commit: we don't want to leak a file handle to that segments_N
     if (random().nextBoolean()) {
@@ -2262,7 +2222,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
     
     // even though we hit exception: we are closed, no locks or files held, index in good state
     assertTrue(iw.isClosed());
-    assertFalse(IndexWriter.isLocked(dir));
+    dir.obtainLock(IndexWriter.WRITE_LOCK_NAME).close();
     
     r = DirectoryReader.open(dir);
     assertEquals(10, r.maxDoc());
@@ -2281,8 +2241,11 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
         
         @Override
         public void eval(MockDirectoryWrapper dir) throws IOException {
+          if (random().nextInt(10) != 0) {
+            return;
+          }
           boolean maybeFail = false;
-          StackTraceElement[] trace = new Exception().getStackTrace();
+          StackTraceElement[] trace = Thread.currentThread().getStackTrace();
           
           for (int i = 0; i < trace.length; i++) {
             if ("rollbackInternal".equals(trace[i].getMethodName())) {
@@ -2291,7 +2254,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
             }
           }
           
-          if (maybeFail && random().nextInt(10) == 0) {
+          if (maybeFail) {
             if (VERBOSE) {
               System.out.println("TEST: now fail; thread=" + Thread.currentThread().getName() + " exc:");
               new Throwable().printStackTrace(System.out);
@@ -2301,7 +2264,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
         }
       });
       
-      IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT, null);
+      IndexWriterConfig iwc = new IndexWriterConfig(null);
       IndexWriter iw = new IndexWriter(dir, iwc);
       Document doc = new Document();
       for (int i = 0; i < 10; i++) {
@@ -2312,7 +2275,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       iw.addDocument(doc);
       
       // pool readers
-      DirectoryReader r = DirectoryReader.open(iw, false);
+      DirectoryReader r = DirectoryReader.open(iw);
       
       // sometimes sneak in a pending commit: we don't want to leak a file handle to that segments_N
       if (random().nextBoolean()) {
@@ -2328,7 +2291,7 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       
       // even though we hit exception: we are closed, no locks or files held, index in good state
       assertTrue(iw.isClosed());
-      assertFalse(IndexWriter.isLocked(dir));
+      dir.obtainLock(IndexWriter.WRITE_LOCK_NAME).close();
       
       r = DirectoryReader.open(dir);
       assertEquals(10, r.maxDoc());
@@ -2337,5 +2300,80 @@ public class TestIndexWriterExceptions extends LuceneTestCase {
       // no leaks
       dir.close();
     }
+  }
+
+  public void testMergeExceptionIsTragic() throws Exception {
+    MockDirectoryWrapper dir = newMockDirectory();
+    final AtomicBoolean didFail = new AtomicBoolean();
+    dir.failOn(new MockDirectoryWrapper.Failure() {
+        
+        @Override
+        public void eval(MockDirectoryWrapper dir) throws IOException {
+          if (random().nextInt(10) != 0) {
+            return;
+          }
+          if (didFail.get()) {
+            // Already failed
+            return;
+          }
+          StackTraceElement[] trace = Thread.currentThread().getStackTrace();
+          
+          for (int i = 0; i < trace.length; i++) {
+            if ("merge".equals(trace[i].getMethodName())) {
+              if (VERBOSE) {
+                System.out.println("TEST: now fail; thread=" + Thread.currentThread().getName() + " exc:");
+                new Throwable().printStackTrace(System.out);
+              }
+              didFail.set(true);
+              throw new FakeIOException();
+            }
+          }
+        }
+      });
+
+    IndexWriterConfig iwc = newIndexWriterConfig();
+    MergePolicy mp = iwc.getMergePolicy();
+    if (mp instanceof TieredMergePolicy) {
+      TieredMergePolicy tmp = (TieredMergePolicy) mp;
+      if (tmp.getMaxMergedSegmentMB() < 0.2) {
+        tmp.setMaxMergedSegmentMB(0.2);
+      }
+    }
+    MergeScheduler ms = iwc.getMergeScheduler();
+    if (ms instanceof ConcurrentMergeScheduler) {
+      ((ConcurrentMergeScheduler) ms).setSuppressExceptions();
+    }
+    IndexWriter w = new IndexWriter(dir, iwc);
+
+    while (true) {
+      try {
+        Document doc = new Document();
+        doc.add(newStringField("field", "string", Field.Store.NO));
+        w.addDocument(doc);
+        if (random().nextInt(10) == 7) {
+          // Flush new segment:
+          DirectoryReader.open(w).close();
+        }
+      } catch (AlreadyClosedException ace) {
+        // OK: e.g. CMS hit the exc in BG thread and closed the writer
+        break;
+      } catch (FakeIOException fioe) {
+        // OK: e.g. SMS hit the exception
+        break;
+      }
+    }
+
+    assertNotNull(w.getTragicException());
+    assertFalse(w.isOpen());
+    assertTrue(didFail.get());
+
+    if (ms instanceof ConcurrentMergeScheduler) {
+      // Sneaky: CMS's merge thread will be concurrently rolling back IW due
+      // to the tragedy, with this main thread, so we have to wait here
+      // to ensure the rollback has finished, else MDW still sees open files:
+      ((ConcurrentMergeScheduler) ms).sync();
+    }
+
+    dir.close();
   }
 }

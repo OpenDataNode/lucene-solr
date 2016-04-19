@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -60,7 +60,7 @@ public abstract class LogMergePolicy extends MergePolicy {
    *  or larger will never be merged.  @see setMaxMergeDocs */
   public static final int DEFAULT_MAX_MERGE_DOCS = Integer.MAX_VALUE;
 
-  /** Default noCFSRatio.  If a merge's size is >= 10% of
+  /** Default noCFSRatio.  If a merge's size is {@code >= 10%} of
    *  the index, then we disable compound file for it.
    *  @see MergePolicy#setNoCFSRatio */
   public static final double DEFAULT_NO_CFS_RATIO = 0.1;
@@ -124,8 +124,8 @@ public abstract class LogMergePolicy extends MergePolicy {
    * faster, but indexing speed is slower.  With larger
    * values, more RAM is used during indexing, and while
    * searches is slower, indexing is
-   * faster.  Thus larger values (> 10) are best for batch
-   * index creation, and smaller values (< 10) for indices
+   * faster.  Thus larger values ({@code > 10}) are best for batch
+   * index creation, and smaller values ({@code < 10}) for indices
    * that are interactively maintained. */
   public void setMergeFactor(int mergeFactor) {
     if (mergeFactor < 2)
@@ -152,10 +152,10 @@ public abstract class LogMergePolicy extends MergePolicy {
   protected long sizeDocs(SegmentCommitInfo info, IndexWriter writer) throws IOException {
     if (calibrateSizeByDeletes) {
       int delCount = writer.numDeletedDocs(info);
-      assert delCount <= info.info.getDocCount();
-      return (info.info.getDocCount() - (long)delCount);
+      assert delCount <= info.info.maxDoc();
+      return (info.info.maxDoc() - (long)delCount);
     } else {
-      return info.info.getDocCount();
+      return info.info.maxDoc();
     }
   }
 
@@ -462,7 +462,7 @@ public abstract class LogMergePolicy extends MergePolicy {
 
     // Compute levels, which is just log (base mergeFactor)
     // of the size of each segment
-    final List<SegmentInfoAndLevel> levels = new ArrayList<>();
+    final List<SegmentInfoAndLevel> levels = new ArrayList<>(numSegments);
     final float norm = (float) Math.log(mergeFactor);
 
     final Collection<SegmentCommitInfo> mergingSegments = writer.getMergingSegments();
@@ -564,7 +564,7 @@ public abstract class LogMergePolicy extends MergePolicy {
         } else if (!anyTooLarge) {
           if (spec == null)
             spec = new MergeSpecification();
-          final List<SegmentCommitInfo> mergeInfos = new ArrayList<>();
+          final List<SegmentCommitInfo> mergeInfos = new ArrayList<>(end-start);
           for(int i=start;i<end;i++) {
             mergeInfos.add(levels.get(i).info);
             assert infos.contains(levels.get(i).info);

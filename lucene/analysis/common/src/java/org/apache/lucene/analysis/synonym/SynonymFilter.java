@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.synonym;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.synonym;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.synonym;
+
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -50,15 +50,15 @@ import org.apache.lucene.util.fst.FST;
  * For example if you have these rules:
  *      
  * <pre>
- *   a -> x
- *   a b -> y
- *   b c d -> z
+ *   a -&gt; x
+ *   a b -&gt; y
+ *   b c d -&gt; z
  * </pre>
  *
  * Then input <code>a b c d e</code> parses to <code>y b c
  * d</code>, ie the 2nd rule "wins" because it started
  * earliest and matched the most input tokens of other rules
- * starting at that point.</p>
+ * starting at that point.
  *
  * <p>A future improvement to this filter could allow
  * non-greedy parsing, such that the 3rd rule would win, and
@@ -258,7 +258,7 @@ public final class SynonymFilter extends TokenFilter {
    * @param input input tokenstream
    * @param synonyms synonym map
    * @param ignoreCase case-folds input for matching with {@link Character#toLowerCase(int)}.
-   *                   Note, if you set this to true, its your responsibility to lowercase
+   *                   Note, if you set this to true, it's your responsibility to lowercase
    *                   the input entries when you create the {@link SynonymMap}
    */
   public SynonymFilter(TokenStream input, SynonymMap synonyms, boolean ignoreCase) {

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.icu;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.icu;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.icu;
+
 
 import java.io.Reader;
 import java.io.StringReader;
@@ -32,7 +32,7 @@ public class TestICUFoldingFilterFactory extends BaseTokenStreamTestCase {
   public void test() throws Exception {
     Reader reader = new StringReader("Résumé");
     ICUFoldingFilterFactory factory = new ICUFoldingFilterFactory(new HashMap<String,String>());
-    TokenStream stream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream stream = whitespaceMockTokenizer(reader);
     stream = factory.create(stream);
     assertTokenStreamContents(stream, new String[] { "resume" });
   }

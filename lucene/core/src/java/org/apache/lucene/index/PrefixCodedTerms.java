@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,13 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
-import java.util.Iterator;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Objects;
 
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.RAMFile;
@@ -27,73 +29,35 @@ import org.apache.lucene.store.RAMOutputStream;
 import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
+import org.apache.lucene.util.RamUsageEstimator;
 
 /**
  * Prefix codes term instances (prefixes are shared)
- * @lucene.experimental
+ * @lucene.internal
  */
-class PrefixCodedTerms implements Iterable<Term>, Accountable {
+public class PrefixCodedTerms implements Accountable {
   final RAMFile buffer;
-  
-  private PrefixCodedTerms(RAMFile buffer) {
-    this.buffer = buffer;
+  private final long size;
+  private long delGen;
+
+  private PrefixCodedTerms(RAMFile buffer, long size) {
+    this.buffer = Objects.requireNonNull(buffer);
+    this.size = size;
   }
 
   @Override
   public long ramBytesUsed() {
-    return buffer.ramBytesUsed();
+    return buffer.ramBytesUsed() + 2 * RamUsageEstimator.NUM_BYTES_LONG;
   }
   
-  /** @return iterator over the bytes */
   @Override
-  public Iterator<Term> iterator() {
-    return new PrefixCodedTermsIterator();
+  public Collection<Accountable> getChildResources() {
+    return Collections.emptyList();
   }
-  
-  class PrefixCodedTermsIterator implements Iterator<Term> {
-    final IndexInput input;
-    String field = "";
-    BytesRefBuilder bytes = new BytesRefBuilder();
-    Term term = new Term(field, bytes.get());
 
-    PrefixCodedTermsIterator() {
-      try {
-        input = new RAMInputStream("PrefixCodedTermsIterator", buffer);
-      } catch (IOException e) {
-        throw new RuntimeException(e);
-      }
-    }
-
-    @Override
-    public boolean hasNext() {
-      return input.getFilePointer() < input.length();
-    }
-    
-    @Override
-    public Term next() {
-      assert hasNext();
-      try {
-        int code = input.readVInt();
-        if ((code & 1) != 0) {
-          // new field
-          field = input.readString();
-        }
-        int prefix = code >>> 1;
-        int suffix = input.readVInt();
-        bytes.grow(prefix + suffix);
-        input.readBytes(bytes.bytes(), prefix, suffix);
-        bytes.setLength(prefix + suffix);
-        term.set(field, bytes.get());
-        return term;
-      } catch (IOException e) {
-        throw new RuntimeException(e);
-      }
-    }
-    
-    @Override
-    public void remove() {
-      throw new UnsupportedOperationException();
-    }
+  /** Records del gen for this packet. */
+  public void setDelGen(long delGen) {
+    this.delGen = delGen;
   }
   
   /** Builds a PrefixCodedTerms: call add repeatedly, then finish. */
@@ -102,25 +66,35 @@ class PrefixCodedTerms implements Iterable<Term>, Accountable {
     private RAMOutputStream output = new RAMOutputStream(buffer, false);
     private Term lastTerm = new Term("");
     private BytesRefBuilder lastTermBytes = new BytesRefBuilder();
+    private long size;
+
+    /** Sole constructor. */
+    public Builder() {}
 
     /** add a term */
     public void add(Term term) {
-      assert lastTerm.equals(new Term("")) || term.compareTo(lastTerm) > 0;
+      add(term.field(), term.bytes());
+    }
+
+    /** add a term */
+    public void add(String field, BytesRef bytes) {
+      assert lastTerm.equals(new Term("")) || new Term(field, bytes).compareTo(lastTerm) > 0;
 
       try {
-        int prefix = sharedPrefix(lastTerm.bytes, term.bytes);
-        int suffix = term.bytes.length - prefix;
-        if (term.field.equals(lastTerm.field)) {
+        int prefix = sharedPrefix(lastTerm.bytes, bytes);
+        int suffix = bytes.length - prefix;
+        if (field.equals(lastTerm.field)) {
           output.writeVInt(prefix << 1);
         } else {
           output.writeVInt(prefix << 1 | 1);
-          output.writeString(term.field);
+          output.writeString(field);
         }
         output.writeVInt(suffix);
-        output.writeBytes(term.bytes.bytes, term.bytes.offset + prefix, suffix);
-        lastTermBytes.copyBytes(term.bytes);
+        output.writeBytes(bytes.bytes, bytes.offset + prefix, suffix);
+        lastTermBytes.copyBytes(bytes);
         lastTerm.bytes = lastTermBytes.get();
-        lastTerm.field = term.field;
+        lastTerm.field = field;
+        size += 1;
       } catch (IOException e) {
         throw new RuntimeException(e);
       }
@@ -130,7 +104,7 @@ class PrefixCodedTerms implements Iterable<Term>, Accountable {
     public PrefixCodedTerms finish() {
       try {
         output.close();
-        return new PrefixCodedTerms(buffer);
+        return new PrefixCodedTerms(buffer, size);
       } catch (IOException e) {
         throw new RuntimeException(e);
       }
@@ -149,5 +123,90 @@ class PrefixCodedTerms implements Iterable<Term>, Accountable {
       }
       return pos1;
     }
+  }
+
+  /** An iterator over the list of terms stored in a {@link PrefixCodedTerms}. */
+  public static class TermIterator extends FieldTermIterator {
+    final IndexInput input;
+    final BytesRefBuilder builder = new BytesRefBuilder();
+    final BytesRef bytes = builder.get();
+    final long end;
+    final long delGen;
+    String field = "";
+
+    private TermIterator(long delGen, RAMFile buffer) {
+      try {
+        input = new RAMInputStream("MergedPrefixCodedTermsIterator", buffer);
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+      end = input.length();
+      this.delGen = delGen;
+    }
+
+    @Override
+    public BytesRef next() {
+      if (input.getFilePointer() < end) {
+        try {
+          int code = input.readVInt();
+          boolean newField = (code & 1) != 0;
+          if (newField) {
+            field = input.readString();
+          }
+          int prefix = code >>> 1;
+          int suffix = input.readVInt();
+          readTermBytes(prefix, suffix);
+          return bytes;
+        } catch (IOException e) {
+          throw new RuntimeException(e);
+        }
+      } else {
+        field = null;
+        return null;
+      }
+    }
+
+    // TODO: maybe we should freeze to FST or automaton instead?
+    private void readTermBytes(int prefix, int suffix) throws IOException {
+      builder.grow(prefix + suffix);
+      input.readBytes(builder.bytes(), prefix, suffix);
+      builder.setLength(prefix + suffix);
+    }
+
+    @Override
+    public String field() {
+      return field;
+    }
+
+    @Override
+    public long delGen() {
+      return delGen;
+    }
+  }
+
+  /** Return an iterator over the terms stored in this {@link PrefixCodedTerms}. */
+  public TermIterator iterator() {
+    return new TermIterator(delGen, buffer);
+  }
+
+  /** Return the number of terms stored in this {@link PrefixCodedTerms}. */
+  public long size() {
+    return size;
+  }
+
+  @Override
+  public int hashCode() {
+    int h = buffer.hashCode();
+    h = 31 * h + (int) (delGen ^ (delGen >>> 32));
+    return h;
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) return true;
+    if (obj == null) return false;
+    if (getClass() != obj.getClass()) return false;
+    PrefixCodedTerms other = (PrefixCodedTerms) obj;
+    return buffer.equals(other.buffer) && delGen == other.delGen;
   }
 }

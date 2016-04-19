@@ -1,13 +1,12 @@
-package org.apache.lucene.analysis.standard;
-
 /*
- * Copyright 2001-2005 The Apache Software Foundation.
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,6 +14,7 @@ package org.apache.lucene.analysis.standard;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.standard;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -39,7 +39,7 @@ import java.util.regex.Pattern;
  * Generates a file containing JFlex macros to accept valid ASCII TLDs 
  * (top level domains), for inclusion in JFlex grammars that can accept 
  * domain names.
- * <p/> 
+ * <p> 
  * The IANA Root Zone Database is queried via HTTP from URL cmdline arg #0, the
  * response is parsed, and the results are written out to a file containing 
  * a JFlex macro that will accept all valid ASCII-only TLDs, including punycode 

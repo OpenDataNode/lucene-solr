@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.idversion;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,39 +14,40 @@ package org.apache.lucene.codecs.idversion;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.idversion;
 
 import java.io.IOException;
 
 import org.apache.lucene.codecs.BlockTermState;
 import org.apache.lucene.codecs.CodecUtil;
-import org.apache.lucene.codecs.PostingsWriterBase;
+import org.apache.lucene.codecs.PushPostingsWriterBase;
 import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.store.DataOutput;
 import org.apache.lucene.store.IndexOutput;
-import org.apache.lucene.util.BitUtil;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 
-final class IDVersionPostingsWriter extends PostingsWriterBase {
+final class IDVersionPostingsWriter extends PushPostingsWriterBase {
 
   final static String TERMS_CODEC = "IDVersionPostingsWriterTerms";
 
   // Increment version to change it
-  final static int VERSION_START = 0;
+  final static int VERSION_START = 1;
   final static int VERSION_CURRENT = VERSION_START;
 
   final static IDVersionTermState emptyState = new IDVersionTermState();
   IDVersionTermState lastState;
 
-  private int curDocID;
   int lastDocID;
   private int lastPosition;
   private long lastVersion;
 
-  private final SegmentWriteState state;
+  private final Bits liveDocs;
 
-  public IDVersionPostingsWriter(SegmentWriteState state) {
-    this.state = state;
+  public IDVersionPostingsWriter(Bits liveDocs) {
+    this.liveDocs = liveDocs;
   }
 
   @Override
@@ -57,13 +56,14 @@ final class IDVersionPostingsWriter extends PostingsWriterBase {
   }
 
   @Override
-  public void init(IndexOutput termsOut) throws IOException {
-    CodecUtil.writeHeader(termsOut, TERMS_CODEC, VERSION_CURRENT);
+  public void init(IndexOutput termsOut, SegmentWriteState state) throws IOException {
+    CodecUtil.writeIndexHeader(termsOut, TERMS_CODEC, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
   }
 
   @Override
   public int setField(FieldInfo fieldInfo) {
-    if (fieldInfo.getIndexOptions() != FieldInfo.IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) {
+    super.setField(fieldInfo);
+    if (fieldInfo.getIndexOptions() != IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) {
       throw new IllegalArgumentException("field must be index using IndexOptions.DOCS_AND_FREQS_AND_POSITIONS");
     }
     // LUCENE-5693: because CheckIndex cross-checks term vectors with postings even for deleted docs, and because our PF only indexes the
@@ -78,35 +78,32 @@ final class IDVersionPostingsWriter extends PostingsWriterBase {
   @Override
   public void startTerm() {
     lastDocID = -1;
-    curDocID = -1;
   }
 
   @Override
   public void startDoc(int docID, int termDocFreq) throws IOException {
     // TODO: LUCENE-5693: we don't need this check if we fix IW to not send deleted docs to us on flush:
-    //if (state.liveDocs != null && state.liveDocs.get(docID) == false) {
-    //return;
-    //}
-    /*
+    if (liveDocs != null && liveDocs.get(docID) == false) {
+      return;
+    }
     if (lastDocID != -1) {
       throw new IllegalArgumentException("term appears in more than one document");
     }
-    */
     if (termDocFreq != 1) {
       throw new IllegalArgumentException("term appears more than once in the document");
     }
 
-    curDocID = docID;
+    lastDocID = docID;
     lastPosition = -1;
     lastVersion = -1;
   }
 
   @Override
   public void addPosition(int position, BytesRef payload, int startOffset, int endOffset) throws IOException {
-    //if (lastDocID == -1) {
-    //// Doc is deleted; skip it
-    //return;
-    //}
+    if (lastDocID == -1) {
+      // Doc is deleted; skip it
+      return;
+    }
     if (lastPosition != -1) {
       throw new IllegalArgumentException("term appears more than once in document");
     }
@@ -118,27 +115,21 @@ final class IDVersionPostingsWriter extends PostingsWriterBase {
       throw new IllegalArgumentException("payload.length != 8 (got " + payload.length + ")");
     }
 
-    long newVersion = IDVersionPostingsFormat.bytesToLong(payload);
-    if (newVersion < IDVersionPostingsFormat.MIN_VERSION) {
+    lastVersion = IDVersionPostingsFormat.bytesToLong(payload);
+    if (lastVersion < IDVersionPostingsFormat.MIN_VERSION) {
       throw new IllegalArgumentException("version must be >= MIN_VERSION=" + IDVersionPostingsFormat.MIN_VERSION + " (got: " + lastVersion + "; payload=" + payload + ")");
     }
-    if (newVersion > IDVersionPostingsFormat.MAX_VERSION) {
+    if (lastVersion > IDVersionPostingsFormat.MAX_VERSION) {
       throw new IllegalArgumentException("version must be <= MAX_VERSION=" + IDVersionPostingsFormat.MAX_VERSION + " (got: " + lastVersion + "; payload=" + payload + ")");
-    }
-    // In 5.0, IW's flush tells us which docs are deleted, so we know which doc to ignore during flush (because it was updated with a newer
-    // version), but in 4.x IW doesn't tell us the deleted docs, so we instead only update if the version is newer.
-    if (newVersion > lastVersion) {
-      lastVersion = newVersion;
-      lastDocID = curDocID;
     }
   }
 
   @Override
   public void finishDoc() throws IOException {
-    //if (lastDocID == -1) {
-    //// Doc is deleted; skip it
-    //return;
-    //}
+    if (lastDocID == -1) {
+      // Doc is deleted; skip it
+      return;
+    }
     if (lastPosition == -1) {
       throw new IllegalArgumentException("missing addPosition");
     }
@@ -147,11 +138,11 @@ final class IDVersionPostingsWriter extends PostingsWriterBase {
   /** Called when we are done adding docs to this term */
   @Override
   public void finishTerm(BlockTermState _state) throws IOException {
-    //if (lastDocID == -1) {
-    //return;
-    //}
+    if (lastDocID == -1) {
+      return;
+    }
     IDVersionTermState state = (IDVersionTermState) _state;
-    assert state.docFreq > 0: "lastDocID=" + lastDocID;
+    assert state.docFreq > 0;
 
     state.docID = lastDocID;
     state.idVersion = lastVersion;

@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 
@@ -25,15 +25,14 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.CollectionStatistics;
-import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.SimpleCollector;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TermStatistics;
 import org.apache.lucene.search.similarities.TFIDFSimilarity;
@@ -57,7 +56,7 @@ public class TestOmitTf extends LuceneTestCase {
     @Override public float sloppyFreq(int distance) { return 2.0f; }
     @Override public float idf(long docFreq, long numDocs) { return 1.0f; }
     @Override public Explanation idfExplain(CollectionStatistics collectionStats, TermStatistics[] termStats) {
-      return new Explanation(1.0f, "Inexplicable");
+      return Explanation.match(1.0f, "Inexplicable");
     }
     @Override public float scorePayload(int doc, int start, int end, BytesRef payload) { return 1.0f; }
   }
@@ -66,7 +65,7 @@ public class TestOmitTf extends LuceneTestCase {
   private static final FieldType normalType = new FieldType(TextField.TYPE_NOT_STORED);
   
   static {
-    omitType.setIndexOptions(IndexOptions.DOCS_ONLY);
+    omitType.setIndexOptions(IndexOptions.DOCS);
   }
 
   // Tests whether the DocumentWriter correctly enable the
@@ -107,8 +106,8 @@ public class TestOmitTf extends LuceneTestCase {
 
     SegmentReader reader = getOnlySegmentReader(DirectoryReader.open(ram));
     FieldInfos fi = reader.getFieldInfos();
-    assertEquals("OmitTermFreqAndPositions field bit should be set.", IndexOptions.DOCS_ONLY, fi.fieldInfo("f1").getIndexOptions());
-    assertEquals("OmitTermFreqAndPositions field bit should be set.", IndexOptions.DOCS_ONLY, fi.fieldInfo("f2").getIndexOptions());
+    assertEquals("OmitTermFreqAndPositions field bit should be set.", IndexOptions.DOCS, fi.fieldInfo("f1").getIndexOptions());
+    assertEquals("OmitTermFreqAndPositions field bit should be set.", IndexOptions.DOCS, fi.fieldInfo("f2").getIndexOptions());
         
     reader.close();
     ram.close();
@@ -159,8 +158,8 @@ public class TestOmitTf extends LuceneTestCase {
 
     SegmentReader reader = getOnlySegmentReader(DirectoryReader.open(ram));
     FieldInfos fi = reader.getFieldInfos();
-    assertEquals("OmitTermFreqAndPositions field bit should be set.", IndexOptions.DOCS_ONLY, fi.fieldInfo("f1").getIndexOptions());
-    assertEquals("OmitTermFreqAndPositions field bit should be set.", IndexOptions.DOCS_ONLY, fi.fieldInfo("f2").getIndexOptions());
+    assertEquals("OmitTermFreqAndPositions field bit should be set.", IndexOptions.DOCS, fi.fieldInfo("f1").getIndexOptions());
+    assertEquals("OmitTermFreqAndPositions field bit should be set.", IndexOptions.DOCS, fi.fieldInfo("f2").getIndexOptions());
         
     reader.close();
     ram.close();
@@ -203,7 +202,7 @@ public class TestOmitTf extends LuceneTestCase {
     SegmentReader reader = getOnlySegmentReader(DirectoryReader.open(ram));
     FieldInfos fi = reader.getFieldInfos();
     assertEquals("OmitTermFreqAndPositions field bit should not be set.", IndexOptions.DOCS_AND_FREQS_AND_POSITIONS, fi.fieldInfo("f1").getIndexOptions());
-    assertEquals("OmitTermFreqAndPositions field bit should be set.", IndexOptions.DOCS_ONLY, fi.fieldInfo("f2").getIndexOptions());
+    assertEquals("OmitTermFreqAndPositions field bit should be set.", IndexOptions.DOCS, fi.fieldInfo("f2").getIndexOptions());
         
     reader.close();
     ram.close();
@@ -309,9 +308,7 @@ public class TestOmitTf extends LuceneTestCase {
     TermQuery q3 = new TermQuery(c);
     TermQuery q4 = new TermQuery(d);
 
-    PhraseQuery pq = new PhraseQuery();
-    pq.add(a);
-    pq.add(c);
+    PhraseQuery pq = new PhraseQuery(a.field(), a.bytes(), c.bytes());
     try {
       searcher.search(pq, 10);
       fail("did not hit expected exception");
@@ -321,14 +318,16 @@ public class TestOmitTf extends LuceneTestCase {
       while (cause.getCause() != null) {
         cause = cause.getCause();
       }
-      if (!(cause instanceof IllegalStateException)) {
-        throw new AssertionError("Expected an IAE", e);
-      } // else OK because positions are not indexed
+      assertTrue("Expected an IAE, got " + cause, cause instanceof IllegalStateException);
     }
         
     searcher.search(q1,
                     new CountingHitCollector() {
                       private Scorer scorer;
+                      @Override
+                      public boolean needsScores() {
+                        return true;
+                      }
                       @Override
                       public final void setScorer(Scorer scorer) {
                         this.scorer = scorer;
@@ -347,6 +346,10 @@ public class TestOmitTf extends LuceneTestCase {
     searcher.search(q2,
                     new CountingHitCollector() {
                       private Scorer scorer;
+                      @Override
+                      public boolean needsScores() {
+                        return true;
+                      }
                       @Override
                       public final void setScorer(Scorer scorer) {
                         this.scorer = scorer;
@@ -369,6 +372,10 @@ public class TestOmitTf extends LuceneTestCase {
                     new CountingHitCollector() {
                       private Scorer scorer;
                       @Override
+                      public boolean needsScores() {
+                        return true;
+                      }
+                      @Override
                       public final void setScorer(Scorer scorer) {
                         this.scorer = scorer;
                       }
@@ -388,6 +395,10 @@ public class TestOmitTf extends LuceneTestCase {
                     new CountingHitCollector() {
                       private Scorer scorer;
                       @Override
+                      public boolean needsScores() {
+                        return true;
+                      }
+                      @Override
                       public final void setScorer(Scorer scorer) {
                         this.scorer = scorer;
                       }
@@ -404,11 +415,11 @@ public class TestOmitTf extends LuceneTestCase {
         
         
         
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
     bq.add(q1,Occur.MUST);
     bq.add(q4,Occur.MUST);
         
-    searcher.search(bq,
+    searcher.search(bq.build(),
                     new CountingHitCollector() {
                       @Override
                       public final void collect(int doc) throws IOException {
@@ -422,13 +433,11 @@ public class TestOmitTf extends LuceneTestCase {
     dir.close();
   }
      
-  public static class CountingHitCollector extends Collector {
+  public static class CountingHitCollector extends SimpleCollector {
     static int count=0;
     static int sum=0;
     private int docBase = -1;
     CountingHitCollector(){count=0;sum=0;}
-    @Override
-    public void setScorer(Scorer scorer) throws IOException {}
     @Override
     public void collect(int doc) throws IOException {
       count++;
@@ -439,12 +448,13 @@ public class TestOmitTf extends LuceneTestCase {
     public static int getSum() { return sum; }
     
     @Override
-    public void setNextReader(AtomicReaderContext context) {
+    protected void doSetNextReader(LeafReaderContext context) throws IOException {
       docBase = context.docBase;
     }
+    
     @Override
-    public boolean acceptsDocsOutOfOrder() {
-      return true;
+    public boolean needsScores() {
+      return false;
     }
   }
   
@@ -455,7 +465,7 @@ public class TestOmitTf extends LuceneTestCase {
         newIndexWriterConfig(new MockAnalyzer(random())));
     Document doc = new Document();
     FieldType ft = new FieldType(TextField.TYPE_NOT_STORED);
-    ft.setIndexOptions(IndexOptions.DOCS_ONLY);
+    ft.setIndexOptions(IndexOptions.DOCS);
     ft.freeze();
     Field f = newField("foo", "bar", ft);
     doc.add(f);

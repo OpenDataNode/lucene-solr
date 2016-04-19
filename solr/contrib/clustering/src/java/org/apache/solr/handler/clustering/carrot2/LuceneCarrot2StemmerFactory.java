@@ -1,5 +1,3 @@
-package org.apache.solr.handler.clustering.carrot2;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,9 @@ package org.apache.solr.handler.clustering.carrot2;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.clustering.carrot2;
+
+import java.lang.invoke.MethodHandles;
 
 import java.nio.CharBuffer;
 import java.util.HashMap;
@@ -27,6 +28,7 @@ import org.carrot2.text.linguistic.IStemmer;
 import org.carrot2.text.linguistic.IStemmerFactory;
 import org.carrot2.util.ReflectionUtils;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.tartarus.snowball.SnowballProgram;
 import org.tartarus.snowball.ext.DanishStemmer;
 import org.tartarus.snowball.ext.DutchStemmer;
@@ -52,8 +54,7 @@ import org.tartarus.snowball.ext.TurkishStemmer;
  * @lucene.experimental
  */
 public class LuceneCarrot2StemmerFactory implements IStemmerFactory {
-  final static Logger logger = org.slf4j.LoggerFactory
-      .getLogger(LuceneCarrot2StemmerFactory.class);
+  private static final Logger logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   @Override
   public IStemmer getStemmer(LanguageCode language) {

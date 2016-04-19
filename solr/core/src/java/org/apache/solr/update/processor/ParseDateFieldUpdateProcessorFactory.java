@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update.processor;
 
 import org.apache.commons.lang.LocaleUtils;
@@ -32,6 +31,7 @@ import org.joda.time.format.DateTimeFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
@@ -50,7 +50,7 @@ import java.util.Map;
  * <p>
  * The default selection behavior is to mutate both those fields that don't match
  * a schema field, as well as those fields that match a schema field with a field 
- * type that uses class solr.DateField or a sub-class, including solr.TrieDateField.
+ * type that uses class solr.TrieDateField.
  * </p>
  * <p>
  * If all values are parseable as dates (or are already Date), then the field will
@@ -96,7 +96,7 @@ import java.util.Map;
  * </p>
  */
 public class ParseDateFieldUpdateProcessorFactory extends FieldMutatingUpdateProcessorFactory {
-  public static final Logger log = LoggerFactory.getLogger(ParseDateFieldUpdateProcessorFactory.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private static final String FORMATS_PARAM = "format";
   private static final String DEFAULT_TIME_ZONE_PARAM = "defaultTimeZone";

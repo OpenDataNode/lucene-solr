@@ -17,6 +17,7 @@
 package org.apache.solr.handler.dataimport;
 
 import java.io.*;
+import java.lang.invoke.MethodHandles;
 import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 
@@ -34,13 +35,12 @@ import static org.apache.solr.handler.dataimport.DataImportHandlerException.SEVE
  * The file is read with the default platform encoding. It can be overriden by
  * specifying the encoding in solrconfig.xml
  * </p>
- * <p/>
  * <p>
  * Refer to <a
  * href="http://wiki.apache.org/solr/DataImportHandler">http://wiki.apache.org/solr/DataImportHandler</a>
  * for more details.
  * </p>
- * <p/>
+ * <p>
  * <b>This API is experimental and may change in the future.</b>
  *
  * @since solr 1.3
@@ -58,7 +58,7 @@ public class FileDataSource extends DataSource<Reader> {
    */
   protected String encoding = null;
 
-  private static final Logger LOG = LoggerFactory.getLogger(FileDataSource.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   @Override
   public void init(Context context, Properties initProps) {

@@ -28,17 +28,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.lang.invoke.MethodHandles;
 import java.nio.charset.StandardCharsets;
 
 /**
  * <p> Writes documents to SOLR. </p>
- * <p/>
+ * <p>
  * <b>This API is experimental and may change in the future.</b>
  *
  * @since solr 1.3
  */
 public class SolrWriter extends DIHWriterBase implements DIHWriter {
-  private static final Logger log = LoggerFactory.getLogger(SolrWriter.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   public static final String LAST_INDEX_KEY = "last_index_time";
 
@@ -60,6 +61,8 @@ public class SolrWriter extends DIHWriterBase implements DIHWriter {
     } catch (IOException e) {
       throw new DataImportHandlerException(DataImportHandlerException.SEVERE,
           "Unable to call finish() on UpdateRequestProcessor", e);
+    } finally {
+      deltaKeys = null;
     }
   }
   @Override

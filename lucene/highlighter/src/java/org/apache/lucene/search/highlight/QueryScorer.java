@@ -1,5 +1,3 @@
-package org.apache.lucene.search.highlight;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.highlight;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.highlight;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -54,6 +53,7 @@ public class QueryScorer implements Scorer {
   private boolean skipInitExtractor;
   private boolean wrapToCaching = true;
   private int maxCharsToAnalyze;
+  private boolean usePayloads = false;
 
   /**
    * @param query Query to use for highlighting
@@ -213,11 +213,12 @@ public class QueryScorer implements Scorer {
     qse.setMaxDocCharsToAnalyze(maxCharsToAnalyze);
     qse.setExpandMultiTermQuery(expandMultiTermQuery);
     qse.setWrapIfNotCachingTokenFilter(wrapToCaching);
+    qse.setUsePayloads(usePayloads);
     if (reader == null) {
-      this.fieldWeightedSpanTerms = qse.getWeightedSpanTerms(query,
+      this.fieldWeightedSpanTerms = qse.getWeightedSpanTerms(query, 1f,
           tokenStream, field);
     } else {
-      this.fieldWeightedSpanTerms = qse.getWeightedSpanTermsWithScores(query,
+      this.fieldWeightedSpanTerms = qse.getWeightedSpanTermsWithScores(query, 1f,
           tokenStream, field, reader);
     }
     if(qse.isCachedTokenStream()) {
@@ -259,13 +260,26 @@ public class QueryScorer implements Scorer {
   public void setExpandMultiTermQuery(boolean expandMultiTermQuery) {
     this.expandMultiTermQuery = expandMultiTermQuery;
   }
-  
+
+  /**
+   * Whether or not we should capture payloads in {@link MemoryIndex} at each position so that queries can access them.
+   * This does not apply to term vector based TokenStreams, which support payloads only when the term vector has them.
+   */
+  public boolean isUsePayloads() {
+    return usePayloads;
+  }
+
+  public void setUsePayloads(boolean usePayloads) {
+    this.usePayloads = usePayloads;
+  }
+
   /**
    * By default, {@link TokenStream}s that are not of the type
    * {@link CachingTokenFilter} are wrapped in a {@link CachingTokenFilter} to
    * ensure an efficient reset - if you are already using a different caching
    * {@link TokenStream} impl and you don't want it to be wrapped, set this to
-   * false.
+   * false. Note that term-vector based tokenstreams are detected and won't be
+   * wrapped either.
    */
   public void setWrapIfNotCachingTokenFilter(boolean wrap) {
     this.wrapToCaching = wrap;

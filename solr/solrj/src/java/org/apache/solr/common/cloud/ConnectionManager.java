@@ -1,5 +1,3 @@
-package org.apache.solr.common.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,9 @@ package org.apache.solr.common.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.common.cloud;
+
+import java.lang.invoke.MethodHandles;
 
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -28,8 +29,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class ConnectionManager implements Watcher {
-  protected static final Logger log = LoggerFactory
-      .getLogger(ConnectionManager.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private final String name;
   
@@ -140,7 +140,7 @@ public class ConnectionManager implements Watcher {
                   closeKeeper(keeper);
                   throw new RuntimeException(e1);
                 }
-                
+
                 log.info("Connection with ZooKeeper reestablished.");
                 try {
                   client.updateKeeper(keeper);
@@ -154,24 +154,9 @@ public class ConnectionManager implements Watcher {
                   throw new RuntimeException(t);
                 }
 
-                // The new event thread will call connected
-                // we just start the reconnect thread and 
-                // do nothing else
-                
                 if (onReconnect != null) {
-                  Thread thread = new Thread() {
-                    @Override
-                    public void run() {
-                      try {
-                        onReconnect.command();
-                      } catch (Exception e) {
-                        log.warn("Exception running onReconnect command", e);
-                      }
-                    }
-                  };
-                  thread.start();
+                  onReconnect.command();
                 }
-                
               }
             });
       } catch (Exception e) {

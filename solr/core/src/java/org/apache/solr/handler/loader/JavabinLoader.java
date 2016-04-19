@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler.loader;
 
 import org.apache.solr.client.solrj.request.JavaBinUpdateRequestCodec;
@@ -31,8 +30,6 @@ import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.update.AddUpdateCommand;
 import org.apache.solr.update.DeleteUpdateCommand;
 import org.apache.solr.update.processor.UpdateRequestProcessor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -48,8 +45,7 @@ import java.util.Set;
  * @see org.apache.solr.common.util.JavaBinCodec
  */
 public class JavabinLoader extends ContentStreamLoader {
-  public static Logger log = LoggerFactory.getLogger(JavabinLoader.class);
-  
+
   @Override
   public void load(SolrQueryRequest req, SolrQueryResponse rsp, ContentStream stream, UpdateRequestProcessor processor) throws Exception {
     InputStream is = null;
@@ -91,7 +87,12 @@ public class JavabinLoader extends ContentStreamLoader {
         if (overwrite != null) {
           addCmd.overwrite = overwrite;
         }
-        
+
+        if (updateRequest.isLastDocInBatch()) {
+          // this is a hint to downstream code that indicates we've sent the last doc in a batch
+          addCmd.isLastDocInBatch = true;
+        }
+
         try {
           processor.processAdd(addCmd);
           addCmd.clear();
@@ -115,7 +116,9 @@ public class JavabinLoader extends ContentStreamLoader {
 
   private AddUpdateCommand getAddCommand(SolrQueryRequest req, SolrParams params) {
     AddUpdateCommand addCmd = new AddUpdateCommand(req);
-
+    // since we can give a hint to the leader that the end of a batch is being processed, it's OK to have a larger
+    // pollQueueTime than the default 0 since we can optimize around not waiting unnecessarily
+    addCmd.pollQueueTime = pollQueueTime;
     addCmd.overwrite = params.getBool(UpdateParams.OVERWRITE, true);
     addCmd.commitWithin = params.getInt(UpdateParams.COMMIT_WITHIN, -1);
     return addCmd;
@@ -137,6 +140,12 @@ public class JavabinLoader extends ContentStreamLoader {
           Long version = (Long) map.get("ver");
           if (version != null) {
             delcmd.setVersion(version);
+          }
+        }
+        if (map != null) {
+          String route = (String) map.get(UpdateRequest.ROUTE);
+          if (route != null) {
+            delcmd.setRoute(route);
           }
         }
         processor.processDelete(delcmd);

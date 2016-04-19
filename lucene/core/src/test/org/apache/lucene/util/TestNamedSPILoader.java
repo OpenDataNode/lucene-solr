@@ -1,9 +1,3 @@
-package org.apache.lucene.util;
-
-import java.util.Set;
-
-import org.apache.lucene.codecs.Codec;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -20,17 +14,24 @@ import org.apache.lucene.codecs.Codec;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
 
-// TODO: maybe we should test this with mocks, but its easy
+import java.util.Set;
+
+import org.apache.lucene.codecs.Codec;
+
+
+// TODO: maybe we should test this with mocks, but it's easy
 // enough to test the basics via Codec
 public class TestNamedSPILoader extends LuceneTestCase {
   
   public void testLookup() {
-    Codec codec = Codec.forName("Lucene410");
-    assertEquals("Lucene410", codec.getName());
+    String currentName = TestUtil.getDefaultCodec().getName();
+    Codec codec = Codec.forName(currentName);
+    assertEquals(currentName, codec.getName());
   }
   
-  // we want an exception if its not found.
+  // we want an exception if it's not found.
   public void testBogusLookup() {
     try {
       Codec.forName("dskfdskfsdfksdfdsf");
@@ -40,6 +41,6 @@ public class TestNamedSPILoader extends LuceneTestCase {
   
   public void testAvailableServices() {
     Set<String> codecs = Codec.availableCodecs();
-    assertTrue(codecs.contains("Lucene410"));
+    assertTrue(codecs.contains(TestUtil.getDefaultCodec().getName()));
   }
 }

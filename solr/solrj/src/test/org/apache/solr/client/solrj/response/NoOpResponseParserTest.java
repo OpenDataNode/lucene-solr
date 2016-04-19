@@ -1,5 +1,3 @@
-package org.apache.solr.client.solrj.response;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,25 +14,7 @@ package org.apache.solr.client.solrj.response;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import org.apache.commons.io.IOUtils;
-import org.apache.solr.SolrJettyTestBase;
-import org.apache.solr.client.solrj.ResponseParser;
-import org.apache.solr.client.solrj.SolrQuery;
-import org.apache.solr.client.solrj.SolrServer;
-import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
-import org.apache.solr.client.solrj.impl.NoOpResponseParser;
-import org.apache.solr.client.solrj.impl.XMLResponseParser;
-import org.apache.solr.client.solrj.request.QueryRequest;
-import org.apache.solr.common.SolrDocument;
-import org.apache.solr.common.SolrInputDocument;
-import org.apache.solr.common.util.NamedList;
-import org.apache.solr.core.SolrResourceLoader;
-import org.apache.solr.util.ExternalPaths;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
+package org.apache.solr.client.solrj.response;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -42,6 +22,24 @@ import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.solr.SolrJettyTestBase;
+import org.apache.solr.client.solrj.ResponseParser;
+import org.apache.solr.client.solrj.SolrClient;
+import org.apache.solr.client.solrj.SolrQuery;
+import org.apache.solr.client.solrj.SolrServerException;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
+import org.apache.solr.client.solrj.impl.NoOpResponseParser;
+import org.apache.solr.client.solrj.impl.XMLResponseParser;
+import org.apache.solr.client.solrj.request.QueryRequest;
+import org.apache.solr.common.SolrDocument;
+import org.apache.solr.common.SolrInputDocument;
+import org.apache.solr.common.util.NamedList;
+import org.apache.solr.core.SolrResourceLoader;
+import org.junit.Before;
+import org.junit.BeforeClass;
+import org.junit.Test;
 
 /**
  * A test for parsing Solr response from query by NoOpResponseParser.
@@ -51,22 +49,22 @@ import java.util.List;
 public class NoOpResponseParserTest extends SolrJettyTestBase {
 
   private static InputStream getResponse() throws IOException {
-    return new SolrResourceLoader(null, null).openResource("solrj/sampleDateFacetResponse.xml");
+    return new SolrResourceLoader().openResource("solrj/sampleDateFacetResponse.xml");
   }
 
   @BeforeClass
   public static void beforeTest() throws Exception {
-    createJetty(ExternalPaths.EXAMPLE_HOME, null, null);
+    createJetty(legacyExampleCollection1SolrHome());
   }
 
   @Before
   public void doBefore() throws IOException, SolrServerException {
     //add document and commit, and ensure it's there
-    SolrServer server1 = getSolrServer();
+    SolrClient client = getSolrClient();
     SolrInputDocument doc = new SolrInputDocument();
     doc.addField("id", "1234");
-    server1.add(doc);
-    server1.commit();
+    client.add(doc);
+    client.commit();
   }
 
   /**
@@ -74,15 +72,16 @@ public class NoOpResponseParserTest extends SolrJettyTestBase {
    */
   @Test
   public void testQueryParse() throws Exception {
-    HttpSolrServer server = (HttpSolrServer) createNewSolrServer();
-    SolrQuery query = new SolrQuery("id:1234");
-    QueryRequest req = new QueryRequest(query);
-    server.setParser(new NoOpResponseParser());
-    NamedList<Object> resp = server.request(req);
-    String responseString = (String) resp.get("response");
 
-    assertResponse(responseString);
-    server.shutdown();
+    try (HttpSolrClient client = (HttpSolrClient) createNewSolrClient()) {
+      SolrQuery query = new SolrQuery("id:1234");
+      QueryRequest req = new QueryRequest(query);
+      client.setParser(new NoOpResponseParser());
+      NamedList<Object> resp = client.request(req);
+      String responseString = (String) resp.get("response");
+      assertResponse(responseString);
+    }
+
   }
 
   private void assertResponse(String responseString) throws IOException {
@@ -100,16 +99,13 @@ public class NoOpResponseParserTest extends SolrJettyTestBase {
   @Test
   public void testReaderResponse() throws Exception {
     NoOpResponseParser parser = new NoOpResponseParser();
-    final InputStream is = getResponse();
-    try {
+    try (final InputStream is = getResponse()) {
       assertNotNull(is);
       Reader in = new InputStreamReader(is, StandardCharsets.UTF_8);
       NamedList<Object> response = parser.processResponse(in);
       assertNotNull(response.get("response"));
       String expectedResponse = IOUtils.toString(getResponse(), "UTF-8");
       assertEquals(expectedResponse, response.get("response"));
-    } finally {
-      IOUtils.closeQuietly(is);
     }
 
   }
@@ -120,16 +116,13 @@ public class NoOpResponseParserTest extends SolrJettyTestBase {
   @Test
   public void testInputStreamResponse() throws Exception {
     NoOpResponseParser parser = new NoOpResponseParser();
-    final InputStream is = getResponse();
-    try {
+    try (final InputStream is = getResponse()) {
       assertNotNull(is);
       NamedList<Object> response = parser.processResponse(is, "UTF-8");
 
       assertNotNull(response.get("response"));
       String expectedResponse = IOUtils.toString(getResponse(), "UTF-8");
       assertEquals(expectedResponse, response.get("response"));
-    } finally {
-      IOUtils.closeQuietly(is);
     }
   }
 }

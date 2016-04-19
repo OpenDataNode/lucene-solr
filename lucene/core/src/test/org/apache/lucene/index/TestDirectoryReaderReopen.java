@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,9 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -28,7 +29,6 @@ import java.util.Random;
 import java.util.Set;
 
 import org.apache.lucene.analysis.MockAnalyzer;
-import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
@@ -39,15 +39,14 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.MockDirectoryWrapper.FakeIOException;
 import org.apache.lucene.store.MockDirectoryWrapper;
+import org.apache.lucene.store.MockDirectoryWrapper.FakeIOException;
 import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
 
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 
-@SuppressCodecs("Lucene3x")
+
 public class TestDirectoryReaderReopen extends LuceneTestCase {
   
   public void testReopen() throws Exception {
@@ -216,8 +215,7 @@ public class TestDirectoryReaderReopen extends LuceneTestCase {
     final TestReopen test = new TestReopen() {      
       @Override
       protected void modifyIndex(int i) throws IOException {
-       IndexWriter modifier = new IndexWriter(dir, new IndexWriterConfig(
-         TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+       IndexWriter modifier = new IndexWriter(dir, new IndexWriterConfig(new MockAnalyzer(random())));
        modifier.addDocument(createDocument(n + i, 6));
        modifier.close();
       }
@@ -274,7 +272,7 @@ public class TestDirectoryReaderReopen extends LuceneTestCase {
                 IndexSearcher searcher = newSearcher(refreshed);
                 ScoreDoc[] hits = searcher.search(
                     new TermQuery(new Term("field1", "a" + rnd.nextInt(refreshed.maxDoc()))),
-                    null, 1000).scoreDocs;
+                    1000).scoreDocs;
                 if (hits.length > 0) {
                   searcher.doc(hits[0].doc);
                 }
@@ -436,9 +434,7 @@ public class TestDirectoryReaderReopen extends LuceneTestCase {
   }
   
   public static void createIndex(Random random, Directory dir, boolean multiSegment) throws IOException {
-    IndexWriter.unlock(dir);
-    IndexWriter w = new IndexWriter(dir, LuceneTestCase.newIndexWriterConfig(random,
-        TEST_VERSION_CURRENT, new MockAnalyzer(random))
+    IndexWriter w = new IndexWriter(dir, LuceneTestCase.newIndexWriterConfig(random, new MockAnalyzer(random))
         .setMergePolicy(new LogDocMergePolicy()));
     
     for (int i = 0; i < 100; i++) {
@@ -490,20 +486,20 @@ public class TestDirectoryReaderReopen extends LuceneTestCase {
         if (VERBOSE) {
           System.out.println("TEST: modify index");
         }
-        IndexWriter w = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+        IndexWriter w = new IndexWriter(dir, new IndexWriterConfig(new MockAnalyzer(random())));
         w.deleteDocuments(new Term("field2", "a11"));
         w.deleteDocuments(new Term("field2", "b30"));
         w.close();
         break;
       }
       case 1: {
-        IndexWriter w = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+        IndexWriter w = new IndexWriter(dir, new IndexWriterConfig(new MockAnalyzer(random())));
         w.forceMerge(1);
         w.close();
         break;
       }
       case 2: {
-        IndexWriter w = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+        IndexWriter w = new IndexWriter(dir, new IndexWriterConfig(new MockAnalyzer(random())));
         w.addDocument(createDocument(101, 4));
         w.forceMerge(1);
         w.addDocument(createDocument(102, 4));
@@ -512,7 +508,7 @@ public class TestDirectoryReaderReopen extends LuceneTestCase {
         break;
       }
       case 3: {
-        IndexWriter w = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+        IndexWriter w = new IndexWriter(dir, new IndexWriterConfig(new MockAnalyzer(random())));
         w.addDocument(createDocument(101, 4));
         w.close();
         break;
@@ -615,7 +611,7 @@ public class TestDirectoryReaderReopen extends LuceneTestCase {
     List<IndexCommit> commits = DirectoryReader.listCommits(dir);
     assertEquals(1, commits.size());
     w.addDocument(doc);
-    DirectoryReader r = DirectoryReader.open(w, true);
+    DirectoryReader r = DirectoryReader.open(w);
 
     assertEquals(2, r.numDocs());
     IndexReader r2 = DirectoryReader.openIfChanged(r, commits.get(0));
@@ -634,8 +630,8 @@ public class TestDirectoryReaderReopen extends LuceneTestCase {
       dir.setEnableVirusScanner(false);
     }
 
-    IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
-    iwc.setCodec(Codec.forName("Lucene410"));
+    IndexWriterConfig iwc = new IndexWriterConfig(new MockAnalyzer(random()));
+    iwc.setCodec(TestUtil.getDefaultCodec());
     IndexWriter w = new IndexWriter(dir, iwc);
     Document doc = new Document();
     doc.add(newStringField("id", "id", Field.Store.NO));
@@ -657,13 +653,11 @@ public class TestDirectoryReaderReopen extends LuceneTestCase {
     // Fail when reopen tries to open the live docs file:
     dir.failOn(new MockDirectoryWrapper.Failure() {
 
-      int failCount;
+      boolean failed;
 
       @Override
       public void eval(MockDirectoryWrapper dir) throws IOException {
-        // Need to throw exc three times so the logic in
-        // SegmentInfos.FindSegmentsFile "really believes" us:
-        if (failCount >= 3) {
+        if (failed) {
           return;
         }
         //System.out.println("failOn: ");
@@ -675,7 +669,7 @@ public class TestDirectoryReaderReopen extends LuceneTestCase {
               System.out.println("TEST: now fail; exc:");
               new Throwable().printStackTrace(System.out);
             }
-            failCount++;
+            failed = true;
             throw new FakeIOException();
           }
         }
@@ -703,7 +697,7 @@ public class TestDirectoryReaderReopen extends LuceneTestCase {
   public void testNPEAfterInvalidReindex1() throws Exception {
     Directory dir = new RAMDirectory();
 
-    IndexWriter w = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter w = new IndexWriter(dir, new IndexWriterConfig(new MockAnalyzer(random())));
     Document doc = new Document();
     doc.add(newStringField("id", "id", Field.Store.NO));
     w.addDocument(doc);
@@ -722,7 +716,7 @@ public class TestDirectoryReaderReopen extends LuceneTestCase {
       dir.deleteFile(fileName);
     }
 
-    w = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    w = new IndexWriter(dir, new IndexWriterConfig(new MockAnalyzer(random())));
     doc = new Document();
     doc.add(newStringField("id", "id", Field.Store.NO));
     doc.add(new NumericDocValuesField("ndv", 13));
@@ -753,7 +747,7 @@ public class TestDirectoryReaderReopen extends LuceneTestCase {
   public void testNPEAfterInvalidReindex2() throws Exception {
     Directory dir = new RAMDirectory();
 
-    IndexWriter w = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    IndexWriter w = new IndexWriter(dir, new IndexWriterConfig(new MockAnalyzer(random())));
     Document doc = new Document();
     doc.add(newStringField("id", "id", Field.Store.NO));
     w.addDocument(doc);
@@ -772,7 +766,7 @@ public class TestDirectoryReaderReopen extends LuceneTestCase {
       dir.deleteFile(fileName);
     }
 
-    w = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    w = new IndexWriter(dir, new IndexWriterConfig(new MockAnalyzer(random())));
     doc = new Document();
     doc.add(newStringField("id", "id", Field.Store.NO));
     doc.add(new NumericDocValuesField("ndv", 13));
@@ -792,7 +786,6 @@ public class TestDirectoryReaderReopen extends LuceneTestCase {
     }
 
     r.close();
-    w.close();
     dir.close();
   }
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -46,7 +46,7 @@ public class TestSameScoresWithThreads extends LuceneTestCase {
     MockAnalyzer analyzer = new MockAnalyzer(random());
     analyzer.setMaxTokenLength(TestUtil.nextInt(random(), 1, IndexWriter.MAX_TERM_LENGTH));
     final RandomIndexWriter w = new RandomIndexWriter(random(), dir, analyzer);
-    LineFileDocs docs = new LineFileDocs(random(), defaultCodecSupportsDocValues());
+    LineFileDocs docs = new LineFileDocs(random());
     int charsToIndex = atLeast(100000);
     int charsIndexed = 0;
     //System.out.println("bytesToIndex=" + charsToIndex);
@@ -63,7 +63,7 @@ public class TestSameScoresWithThreads extends LuceneTestCase {
     final IndexSearcher s = newSearcher(r);
     Terms terms = MultiFields.getFields(r).terms("body");
     int termCount = 0;
-    TermsEnum termsEnum = terms.iterator(null);
+    TermsEnum termsEnum = terms.iterator();
     while(termsEnum.next() != null) {
       termCount++;
     }
@@ -71,7 +71,7 @@ public class TestSameScoresWithThreads extends LuceneTestCase {
     
     // Target ~10 terms to search:
     double chance = 10.0 / termCount;
-    termsEnum = terms.iterator(termsEnum);
+    termsEnum = terms.iterator();
     final Map<BytesRef,TopDocs> answers = new HashMap<>();
     while(termsEnum.next() != null) {
       if (random().nextDouble() <= chance) {
@@ -93,7 +93,7 @@ public class TestSameScoresWithThreads extends LuceneTestCase {
                 startingGun.await();
                 for(int i=0;i<20;i++) {
                   List<Map.Entry<BytesRef,TopDocs>> shuffled = new ArrayList<>(answers.entrySet());
-                  Collections.shuffle(shuffled);
+                  Collections.shuffle(shuffled, random());
                   for(Map.Entry<BytesRef,TopDocs> ent : shuffled) {
                     TopDocs actual = s.search(new TermQuery(new Term("body", ent.getKey())), 100);
                     TopDocs expected = ent.getValue();

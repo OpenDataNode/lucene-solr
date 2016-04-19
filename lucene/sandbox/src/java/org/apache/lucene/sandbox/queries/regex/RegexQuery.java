@@ -1,5 +1,3 @@
-package org.apache.lucene.sandbox.queries.regex;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.sandbox.queries.regex;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.sandbox.queries.regex;
 
 import org.apache.lucene.search.MultiTermQuery;
 import org.apache.lucene.index.FilteredTermsEnum;
@@ -35,7 +34,9 @@ import java.io.IOException;
  * in {@link RegexpQuery} instead, as it has better performance.
  * 
  * @see RegexTermsEnum
+ * @deprecated Use core's regex query.
  */
+@Deprecated
 public class RegexQuery extends MultiTermQuery implements RegexQueryCapable {
 
   private RegexCapabilities regexImpl = new JavaUtilRegexCapabilities();
@@ -63,7 +64,7 @@ public class RegexQuery extends MultiTermQuery implements RegexQueryCapable {
 
   @Override
   protected FilteredTermsEnum getTermsEnum(Terms terms, AttributeSource atts) throws IOException {
-    return new RegexTermsEnum(terms.iterator(null), term, regexImpl);
+    return new RegexTermsEnum(terms.iterator(), term, regexImpl);
   }
 
   @Override
@@ -74,7 +75,6 @@ public class RegexQuery extends MultiTermQuery implements RegexQueryCapable {
       buffer.append(":");
     }
     buffer.append(term.text());
-    buffer.append(ToStringUtils.boost(getBoost()));
     return buffer.toString();
   }
 

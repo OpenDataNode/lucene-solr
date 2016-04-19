@@ -1,5 +1,3 @@
-package org.apache.lucene.expressions.js;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,13 @@ package org.apache.lucene.expressions.js;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.expressions.js;
+
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.lang.reflect.Method;
+import java.text.ParseException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -41,8 +42,9 @@ public class TestCustomFunctions extends LuceneTestCase {
     try {
       JavascriptCompiler.compile("sqrt(20)", functions, getClass().getClassLoader());
       fail();
-    } catch (IllegalArgumentException e) {
-      assertTrue(e.getMessage().contains("Unrecognized method"));
+    } catch (ParseException expected) {
+      assertEquals("Invalid expression 'sqrt(20)': Unrecognized function call (sqrt).", expected.getMessage());
+      assertEquals(expected.getErrorOffset(), 0);
     }
   }
   
@@ -62,7 +64,7 @@ public class TestCustomFunctions extends LuceneTestCase {
     Expression expr = JavascriptCompiler.compile("foo()", functions, getClass().getClassLoader());
     assertEquals(5, expr.evaluate(0, null), DELTA);
   }
-  
+
   public static double oneArgMethod(double arg1) { return 3 + arg1; }
   
   /** tests a method with one arguments */
@@ -91,7 +93,43 @@ public class TestCustomFunctions extends LuceneTestCase {
     Expression expr = JavascriptCompiler.compile("foo() + bar(3)", functions, getClass().getClassLoader());
     assertEquals(11, expr.evaluate(0, null), DELTA);
   }
-  
+
+  /** tests invalid methods that are not allowed to become variables to be mapped */
+  public void testInvalidVariableMethods() {
+    try {
+      JavascriptCompiler.compile("method()");
+      fail();
+    } catch (IllegalArgumentException exception) {
+      fail();
+    } catch (ParseException expected) {
+      //expected
+      assertEquals("Invalid expression 'method()': Unrecognized function call (method).", expected.getMessage());
+      assertEquals(0, expected.getErrorOffset());
+    }
+
+    try {
+      JavascriptCompiler.compile("method.method(1)");
+      fail();
+    } catch (IllegalArgumentException exception) {
+      fail();
+    } catch (ParseException expected) {
+      //expected
+      assertEquals("Invalid expression 'method.method(1)': Unrecognized function call (method.method).", expected.getMessage());
+      assertEquals(0, expected.getErrorOffset());
+    }
+    
+    try {
+      JavascriptCompiler.compile("1 + method()");
+      fail();
+    } catch (IllegalArgumentException exception) {
+      fail();
+    } catch (ParseException expected) {
+      //expected
+      assertEquals("Invalid expression '1 + method()': Unrecognized function call (method).", expected.getMessage());
+      assertEquals(4, expected.getErrorOffset());
+    }
+  }
+
   public static String bogusReturnType() { return "bogus!"; }
   
   /** wrong return type: must be double */
@@ -144,7 +182,7 @@ public class TestCustomFunctions extends LuceneTestCase {
       JavascriptCompiler.compile("foo()", functions, getClass().getClassLoader());
       fail();
     } catch (IllegalArgumentException e) {
-      assertTrue(e.getMessage().contains("is not public"));
+      assertTrue(e.getMessage().contains("not public"));
     }
   }
 
@@ -160,7 +198,7 @@ public class TestCustomFunctions extends LuceneTestCase {
       JavascriptCompiler.compile("foo()", functions, getClass().getClassLoader());
       fail();
     } catch (IllegalArgumentException e) {
-      assertTrue(e.getMessage().contains("is not public"));
+      assertTrue(e.getMessage().contains("not public"));
     }
   }
   

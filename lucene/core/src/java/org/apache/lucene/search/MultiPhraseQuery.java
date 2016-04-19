@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,15 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.*;
 
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.DocsAndPositionsEnum;
-import org.apache.lucene.index.AtomicReader;
-import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.index.Term;
@@ -34,29 +33,29 @@ import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.similarities.Similarity.SimScorer;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.util.ArrayUtil;
-import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.PriorityQueue;
 import org.apache.lucene.util.ToStringUtils;
 
 /**
- * MultiPhraseQuery is a generalized version of PhraseQuery, with an added
- * method {@link #add(Term[])}.
- * To use this class, to search for the phrase "Microsoft app*" first use
- * add(Term) on the term "Microsoft", then find all terms that have "app" as
- * prefix using IndexReader.terms(Term), and use MultiPhraseQuery.add(Term[]
- * terms) to add them to the query.
- *
+ * A generalized version of {@link PhraseQuery}, with an added
+ * method {@link #add(Term[])} for adding more than one term at the same position
+ * that are treated as a disjunction (OR).
+ * To use this class to search for the phrase "Microsoft app*" first use
+ * {@link #add(Term)} on the term "microsoft" (assuming lowercase analysis), then
+ * find all terms that have "app" as prefix using {@link LeafReader#terms(String)},
+ * seeking to "app" then iterating and collecting terms until there is no longer
+ * that prefix, and finally use {@link #add(Term[])} to add them to the query.
  */
 public class MultiPhraseQuery extends Query {
-  private String field;
-  private ArrayList<Term[]> termArrays = new ArrayList<>();
-  private ArrayList<Integer> positions = new ArrayList<>();
+  private String field;// becomes non-null on first add() then is unmodified
+  private final ArrayList<Term[]> termArrays = new ArrayList<>();
+  private final ArrayList<Integer> positions = new ArrayList<>();
 
   private int slop = 0;
 
   /** Sets the phrase slop for this query.
-   * @see PhraseQuery#setSlop(int)
+   * @see PhraseQuery#getSlop()
    */
   public void setSlop(int s) {
     if (s < 0) {
@@ -71,46 +70,45 @@ public class MultiPhraseQuery extends Query {
   public int getSlop() { return slop; }
 
   /** Add a single term at the next position in the phrase.
-   * @see PhraseQuery#add(Term)
    */
   public void add(Term term) { add(new Term[]{term}); }
 
   /** Add multiple terms at the next position in the phrase.  Any of the terms
-   * may match.
-   *
-   * @see PhraseQuery#add(Term)
+   * may match (a disjunction).
+   * The array is not copied or mutated, the caller should consider it
+   * immutable subsequent to calling this method.
    */
   public void add(Term[] terms) {
     int position = 0;
     if (positions.size() > 0)
-      position = positions.get(positions.size()-1).intValue() + 1;
+      position = positions.get(positions.size() - 1) + 1;
 
     add(terms, position);
   }
 
   /**
    * Allows to specify the relative position of terms within the phrase.
-   * 
-   * @see PhraseQuery#add(Term, int)
+   * The array is not copied or mutated, the caller should consider it
+   * immutable subsequent to calling this method.
    */
   public void add(Term[] terms, int position) {
+    Objects.requireNonNull(terms, "Term array must not be null");
     if (termArrays.size() == 0)
       field = terms[0].field();
 
-    for (int i = 0; i < terms.length; i++) {
-      if (!terms[i].field().equals(field)) {
+    for (Term term : terms) {
+      if (!term.field().equals(field)) {
         throw new IllegalArgumentException(
-            "All phrase terms must be in the same field (" + field + "): "
-                + terms[i]);
+            "All phrase terms must be in the same field (" + field + "): " + term);
       }
     }
 
     termArrays.add(terms);
-    positions.add(Integer.valueOf(position));
+    positions.add(position);
   }
 
   /**
-   * Returns a List of the terms in the multiphrase.
+   * Returns a List of the terms in the multi-phrase.
    * Do not modify the List or its contents.
    */
   public List<Term[]> getTermArrays() {
@@ -123,18 +121,8 @@ public class MultiPhraseQuery extends Query {
   public int[] getPositions() {
     int[] result = new int[positions.size()];
     for (int i = 0; i < positions.size(); i++)
-      result[i] = positions.get(i).intValue();
+      result[i] = positions.get(i);
     return result;
-  }
-
-  // inherit javadoc
-  @Override
-  public void extractTerms(Set<Term> terms) {
-    for (final Term[] arr : termArrays) {
-      for (final Term term: arr) {
-        terms.add(term);
-      }
-    }
   }
 
 
@@ -142,10 +130,13 @@ public class MultiPhraseQuery extends Query {
     private final Similarity similarity;
     private final Similarity.SimWeight stats;
     private final Map<Term,TermContext> termContexts = new HashMap<>();
+    private final boolean needsScores;
 
-    public MultiPhraseWeight(IndexSearcher searcher)
+    public MultiPhraseWeight(IndexSearcher searcher, boolean needsScores)
       throws IOException {
-      this.similarity = searcher.getSimilarity();
+      super(MultiPhraseQuery.this);
+      this.needsScores = needsScores;
+      this.similarity = searcher.getSimilarity(needsScores);
       final IndexReaderContext context = searcher.getTopReaderContext();
       
       // compute idf
@@ -160,13 +151,17 @@ public class MultiPhraseQuery extends Query {
           allTermStats.add(searcher.termStatistics(term, termContext));
         }
       }
-      stats = similarity.computeWeight(getBoost(),
+      stats = similarity.computeWeight(
           searcher.collectionStatistics(field), 
           allTermStats.toArray(new TermStatistics[allTermStats.size()]));
     }
 
     @Override
-    public Query getQuery() { return MultiPhraseQuery.this; }
+    public void extractTerms(Set<Term> terms) {
+      for (final Term[] arr : termArrays) {
+        Collections.addAll(terms, arr);
+      }
+    }
 
     @Override
     public float getValueForNormalization() {
@@ -174,15 +169,14 @@ public class MultiPhraseQuery extends Query {
     }
 
     @Override
-    public void normalize(float queryNorm, float topLevelBoost) {
-      stats.normalize(queryNorm, topLevelBoost);
+    public void normalize(float queryNorm, float boost) {
+      stats.normalize(queryNorm, boost);
     }
 
     @Override
-    public Scorer scorer(AtomicReaderContext context, Bits acceptDocs) throws IOException {
+    public Scorer scorer(LeafReaderContext context) throws IOException {
       assert !termArrays.isEmpty();
-      final AtomicReader reader = context.reader();
-      final Bits liveDocs = acceptDocs;
+      final LeafReader reader = context.reader();
       
       PhraseQuery.PostingsAndFreq[] postingsFreqs = new PhraseQuery.PostingsAndFreq[termArrays.size()];
 
@@ -191,56 +185,41 @@ public class MultiPhraseQuery extends Query {
         return null;
       }
 
+      // TODO: move this check to createWeight to happen earlier to the user?
+      if (fieldTerms.hasPositions() == false) {
+        throw new IllegalStateException("field \"" + field + "\" was indexed without position data;" +
+            " cannot run MultiPhraseQuery (phrase=" + getQuery() + ")");
+      }
+
       // Reuse single TermsEnum below:
-      final TermsEnum termsEnum = fieldTerms.iterator(null);
+      final TermsEnum termsEnum = fieldTerms.iterator();
+      float totalMatchCost = 0;
 
       for (int pos=0; pos<postingsFreqs.length; pos++) {
         Term[] terms = termArrays.get(pos);
-
-        final DocsAndPositionsEnum postingsEnum;
-        int docFreq;
-
-        if (terms.length > 1) {
-          postingsEnum = new UnionDocsAndPositionsEnum(liveDocs, context, terms, termContexts, termsEnum);
-
-          // coarse -- this overcounts since a given doc can
-          // have more than one term:
-          docFreq = 0;
-          for(int termIdx=0;termIdx<terms.length;termIdx++) {
-            final Term term = terms[termIdx];
-            TermState termState = termContexts.get(term).get(context.ord);
-            if (termState == null) {
-              // Term not in reader
-              continue;
-            }
-            termsEnum.seekExact(term.bytes(), termState);
-            docFreq += termsEnum.docFreq();
-          }
-
-          if (docFreq == 0) {
-            // None of the terms are in this reader
-            return null;
-          }
-        } else {
-          final Term term = terms[0];
+        List<PostingsEnum> postings = new ArrayList<>();
+        
+        for (Term term : terms) {
           TermState termState = termContexts.get(term).get(context.ord);
-          if (termState == null) {
-            // Term not in reader
-            return null;
+          if (termState != null) {
+            termsEnum.seekExact(term.bytes(), termState);
+            postings.add(termsEnum.postings(null, PostingsEnum.POSITIONS));
+            totalMatchCost += PhraseQuery.termPositionsCost(termsEnum);
           }
-          termsEnum.seekExact(term.bytes(), termState);
-          postingsEnum = termsEnum.docsAndPositions(liveDocs, null, DocsEnum.FLAG_NONE);
-
-          if (postingsEnum == null) {
-            // term does exist, but has no positions
-            assert termsEnum.docs(liveDocs, null, DocsEnum.FLAG_NONE) != null: "termstate found but no term exists in reader";
-            throw new IllegalStateException("field \"" + term.field() + "\" was indexed without position data; cannot run PhraseQuery (term=" + term.text() + ")");
-          }
-
-          docFreq = termsEnum.docFreq();
+        }
+        
+        if (postings.isEmpty()) {
+          return null;
+        }
+        
+        final PostingsEnum postingsEnum;
+        if (postings.size() == 1) {
+          postingsEnum = postings.get(0);
+        } else {
+          postingsEnum = new UnionPostingsEnum(postings);
         }
 
-        postingsFreqs[pos] = new PhraseQuery.PostingsAndFreq(postingsEnum, docFreq, positions.get(pos).intValue(), terms);
+        postingsFreqs[pos] = new PhraseQuery.PostingsAndFreq(postingsEnum, positions.get(pos).intValue(), terms);
       }
 
       // sort by increasing docFreq order
@@ -249,56 +228,60 @@ public class MultiPhraseQuery extends Query {
       }
 
       if (slop == 0) {
-        return new ExactPhraseScorer(this, postingsFreqs, similarity.simScorer(stats, context));
+        return new ExactPhraseScorer(this, postingsFreqs,
+                                      similarity.simScorer(stats, context),
+                                      needsScores, totalMatchCost);
       } else {
-        return new SloppyPhraseScorer(this, postingsFreqs, slop, similarity.simScorer(stats, context));
+        return new SloppyPhraseScorer(this, postingsFreqs, slop,
+                                        similarity.simScorer(stats, context),
+                                        needsScores, totalMatchCost);
       }
     }
 
     @Override
-    public Explanation explain(AtomicReaderContext context, int doc) throws IOException {
-      Scorer scorer = scorer(context, context.reader().getLiveDocs());
+    public Explanation explain(LeafReaderContext context, int doc) throws IOException {
+      Scorer scorer = scorer(context);
       if (scorer != null) {
-        int newDoc = scorer.advance(doc);
+        int newDoc = scorer.iterator().advance(doc);
         if (newDoc == doc) {
           float freq = slop == 0 ? scorer.freq() : ((SloppyPhraseScorer)scorer).sloppyFreq();
           SimScorer docScorer = similarity.simScorer(stats, context);
-          ComplexExplanation result = new ComplexExplanation();
-          result.setDescription("weight("+getQuery()+" in "+doc+") [" + similarity.getClass().getSimpleName() + "], result of:");
-          Explanation scoreExplanation = docScorer.explain(doc, new Explanation(freq, "phraseFreq=" + freq));
-          result.addDetail(scoreExplanation);
-          result.setValue(scoreExplanation.getValue());
-          result.setMatch(true);          
-          return result;
+          Explanation freqExplanation = Explanation.match(freq, "phraseFreq=" + freq);
+          Explanation scoreExplanation = docScorer.explain(doc, freqExplanation);
+          return Explanation.match(
+              scoreExplanation.getValue(),
+              "weight("+getQuery()+" in "+doc+") [" + similarity.getClass().getSimpleName() + "], result of:",
+              scoreExplanation);
         }
       }
       
-      return new ComplexExplanation(false, 0.0f, "no matching term");
+      return Explanation.noMatch("no matching term");
     }
   }
 
   @Override
-  public Query rewrite(IndexReader reader) {
+  public Query rewrite(IndexReader reader) throws IOException {
+    if (getBoost() != 1f) {
+      return super.rewrite(reader);
+    }
     if (termArrays.isEmpty()) {
-      BooleanQuery bq = new BooleanQuery();
-      bq.setBoost(getBoost());
-      return bq;
+      return new MatchNoDocsQuery();
     } else if (termArrays.size() == 1) {                 // optimize one-term case
       Term[] terms = termArrays.get(0);
-      BooleanQuery boq = new BooleanQuery(true);
-      for (int i=0; i<terms.length; i++) {
-        boq.add(new TermQuery(terms[i]), BooleanClause.Occur.SHOULD);
+      BooleanQuery.Builder builder = new BooleanQuery.Builder();
+      builder.setDisableCoord(true);
+      for (Term term : terms) {
+        builder.add(new TermQuery(term), BooleanClause.Occur.SHOULD);
       }
-      boq.setBoost(getBoost());
-      return boq;
+      return builder.build();
     } else {
-      return this;
+      return super.rewrite(reader);
     }
   }
 
   @Override
-  public Weight createWeight(IndexSearcher searcher) throws IOException {
-    return new MultiPhraseWeight(searcher);
+  public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+    return new MultiPhraseWeight(searcher, needsScores);
   }
 
   /** Prints a user-readable version of this query. */
@@ -348,7 +331,6 @@ public class MultiPhraseQuery extends Query {
     }
 
     buffer.append(ToStringUtils.boost(getBoost()));
-
     return buffer.toString();
   }
 
@@ -358,7 +340,7 @@ public class MultiPhraseQuery extends Query {
   public boolean equals(Object o) {
     if (!(o instanceof MultiPhraseQuery)) return false;
     MultiPhraseQuery other = (MultiPhraseQuery)o;
-    return this.getBoost() == other.getBoost()
+    return super.equals(o)
       && this.slop == other.slop
       && termArraysEquals(this.termArrays, other.termArrays)
       && this.positions.equals(other.positions);
@@ -367,11 +349,10 @@ public class MultiPhraseQuery extends Query {
   /** Returns a hash code value for this object.*/
   @Override
   public int hashCode() {
-    return Float.floatToIntBits(getBoost())
+    return super.hashCode()
       ^ slop
       ^ termArraysHashCode()
-      ^ positions.hashCode()
-      ^ 0x4AC65113;
+      ^ positions.hashCode();
   }
   
   // Breakout calculation of the termArrays hashcode
@@ -401,179 +382,164 @@ public class MultiPhraseQuery extends Query {
     }
     return true;
   }
-}
-
-/**
- * Takes the logical union of multiple DocsEnum iterators.
- */
-
-// TODO: if ever we allow subclassing of the *PhraseScorer
-class UnionDocsAndPositionsEnum extends DocsAndPositionsEnum {
-
-  private static final class DocsQueue extends PriorityQueue<DocsAndPositionsEnum> {
-    DocsQueue(List<DocsAndPositionsEnum> docsEnums) throws IOException {
-      super(docsEnums.size());
-
-      Iterator<DocsAndPositionsEnum> i = docsEnums.iterator();
-      while (i.hasNext()) {
-        DocsAndPositionsEnum postings = i.next();
-        if (postings.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
-          add(postings);
-        }
+  
+  /** 
+   * Takes the logical union of multiple PostingsEnum iterators.
+   * <p>
+   * Note: positions are merged during freq()
+   */
+  static class UnionPostingsEnum extends PostingsEnum {
+    /** queue ordered by docid */
+    final DocsQueue docsQueue;
+    /** cost of this enum: sum of its subs */
+    final long cost;
+    
+    /** queue ordered by position for current doc */
+    final PositionsQueue posQueue = new PositionsQueue();
+    /** current doc posQueue is working */
+    int posQueueDoc = -2;
+    /** list of subs (unordered) */
+    final PostingsEnum[] subs;
+    
+    UnionPostingsEnum(Collection<PostingsEnum> subs) {
+      docsQueue = new DocsQueue(subs.size());
+      long cost = 0;
+      for (PostingsEnum sub : subs) {
+        docsQueue.add(sub);
+        cost += sub.cost();
       }
+      this.cost = cost;
+      this.subs = subs.toArray(new PostingsEnum[subs.size()]);
     }
 
     @Override
-    public final boolean lessThan(DocsAndPositionsEnum a, DocsAndPositionsEnum b) {
-      return a.docID() < b.docID();
+    public int freq() throws IOException {
+      int doc = docID();
+      if (doc != posQueueDoc) {
+        posQueue.clear();
+        for (PostingsEnum sub : subs) {
+          if (sub.docID() == doc) {
+            int freq = sub.freq();
+            for (int i = 0; i < freq; i++) {
+              posQueue.add(sub.nextPosition());
+            }
+          }
+        }
+        posQueue.sort();
+        posQueueDoc = doc;
+      }
+      return posQueue.size();
     }
-  }
 
-  private static final class IntQueue {
-    private int _arraySize = 16;
-    private int _index = 0;
-    private int _lastIndex = 0;
-    private int[] _array = new int[_arraySize];
+    @Override
+    public int nextPosition() throws IOException {
+      return posQueue.next();
+    }
+
+    @Override
+    public int docID() {
+      return docsQueue.top().docID();
+    }
+
+    @Override
+    public int nextDoc() throws IOException {
+      PostingsEnum top = docsQueue.top();
+      int doc = top.docID();
+      
+      do {
+        top.nextDoc();
+        top = docsQueue.updateTop();
+      } while (top.docID() == doc);
+
+      return top.docID();
+    }
+
+    @Override
+    public int advance(int target) throws IOException {
+      PostingsEnum top = docsQueue.top();
+      
+      do {
+        top.advance(target);
+        top = docsQueue.updateTop();
+      } while (top.docID() < target);
+
+      return top.docID();
+    }
+
+    @Override
+    public long cost() {
+      return cost;
+    }
     
-    final void add(int i) {
-      if (_lastIndex == _arraySize)
-        growArray();
-
-      _array[_lastIndex++] = i;
+    @Override
+    public int startOffset() throws IOException {
+      return -1; // offsets are unsupported
     }
 
-    final int next() {
-      return _array[_index++];
+    @Override
+    public int endOffset() throws IOException {
+      return -1; // offsets are unsupported
     }
 
-    final void sort() {
-      Arrays.sort(_array, _index, _lastIndex);
+    @Override
+    public BytesRef getPayload() throws IOException {
+      return null; // payloads are unsupported
     }
-
-    final void clear() {
-      _index = 0;
-      _lastIndex = 0;
-    }
-
-    final int size() {
-      return (_lastIndex - _index);
-    }
-
-    private void growArray() {
-      int[] newArray = new int[_arraySize * 2];
-      System.arraycopy(_array, 0, newArray, 0, _arraySize);
-      _array = newArray;
-      _arraySize *= 2;
-    }
-  }
-
-  private int _doc = -1;
-  private int _freq;
-  private DocsQueue _queue;
-  private IntQueue _posList;
-  private long cost;
-
-  public UnionDocsAndPositionsEnum(Bits liveDocs, AtomicReaderContext context, Term[] terms, Map<Term,TermContext> termContexts, TermsEnum termsEnum) throws IOException {
-    List<DocsAndPositionsEnum> docsEnums = new LinkedList<>();
-    for (int i = 0; i < terms.length; i++) {
-      final Term term = terms[i];
-      TermState termState = termContexts.get(term).get(context.ord);
-      if (termState == null) {
-        // Term doesn't exist in reader
-        continue;
-      }
-      termsEnum.seekExact(term.bytes(), termState);
-      DocsAndPositionsEnum postings = termsEnum.docsAndPositions(liveDocs, null, DocsEnum.FLAG_NONE);
-      if (postings == null) {
-        // term does exist, but has no positions
-        throw new IllegalStateException("field \"" + term.field() + "\" was indexed without position data; cannot run PhraseQuery (term=" + term.text() + ")");
-      }
-      cost += postings.cost();
-      docsEnums.add(postings);
-    }
-
-    _queue = new DocsQueue(docsEnums);
-    _posList = new IntQueue();
-  }
-
-  @Override
-  public final int nextDoc() throws IOException {
-    if (_queue.size() == 0) {
-      return NO_MORE_DOCS;
-    }
-
-    // TODO: move this init into positions(): if the search
-    // doesn't need the positions for this doc then don't
-    // waste CPU merging them:
-    _posList.clear();
-    _doc = _queue.top().docID();
-
-    // merge sort all positions together
-    DocsAndPositionsEnum postings;
-    do {
-      postings = _queue.top();
-
-      final int freq = postings.freq();
-      for (int i = 0; i < freq; i++) {
-        _posList.add(postings.nextPosition());
+    
+    /** 
+     * disjunction of postings ordered by docid.
+     */
+    static class DocsQueue extends PriorityQueue<PostingsEnum> {
+      DocsQueue(int size) {
+        super(size);
       }
 
-      if (postings.nextDoc() != NO_MORE_DOCS) {
-        _queue.updateTop();
-      } else {
-        _queue.pop();
-      }
-    } while (_queue.size() > 0 && _queue.top().docID() == _doc);
-
-    _posList.sort();
-    _freq = _posList.size();
-
-    return _doc;
-  }
-
-  @Override
-  public int nextPosition() {
-    return _posList.next();
-  }
-
-  @Override
-  public int startOffset() {
-    return -1;
-  }
-
-  @Override
-  public int endOffset() {
-    return -1;
-  }
-
-  @Override
-  public BytesRef getPayload() {
-    return null;
-  }
-
-  @Override
-  public final int advance(int target) throws IOException {
-    while (_queue.top() != null && target > _queue.top().docID()) {
-      DocsAndPositionsEnum postings = _queue.pop();
-      if (postings.advance(target) != NO_MORE_DOCS) {
-        _queue.add(postings);
+      @Override
+      public final boolean lessThan(PostingsEnum a, PostingsEnum b) {
+        return a.docID() < b.docID();
       }
     }
-    return nextDoc();
-  }
+    
+    /** 
+     * queue of terms for a single document. its a sorted array of
+     * all the positions from all the postings
+     */
+    static class PositionsQueue {
+      private int arraySize = 16;
+      private int index = 0;
+      private int size = 0;
+      private int[] array = new int[arraySize];
+      
+      void add(int i) {
+        if (size == arraySize)
+          growArray();
 
-  @Override
-  public final int freq() {
-    return _freq;
-  }
+        array[size++] = i;
+      }
 
-  @Override
-  public final int docID() {
-    return _doc;
-  }
+      int next() {
+        return array[index++];
+      }
 
-  @Override
-  public long cost() {
-    return cost;
+      void sort() {
+        Arrays.sort(array, index, size);
+      }
+
+      void clear() {
+        index = 0;
+        size = 0;
+      }
+
+      int size() {
+        return size;
+      }
+
+      private void growArray() {
+        int[] newArray = new int[arraySize * 2];
+        System.arraycopy(array, 0, newArray, 0, arraySize);
+        array = newArray;
+        arraySize *= 2;
+      }
+    }
   }
 }

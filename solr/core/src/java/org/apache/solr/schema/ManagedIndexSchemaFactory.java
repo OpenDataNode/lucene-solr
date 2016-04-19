@@ -1,4 +1,3 @@
-package org.apache.solr.schema;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,6 +14,12 @@ package org.apache.solr.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.schema;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.invoke.MethodHandles;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.solr.cloud.ZkController;
@@ -25,6 +30,8 @@ import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkCmdExecutor;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
+import org.apache.solr.core.CloseHook;
+import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.core.SolrResourceLoader;
@@ -36,14 +43,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xml.sax.InputSource;
 
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-
 /** Factory for ManagedIndexSchema */
 public class ManagedIndexSchemaFactory extends IndexSchemaFactory implements SolrCoreAware {
-  private static final Logger log = LoggerFactory.getLogger(ManagedIndexSchemaFactory.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   private static final String UPGRADED_SCHEMA_EXTENSION = ".bak";
   private static final String SCHEMA_DOT_XML = "schema.xml";
 
@@ -97,7 +99,7 @@ public class ManagedIndexSchemaFactory extends IndexSchemaFactory implements Sol
    * the instantiated IndexSchema is persisted to the managed schema file named in the
    * managedSchemaResourceName param, in the directory given by 
    * {@link org.apache.solr.core.SolrResourceLoader#getConfigDir()}, or if configs are
-   * in ZooKeeper, under {@link org.apache.solr.cloud.ZkSolrResourceLoader#collectionZkPath}.
+   * in ZooKeeper, under {@link org.apache.solr.cloud.ZkSolrResourceLoader#configSetZkPath}.
    *
    * After the managed schema file is persisted, the original schema file is
    * renamed by appending the extension named in {@link #UPGRADED_SCHEMA_EXTENSION}.
@@ -119,7 +121,7 @@ public class ManagedIndexSchemaFactory extends IndexSchemaFactory implements Sol
     } else { // ZooKeeper
       final ZkSolrResourceLoader zkLoader = (ZkSolrResourceLoader)loader;
       final SolrZkClient zkClient = zkLoader.getZkController().getZkClient();
-      final String managedSchemaPath = zkLoader.getCollectionZkPath() + "/" + managedSchemaResourceName;
+      final String managedSchemaPath = zkLoader.getConfigSetZkPath() + "/" + managedSchemaResourceName;
       Stat stat = new Stat();
       try {
         // Attempt to load the managed schema
@@ -224,7 +226,7 @@ public class ManagedIndexSchemaFactory extends IndexSchemaFactory implements Sol
       SolrResourceLoader loader = config.getResourceLoader();
       if (loader instanceof ZkSolrResourceLoader) {
         ZkSolrResourceLoader zkLoader = (ZkSolrResourceLoader)loader;
-        String nonManagedSchemaPath = zkLoader.getCollectionZkPath() + "/" + resourceName;
+        String nonManagedSchemaPath = zkLoader.getConfigSetZkPath() + "/" + resourceName;
         try {
           exists = zkLoader.getZkController().pathExists(nonManagedSchemaPath);
         } catch (InterruptedException e) {
@@ -284,7 +286,7 @@ public class ManagedIndexSchemaFactory extends IndexSchemaFactory implements Sol
               + "nor under SolrConfig.getConfigDir() or the current directory."
               + "  PLEASE REMOVE THIS FILE.");
         } else {
-          File upgradedSchemaFile = new File(nonManagedSchemaFile.getPath() + UPGRADED_SCHEMA_EXTENSION);
+          File upgradedSchemaFile = new File(nonManagedSchemaFile + UPGRADED_SCHEMA_EXTENSION);
           if (nonManagedSchemaFile.renameTo(upgradedSchemaFile)) {
             // Set the resource name to the managed schema so that the CoreAdminHandler returns a findable filename 
             schema.setResourceName(managedSchemaResourceName);
@@ -309,25 +311,10 @@ public class ManagedIndexSchemaFactory extends IndexSchemaFactory implements Sol
    *@return the File for the named resource, or null if it can't be found
    */
   private File locateConfigFile(String resource) {
-    File located = null;
-    File file = new File(resource);
-    if (file.isAbsolute()) {
-      if (file.isFile() && file.canRead()) {
-        located = file;
-      }
-    } else {
-      // try $configDir/$resource
-      File fileUnderConfigDir = new File(config.getResourceLoader().getConfigDir() + resource);
-      if (fileUnderConfigDir.isFile() && fileUnderConfigDir.canRead()) {
-        located = fileUnderConfigDir;
-      } else {
-        // no success with $configDir/$resource - try $CWD/$resource
-        if (file.isFile() && file.canRead()) {
-          located = file;
-        }
-      }
-    }
-    return located;
+    String location = config.getResourceLoader().resourceLocation(resource);
+    if (location.equals(resource) || location.startsWith("classpath:"))
+      return null;
+    return new File(location);
   }
 
   /**
@@ -349,7 +336,7 @@ public class ManagedIndexSchemaFactory extends IndexSchemaFactory implements Sol
     } else {
       // Rename the non-managed schema znode in ZooKeeper
       ZkSolrResourceLoader zkLoader = (ZkSolrResourceLoader)loader;
-      final String nonManagedSchemaPath = zkLoader.getCollectionZkPath() + "/" + resourceName;
+      final String nonManagedSchemaPath = zkLoader.getConfigSetZkPath() + "/" + resourceName;
       try {
         ZkController zkController = zkLoader.getZkController();
         ZkCmdExecutor zkCmdExecutor = new ZkCmdExecutor(zkController.getClientTimeout());
@@ -388,7 +375,9 @@ public class ManagedIndexSchemaFactory extends IndexSchemaFactory implements Sol
   public void inform(SolrCore core) {
     this.core = core;
     if (loader instanceof ZkSolrResourceLoader) {
-      this.zkIndexSchemaReader = new ZkIndexSchemaReader(this);
+      this.zkIndexSchemaReader = new ZkIndexSchemaReader(this, core);
+      ZkSolrResourceLoader zkLoader = (ZkSolrResourceLoader)loader;
+      zkLoader.setZkIndexSchemaReader(this.zkIndexSchemaReader);
     } else {
       this.zkIndexSchemaReader = null;
     }
@@ -401,5 +390,13 @@ public class ManagedIndexSchemaFactory extends IndexSchemaFactory implements Sol
   public void setSchema(ManagedIndexSchema schema) {
     this.schema = schema;
     core.setLatestSchema(schema);
+  }
+  
+  public boolean isMutable() {
+    return isMutable;
+  }
+
+  public SolrConfig getConfig() {
+    return config;
   }
 }

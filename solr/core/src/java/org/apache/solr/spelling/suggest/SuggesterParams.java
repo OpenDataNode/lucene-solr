@@ -1,5 +1,3 @@
-package org.apache.solr.spelling.suggest;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.spelling.suggest;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.spelling.suggest;
 
 public interface SuggesterParams {
   public static final String SUGGEST_PREFIX = "suggest.";
@@ -28,7 +27,7 @@ public interface SuggesterParams {
 
   /**
    * The count of suggestions to return for each query term not in the index and/or dictionary.
-   * <p/>
+   * <p>
    * If this parameter is absent in the request then only one suggestion is
    * returned. If it is more than one then a maximum of given suggestions are
    * returned for each token in the query.
@@ -37,7 +36,7 @@ public interface SuggesterParams {
   
   /**
    * Use the value for this parameter as the query to spell check.
-   * <p/>
+   * <p>
    * This parameter is <b>optional</b>. If absent, then the q parameter is
    * used.
    */
@@ -66,4 +65,21 @@ public interface SuggesterParams {
    * This parameter does not need any suggest dictionary names to be specified
    */
   public static final String SUGGEST_RELOAD_ALL = SUGGEST_PREFIX + "reloadAll";
+
+  /**
+   * contextFilterQuery to use for filtering the result of the suggestion
+   */
+  public static final String SUGGEST_CONTEXT_FILTER_QUERY = SUGGEST_PREFIX + "cfq";
+
+  /**
+   * Whether keyword should be highlighted in result or not
+   */
+  public static final String SUGGEST_HIGHLIGHT = SUGGEST_PREFIX + "highlight";
+
+
+  /**
+   * Whether all terms are required or not
+   */
+  public static final String SUGGEST_ALL_TERMS_REQUIRED = SUGGEST_PREFIX + "allTermsRequired";
+
 }

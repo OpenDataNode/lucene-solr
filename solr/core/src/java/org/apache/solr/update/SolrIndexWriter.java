@@ -14,10 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.lucene.codecs.Codec;
@@ -26,10 +26,11 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.InfoStream;
-import org.apache.solr.core.DirectoryFactory;
+import org.apache.solr.common.util.IOUtils;
 import org.apache.solr.core.DirectoryFactory.DirContext;
+import org.apache.solr.core.DirectoryFactory;
+import org.apache.solr.core.SolrCore;
 import org.apache.solr.schema.IndexSchema;
-import org.apache.solr.util.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,7 +41,7 @@ import org.slf4j.LoggerFactory;
  */
 
 public class SolrIndexWriter extends IndexWriter {
-  private static Logger log = LoggerFactory.getLogger(SolrIndexWriter.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   // These should *only* be used for debugging or monitoring purposes
   public static final AtomicLong numOpens = new AtomicLong();
   public static final AtomicLong numCloses = new AtomicLong();
@@ -56,12 +57,12 @@ public class SolrIndexWriter extends IndexWriter {
   private InfoStream infoStream;
   private Directory directory;
 
-  public static SolrIndexWriter create(String name, String path, DirectoryFactory directoryFactory, boolean create, IndexSchema schema, SolrIndexConfig config, IndexDeletionPolicy delPolicy, Codec codec) throws IOException {
+  public static SolrIndexWriter create(SolrCore core, String name, String path, DirectoryFactory directoryFactory, boolean create, IndexSchema schema, SolrIndexConfig config, IndexDeletionPolicy delPolicy, Codec codec) throws IOException {
 
     SolrIndexWriter w = null;
     final Directory d = directoryFactory.get(path, DirContext.DEFAULT, config.lockType);
     try {
-      w = new SolrIndexWriter(name, path, d, create, schema, 
+      w = new SolrIndexWriter(core, name, path, d, create, schema, 
                               config, delPolicy, codec);
       w.setDirectoryFactory(directoryFactory);
       return w;
@@ -73,9 +74,9 @@ public class SolrIndexWriter extends IndexWriter {
     }
   }
 
-  private SolrIndexWriter(String name, String path, Directory directory, boolean create, IndexSchema schema, SolrIndexConfig config, IndexDeletionPolicy delPolicy, Codec codec) throws IOException {
+  private SolrIndexWriter(SolrCore core, String name, String path, Directory directory, boolean create, IndexSchema schema, SolrIndexConfig config, IndexDeletionPolicy delPolicy, Codec codec) throws IOException {
     super(directory,
-          config.toIndexWriterConfig(schema).
+          config.toIndexWriterConfig(core).
           setOpenMode(create ? IndexWriterConfig.OpenMode.CREATE : IndexWriterConfig.OpenMode.APPEND).
           setIndexDeletionPolicy(delPolicy).setCodec(codec)
           );

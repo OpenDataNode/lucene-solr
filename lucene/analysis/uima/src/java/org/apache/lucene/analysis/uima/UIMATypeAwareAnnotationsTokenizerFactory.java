@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.uima;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.uima;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.uima;
+
 
 import org.apache.lucene.analysis.util.TokenizerFactory;
 import org.apache.lucene.util.AttributeFactory;
@@ -44,8 +44,8 @@ public class UIMATypeAwareAnnotationsTokenizerFactory extends TokenizerFactory {
   }
 
   @Override
-  public UIMATypeAwareAnnotationsTokenizer create(AttributeFactory factory, Reader input) {
+  public UIMATypeAwareAnnotationsTokenizer create(AttributeFactory factory) {
     return new UIMATypeAwareAnnotationsTokenizer
-        (descriptorPath, tokenType, featurePath, configurationParameters, factory, input);
+        (descriptorPath, tokenType, featurePath, configurationParameters, factory);
   }
 }

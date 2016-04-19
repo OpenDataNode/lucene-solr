@@ -1,5 +1,3 @@
-package org.apache.solr.spelling;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.spelling;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.spelling;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -199,9 +198,10 @@ public class WordBreakSolrSpellChecker extends SolrSpellChecker {
     
     StringBuilder sb = new StringBuilder();
     Token[] tokenArr = options.tokens.toArray(new Token[options.tokens.size()]);
+    List<Token> tokenArrWithSeparators = new ArrayList<>(options.tokens.size() + 2);
     List<Term> termArr = new ArrayList<>(options.tokens.size() + 2);
-    
     List<ResultEntry> breakSuggestionList = new ArrayList<>();
+    List<ResultEntry> noBreakSuggestionList = new ArrayList<>();
     boolean lastOneProhibited = false;
     boolean lastOneRequired = false;
     boolean lastOneprocedesNewBooleanOp = false;
@@ -218,6 +218,7 @@ public class WordBreakSolrSpellChecker extends SolrSpellChecker {
       if (i > 0
           && (prohibited != lastOneProhibited || required != lastOneRequired || lastOneprocedesNewBooleanOp)) {
         termArr.add(WordBreakSpellChecker.SEPARATOR_TERM);
+        tokenArrWithSeparators.add(null);
       }
       lastOneProhibited = prohibited;
       lastOneRequired = required;
@@ -225,9 +226,13 @@ public class WordBreakSolrSpellChecker extends SolrSpellChecker {
       
       Term thisTerm = new Term(field, tokenArr[i].toString());
       termArr.add(thisTerm);
+      tokenArrWithSeparators.add(tokenArr[i]);
       if (breakWords) {
         SuggestWord[][] breakSuggestions = wbsp.suggestWordBreaks(thisTerm,
             numSuggestions, ir, options.suggestMode, sortMethod);
+        if(breakSuggestions.length==0) {
+          noBreakSuggestionList.add(new ResultEntry(tokenArr[i], null, 0));
+        }
         for (SuggestWord[] breakSuggestion : breakSuggestions) {
           sb.delete(0, sb.length());
           boolean firstOne = true;
@@ -248,7 +253,9 @@ public class WordBreakSolrSpellChecker extends SolrSpellChecker {
               freq));
         }
       }
-    }    
+    }
+    breakSuggestionList.addAll(noBreakSuggestionList);
+    
     List<ResultEntry> combineSuggestionList = Collections.emptyList();
     CombineSuggestion[] combineSuggestions = wbsp.suggestWordCombinations(
         termArr.toArray(new Term[termArr.size()]), numSuggestions, ir, options.suggestMode);
@@ -263,10 +270,10 @@ public class WordBreakSolrSpellChecker extends SolrSpellChecker {
           if (i > firstTermIndex) {
             sb.append(" ");
           }
-          sb.append(tokenArr[i].toString());
+          sb.append(tokenArrWithSeparators.get(i).toString());
         }
-        Token token = new Token(sb.toString(), tokenArr[firstTermIndex]
-            .startOffset(), tokenArr[lastTermIndex].endOffset());
+        Token token = new Token(sb.toString(), tokenArrWithSeparators.get(firstTermIndex)
+            .startOffset(), tokenArrWithSeparators.get(lastTermIndex).endOffset());
         combineSuggestionList.add(new ResultEntry(token, cs.suggestion.string,
             cs.suggestion.freq));
       }
@@ -282,32 +289,23 @@ public class WordBreakSolrSpellChecker extends SolrSpellChecker {
     int combineCount = 0;
     while (lastBreak != null || lastCombine != null) {
       if (lastBreak == null) {
-        result.add(lastCombine.token, lastCombine.suggestion, lastCombine.freq);
-        result.addFrequency(lastCombine.token, getCombineFrequency(ir, lastCombine.token));
+        addToResult(result, lastCombine.token, getCombineFrequency(ir, lastCombine.token), lastCombine.suggestion, lastCombine.freq);
         lastCombine = null;
       } else if (lastCombine == null) {
-        result.add(lastBreak.token, lastBreak.suggestion, lastBreak.freq);
-        result.addFrequency(lastBreak.token, ir.docFreq(new Term(field, lastBreak.token.toString())));
+        addToResult(result, lastBreak.token, ir.docFreq(new Term(field, lastBreak.token.toString())), lastBreak.suggestion, lastBreak.freq);
         lastBreak = null;
       } else if (lastBreak.freq < lastCombine.freq) {
-        result.add(lastCombine.token, lastCombine.suggestion, lastCombine.freq);
-        result.addFrequency(lastCombine.token, getCombineFrequency(ir, lastCombine.token));
+        addToResult(result, lastCombine.token, getCombineFrequency(ir, lastCombine.token), lastCombine.suggestion, lastCombine.freq);        
         lastCombine = null;
       } else if (lastCombine.freq < lastBreak.freq) {
-        result.add(lastBreak.token, lastBreak.suggestion, lastBreak.freq);
-        result.addFrequency(lastBreak.token, ir.docFreq(new Term(field, lastBreak.token.toString())));
+        addToResult(result, lastBreak.token, ir.docFreq(new Term(field, lastBreak.token.toString())), lastBreak.suggestion, lastBreak.freq);
         lastBreak = null;
-      } else if (breakCount >= combineCount) {
-        result.add(lastCombine.token, lastCombine.suggestion, lastCombine.freq);
-        result.addFrequency(lastCombine.token, getCombineFrequency(ir, lastCombine.token));
+      } else if (breakCount >= combineCount) { //TODO: Should reverse >= to < ??S
+        addToResult(result, lastCombine.token, getCombineFrequency(ir, lastCombine.token), lastCombine.suggestion, lastCombine.freq);        
         lastCombine = null;
       } else {
-        result.add(lastBreak.token, lastBreak.suggestion, lastBreak.freq);
-        result.addFrequency(lastBreak.token, ir.docFreq(new Term(field, lastBreak.token.toString())));
+        addToResult(result, lastBreak.token, ir.docFreq(new Term(field, lastBreak.token.toString())), lastBreak.suggestion, lastBreak.freq);        
         lastBreak = null;
-      }
-      if (result.getSuggestions().size() > numSuggestions) {
-        break;
       }
       if (lastBreak == null && breakIter.hasNext()) {
         lastBreak = breakIter.next();
@@ -319,6 +317,15 @@ public class WordBreakSolrSpellChecker extends SolrSpellChecker {
       }
     }
     return result;
+  }
+  private void addToResult(SpellingResult result, Token token, int tokenFrequency, String suggestion, int suggestionFrequency) {
+    if(suggestion==null) {
+      result.add(token, Collections.<String>emptyList());
+      result.addFrequency(token, tokenFrequency);
+    } else {
+      result.add(token, suggestion, suggestionFrequency);
+      result.addFrequency(token, tokenFrequency);
+    }
   }
   
   private int getCombineFrequency(IndexReader ir, Token token) throws IOException {

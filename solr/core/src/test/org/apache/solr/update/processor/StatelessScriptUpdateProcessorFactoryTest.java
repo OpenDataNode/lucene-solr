@@ -1,5 +1,3 @@
-package org.apache.solr.update.processor;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.update.processor;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.update.processor;
 
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
@@ -39,7 +38,7 @@ import java.util.List;
 /**
  * Tests {@link StatelessScriptUpdateProcessorFactory}.
  *
- * TODO: This test, to run from an IDE, requires a working directory of <path-to>/solr/core/src/test-files.  Fix!
+ * TODO: This test, to run from an IDE, requires a working directory of &lt;path-to&gt;/solr/core/src/test-files.  Fix!
  */
 public class StatelessScriptUpdateProcessorFactoryTest extends UpdateProcessorTestBase {
 
@@ -266,6 +265,16 @@ public class StatelessScriptUpdateProcessorFactoryTest extends UpdateProcessorTe
       return;
     }
     fail("Did not get exception from script");
+  }
+
+  public void testJavaScriptCompatibility() throws Exception  {
+    final String chain = "javascript-compatibility";
+    SolrInputDocument d = processAdd(chain,
+                                 doc(f("id", "5"),
+                                     f("name", " foo "),
+                                     f("subject", "BAR")));
+    assertEquals("bar", d.getFieldValue("term_s"));
+
   }
 
 }

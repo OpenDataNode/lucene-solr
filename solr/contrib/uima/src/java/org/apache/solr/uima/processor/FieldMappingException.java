@@ -1,5 +1,3 @@
-package org.apache.solr.uima.processor;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,14 @@ package org.apache.solr.uima.processor;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.uima.processor;
 
 /**
- * Exception thrown when an error happening while mapping UIMA CAS model to Solt fields
+ * Exception thrown when an error happening while mapping UIMA CAS model to Solr fields
  */
 @SuppressWarnings("serial")
 public class FieldMappingException extends Exception {
   public FieldMappingException(Exception e) {
+    super(e);
   }
 }

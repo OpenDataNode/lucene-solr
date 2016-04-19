@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.lang.invoke.MethodHandles;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
@@ -30,17 +31,17 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * <p> A data source implementation which can be used to read character files using HTTP. </p> <p/> <p> Refer to <a
+ * <p> A data source implementation which can be used to read character files using HTTP. </p> <p> Refer to <a
  * href="http://wiki.apache.org/solr/DataImportHandler">http://wiki.apache.org/solr/DataImportHandler</a> for more
  * details. </p>
- * <p/>
+ * <p>
  * <b>This API is experimental and may change in the future.</b>
  *
  *
  * @since solr 1.4
  */
 public class URLDataSource extends DataSource<Reader> {
-  Logger LOG = LoggerFactory.getLogger(URLDataSource.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private String baseUrl;
 

@@ -1,5 +1,3 @@
-package org.apache.solr.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,15 +14,19 @@ package org.apache.solr.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search;
+
+import java.util.Arrays;
+import java.util.regex.Pattern;
 
 import org.apache.lucene.index.Term;
-import org.apache.lucene.queries.TermsFilter;
+import org.apache.lucene.queries.TermsQuery;
 import org.apache.lucene.search.AutomatonQuery;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.search.FieldCacheTermsFilter;
+import org.apache.lucene.search.DocValuesTermsQuery;
 import org.apache.lucene.search.Filter;
-import org.apache.lucene.search.MultiTermQueryWrapperFilter;
+import org.apache.lucene.search.MatchNoDocsQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.QueryWrapperFilter;
 import org.apache.lucene.search.TermQuery;
@@ -36,9 +38,6 @@ import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.schema.FieldType;
-
-import java.util.Arrays;
-import java.util.regex.Pattern;
 
 /**
  * Finds documents whose specified field has any of the specified values. It's like
@@ -60,40 +59,35 @@ public class TermsQParserPlugin extends QParserPlugin {
   /** Choose the internal algorithm */
   private static final String METHOD = "method";
 
-  @Override
-  public void init(NamedList args) {
-  }
-
   private static enum Method {
     termsFilter {
       @Override
       Filter makeFilter(String fname, BytesRef[] bytesRefs) {
-        return new TermsFilter(fname, bytesRefs);
+        return new QueryWrapperFilter(new TermsQuery(fname, bytesRefs));
       }
     },
     booleanQuery {
       @Override
       Filter makeFilter(String fname, BytesRef[] byteRefs) {
-        BooleanQuery bq = new BooleanQuery(true);
+        BooleanQuery.Builder bq = new BooleanQuery.Builder();
+        bq.setDisableCoord(true);
         for (BytesRef byteRef : byteRefs) {
           bq.add(new TermQuery(new Term(fname, byteRef)), BooleanClause.Occur.SHOULD);
         }
-        return new QueryWrapperFilter(bq);
+        return new QueryWrapperFilter(bq.build());
       }
     },
     automaton {
       @Override
       Filter makeFilter(String fname, BytesRef[] byteRefs) {
         Automaton union = Automata.makeStringUnion(Arrays.asList(byteRefs));
-        return new MultiTermQueryWrapperFilter<AutomatonQuery>(new AutomatonQuery(new Term(fname), union)) {
-        };
+        return new QueryWrapperFilter(new AutomatonQuery(new Term(fname), union));
       }
     },
     docValuesTermsFilter {//on 4x this is FieldCacheTermsFilter but we use the 5x name any way
-      //note: limited to one val per doc
       @Override
       Filter makeFilter(String fname, BytesRef[] byteRefs) {
-        return new FieldCacheTermsFilter(fname, byteRefs);
+        return new QueryWrapperFilter(new DocValuesTermsQuery(fname, byteRefs));
       }
     };
 
@@ -117,12 +111,12 @@ public class TermsQParserPlugin extends QParserPlugin {
         if (sepIsSpace)
           qstr = qstr.trim();
         if (qstr.length() == 0)
-          return new BooleanQuery();//Matches nothing.
+          return new MatchNoDocsQuery();
         final String[] splitVals = sepIsSpace ? qstr.split("\\s+") : qstr.split(Pattern.quote(separator), -1);
         assert splitVals.length > 0;
 
         BytesRef[] bytesRefs = new BytesRef[splitVals.length];
-        BytesRef term = new BytesRef();
+        BytesRefBuilder term = new BytesRefBuilder();
         for (int i = 0; i < splitVals.length; i++) {
           String stringVal = splitVals[i];
           //logic same as TermQParserPlugin
@@ -131,7 +125,7 @@ public class TermsQParserPlugin extends QParserPlugin {
           } else {
             term.copyChars(stringVal);
           }
-          bytesRefs[i] = BytesRef.deepCopyOf(term);
+          bytesRefs[i] = term.toBytesRef();
         }
 
         return new SolrConstantScoreQuery(method.makeFilter(fname, bytesRefs));

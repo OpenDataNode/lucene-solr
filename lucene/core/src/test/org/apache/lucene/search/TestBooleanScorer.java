@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,24 +14,28 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.util.Set;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.document.StringField;
+import org.apache.lucene.document.Field.Store;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.BooleanQuery.BooleanWeight;
+import org.apache.lucene.search.BooleanClause.Occur;
+import org.apache.lucene.search.Weight.DefaultBulkScorer;
+import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.TestUtil;
 
 public class TestBooleanScorer extends LuceneTestCase {
   private static final String FIELD = "category";
@@ -52,132 +54,19 @@ public class TestBooleanScorer extends LuceneTestCase {
     IndexReader ir = writer.getReader();
     writer.close();
 
-    BooleanQuery booleanQuery1 = new BooleanQuery();
+    BooleanQuery.Builder booleanQuery1 = new BooleanQuery.Builder();
     booleanQuery1.add(new TermQuery(new Term(FIELD, "1")), BooleanClause.Occur.SHOULD);
     booleanQuery1.add(new TermQuery(new Term(FIELD, "2")), BooleanClause.Occur.SHOULD);
 
-    BooleanQuery query = new BooleanQuery();
-    query.add(booleanQuery1, BooleanClause.Occur.MUST);
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
+    query.add(booleanQuery1.build(), BooleanClause.Occur.MUST);
     query.add(new TermQuery(new Term(FIELD, "9")), BooleanClause.Occur.MUST_NOT);
 
     IndexSearcher indexSearcher = newSearcher(ir);
-    ScoreDoc[] hits = indexSearcher.search(query, null, 1000).scoreDocs;
+    ScoreDoc[] hits = indexSearcher.search(query.build(), 1000).scoreDocs;
     assertEquals("Number of matched documents", 2, hits.length);
     ir.close();
     directory.close();
-  }
-  
-  public void testEmptyBucketWithMoreDocs() throws Exception {
-    // This test checks the logic of nextDoc() when all sub scorers have docs
-    // beyond the first bucket (for example). Currently, the code relies on the
-    // 'more' variable to work properly, and this test ensures that if the logic
-    // changes, we have a test to back it up.
-    
-    Directory directory = newDirectory();
-    RandomIndexWriter writer = new RandomIndexWriter(random(), directory);
-    writer.commit();
-    IndexReader ir = writer.getReader();
-    writer.close();
-    IndexSearcher searcher = newSearcher(ir);
-    BooleanWeight weight = (BooleanWeight) new BooleanQuery().createWeight(searcher);
-    BulkScorer[] scorers = new BulkScorer[] {new BulkScorer() {
-      private int doc = -1;
-
-      @Override
-      public boolean score(Collector c, int maxDoc) throws IOException {
-        assert doc == -1;
-        doc = 3000;
-        FakeScorer fs = new FakeScorer();
-        fs.doc = doc;
-        fs.score = 1.0f;
-        c.setScorer(fs);
-        c.collect(3000);
-        return false;
-      }
-    }};
-    
-    BooleanScorer bs = new BooleanScorer(weight, false, 1, Arrays.asList(scorers), Collections.<BulkScorer>emptyList(), scorers.length);
-
-    final List<Integer> hits = new ArrayList<>();
-    bs.score(new Collector() {
-      int docBase;
-      @Override
-      public void setScorer(Scorer scorer) {
-      }
-      
-      @Override
-      public void collect(int doc) {
-        hits.add(docBase+doc);
-      }
-      
-      @Override
-      public void setNextReader(AtomicReaderContext context) {
-        docBase = context.docBase;
-      }
-      
-      @Override
-      public boolean acceptsDocsOutOfOrder() {
-        return true;
-      }
-      });
-
-    assertEquals("should have only 1 hit", 1, hits.size());
-    assertEquals("hit should have been docID=3000", 3000, hits.get(0).intValue());
-    ir.close();
-    directory.close();
-  }
-
-  public void testMoreThan32ProhibitedClauses() throws Exception {
-    final Directory d = newDirectory();
-    final RandomIndexWriter w = new RandomIndexWriter(random(), d);
-    Document doc = new Document();
-    doc.add(new TextField("field", "0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33", Field.Store.NO));
-    w.addDocument(doc);
-    doc = new Document();
-    doc.add(new TextField("field", "33", Field.Store.NO));
-    w.addDocument(doc);
-    final IndexReader r = w.getReader();
-    w.close();
-    // we don't wrap with AssertingIndexSearcher in order to have the original scorer in setScorer.
-    final IndexSearcher s = newSearcher(r, true, false);
-
-    final BooleanQuery q = new BooleanQuery();
-    for(int term=0;term<33;term++) {
-      q.add(new BooleanClause(new TermQuery(new Term("field", ""+term)),
-                              BooleanClause.Occur.MUST_NOT));
-    }
-    q.add(new BooleanClause(new TermQuery(new Term("field", "33")),
-                            BooleanClause.Occur.SHOULD));
-                            
-    final int[] count = new int[1];
-    s.search(q, new Collector() {
-    
-      @Override
-      public void setScorer(Scorer scorer) {
-        // Make sure we got BooleanScorer:
-        final Class<?> clazz = scorer.getClass();
-        assertEquals("Scorer is implemented by wrong class", FakeScorer.class.getName(), clazz.getName());
-      }
-      
-      @Override
-      public void collect(int doc) {
-        count[0]++;
-      }
-      
-      @Override
-      public void setNextReader(AtomicReaderContext context) {
-      }
-      
-      @Override
-      public boolean acceptsDocsOutOfOrder() {
-        return true;
-      }
-    });
-
-    assertEquals(1, count[0]);
-    
-    r.close();
-    d.close();
   }
 
   /** Throws UOE if Weight.scorer is called */
@@ -189,16 +78,16 @@ public class TestBooleanScorer extends LuceneTestCase {
     }
 
     @Override
-    public Weight createWeight(IndexSearcher searcher) throws IOException {
-      return new Weight() {
+    public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+      return new Weight(CrazyMustUseBulkScorerQuery.this) {
         @Override
-        public Explanation explain(AtomicReaderContext context, int doc) {
+        public void extractTerms(Set<Term> terms) {
           throw new UnsupportedOperationException();
         }
 
         @Override
-        public Query getQuery() {
-          return CrazyMustUseBulkScorerQuery.this;
+        public Explanation explain(LeafReaderContext context, int doc) {
+          throw new UnsupportedOperationException();
         }
 
         @Override
@@ -211,19 +100,23 @@ public class TestBooleanScorer extends LuceneTestCase {
         }
 
         @Override
-        public Scorer scorer(AtomicReaderContext context, Bits acceptDocs) {
+        public Scorer scorer(LeafReaderContext context) {
           throw new UnsupportedOperationException();
         }
 
         @Override
-        public BulkScorer bulkScorer(AtomicReaderContext context, boolean scoreDocsInOrder, Bits acceptDocs) {
+        public BulkScorer bulkScorer(LeafReaderContext context) {
           return new BulkScorer() {
-
             @Override
-            public boolean score(Collector collector, int max) throws IOException {
+            public int score(LeafCollector collector, Bits acceptDocs, int min, int max) throws IOException {
+              assert min == 0;
               collector.setScorer(new FakeScorer());
               collector.collect(0);
-              return false;
+              return DocIdSetIterator.NO_MORE_DOCS;
+            }
+            @Override
+            public long cost() {
+              return 1;
             }
           };
         }
@@ -242,17 +135,160 @@ public class TestBooleanScorer extends LuceneTestCase {
     IndexReader r = w.getReader();
     w.close();
 
-    IndexSearcher s = newSearcher(r);
-    BooleanQuery q1 = new BooleanQuery();
+    IndexSearcher s = new IndexSearcher(r);
+    BooleanQuery.Builder q1 = new BooleanQuery.Builder();
     q1.add(new TermQuery(new Term("field", "little")), BooleanClause.Occur.SHOULD);
     q1.add(new TermQuery(new Term("field", "diseases")), BooleanClause.Occur.SHOULD);
 
-    BooleanQuery q2 = new BooleanQuery();
-    q2.add(q1, BooleanClause.Occur.SHOULD);
+    BooleanQuery.Builder q2 = new BooleanQuery.Builder();
+    q2.add(q1.build(), BooleanClause.Occur.SHOULD);
     q2.add(new CrazyMustUseBulkScorerQuery(), BooleanClause.Occur.SHOULD);
 
-    assertEquals(1, s.search(q2, 10).totalHits);
+    assertEquals(1, s.search(q2.build(), 10).totalHits);
     r.close();
+    dir.close();
+  }
+
+  public void testOptimizeTopLevelClauseOrNull() throws IOException {
+    // When there is a single non-null scorer, this scorer should be used
+    // directly
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    Document doc = new Document();
+    doc.add(new StringField("foo", "bar", Store.NO));
+    w.addDocument(doc);
+    IndexReader reader = w.getReader();
+    IndexSearcher searcher = new IndexSearcher(reader);
+    searcher.setQueryCache(null); // so that weights are not wrapped
+    final LeafReaderContext ctx = reader.leaves().get(0);
+    Query query = new BooleanQuery.Builder()
+      .add(new TermQuery(new Term("foo", "bar")), Occur.SHOULD) // existing term
+      .add(new TermQuery(new Term("foo", "baz")), Occur.SHOULD) // missing term
+      .build();
+
+    // no scores -> term scorer
+    Weight weight = searcher.createNormalizedWeight(query, false);
+    BulkScorer scorer = ((BooleanWeight) weight).booleanScorer(ctx);
+    assertTrue(scorer instanceof DefaultBulkScorer); // term scorer
+
+    // disabled coords -> term scorer
+    query = new BooleanQuery.Builder()
+      .add(new TermQuery(new Term("foo", "bar")), Occur.SHOULD) // existing term
+      .add(new TermQuery(new Term("foo", "baz")), Occur.SHOULD) // missing term
+      .setDisableCoord(true)
+      .build();
+    weight = searcher.createNormalizedWeight(query, true);
+    scorer = ((BooleanWeight) weight).booleanScorer(ctx);
+    assertTrue(scorer instanceof DefaultBulkScorer); // term scorer
+
+    // enabled coords -> BoostedBulkScorer
+    searcher.setSimilarity(new DefaultSimilarity());
+    query = new BooleanQuery.Builder()
+      .add(new TermQuery(new Term("foo", "bar")), Occur.SHOULD) // existing term
+      .add(new TermQuery(new Term("foo", "baz")), Occur.SHOULD) // missing term
+      .build();
+    weight = searcher.createNormalizedWeight(query, true);
+    scorer = ((BooleanWeight) weight).booleanScorer(ctx);
+    assertTrue(scorer instanceof BooleanTopLevelScorers.BoostedBulkScorer);
+
+    w.close();
+    reader.close();
+    dir.close();
+  }
+
+  public void testOptimizeProhibitedClauses() throws IOException {
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    Document doc = new Document();
+    doc.add(new StringField("foo", "bar", Store.NO));
+    doc.add(new StringField("foo", "baz", Store.NO));
+    w.addDocument(doc);
+    doc = new Document();
+    doc.add(new StringField("foo", "baz", Store.NO));
+    w.addDocument(doc);
+    w.forceMerge(1);
+    IndexReader reader = w.getReader();
+    IndexSearcher searcher = new IndexSearcher(reader);
+    searcher.setQueryCache(null); // so that weights are not wrapped
+    final LeafReaderContext ctx = reader.leaves().get(0);
+
+    Query query = new BooleanQuery.Builder()
+      .add(new TermQuery(new Term("foo", "baz")), Occur.SHOULD)
+      .add(new TermQuery(new Term("foo", "bar")), Occur.MUST_NOT)
+      .build();
+    Weight weight = searcher.createNormalizedWeight(query, true);
+    BulkScorer scorer = ((BooleanWeight) weight).booleanScorer(ctx);
+    assertTrue(scorer instanceof ReqExclBulkScorer);
+
+    query = new BooleanQuery.Builder()
+        .add(new TermQuery(new Term("foo", "baz")), Occur.SHOULD)
+        .add(new MatchAllDocsQuery(), Occur.SHOULD)
+        .add(new TermQuery(new Term("foo", "bar")), Occur.MUST_NOT)
+        .build();
+    weight = searcher.createNormalizedWeight(query, true);
+    scorer = ((BooleanWeight) weight).booleanScorer(ctx);
+    assertTrue(scorer instanceof ReqExclBulkScorer);
+
+    query = new BooleanQuery.Builder()
+        .add(new TermQuery(new Term("foo", "baz")), Occur.MUST)
+        .add(new TermQuery(new Term("foo", "bar")), Occur.MUST_NOT)
+        .build();
+    weight = searcher.createNormalizedWeight(query, true);
+    scorer = ((BooleanWeight) weight).booleanScorer(ctx);
+    assertTrue(scorer instanceof ReqExclBulkScorer);
+
+    query = new BooleanQuery.Builder()
+        .add(new TermQuery(new Term("foo", "baz")), Occur.FILTER)
+        .add(new TermQuery(new Term("foo", "bar")), Occur.MUST_NOT)
+        .build();
+    weight = searcher.createNormalizedWeight(query, true);
+    scorer = ((BooleanWeight) weight).booleanScorer(ctx);
+    assertTrue(scorer instanceof ReqExclBulkScorer);
+
+    w.close();
+    reader.close();
+    dir.close();
+  }
+
+  public void testSparseClauseOptimization() throws IOException {
+    // When some windows have only one scorer that can match, the scorer will
+    // directly call the collector in this window
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    Document emptyDoc = new Document();
+    final int numDocs = atLeast(10);
+    for (int d = 0; d < numDocs; ++d) {
+      for (int i = random().nextInt(5000); i >= 0; --i) {
+        w.addDocument(emptyDoc);
+      }
+      Document doc = new Document();
+      for (String value : Arrays.asList("foo", "bar", "baz")) {
+        if (random().nextBoolean()) {
+          doc.add(new StringField("field", value, Store.NO));
+        }
+      }
+    }
+    for (int i = TestUtil.nextInt(random(), 3000, 5000); i >= 0; --i) {
+      w.addDocument(emptyDoc);
+    }
+    if (random().nextBoolean()) {
+      w.forceMerge(1);
+    }
+    IndexReader reader = w.getReader();
+    IndexSearcher searcher = newSearcher(reader);
+
+    Query query = new BooleanQuery.Builder()
+      .add(new BoostQuery(new TermQuery(new Term("field", "foo")), 3), Occur.SHOULD)
+      .add(new BoostQuery(new TermQuery(new Term("field", "bar")), 3), Occur.SHOULD)
+      .add(new BoostQuery(new TermQuery(new Term("field", "baz")), 3), Occur.SHOULD)
+      .setDisableCoord(random().nextBoolean())
+      .build();
+
+    // duel BS1 vs. BS2
+    QueryUtils.check(random(), query, searcher);
+
+    reader.close();
+    w.close();
     dir.close();
   }
 }

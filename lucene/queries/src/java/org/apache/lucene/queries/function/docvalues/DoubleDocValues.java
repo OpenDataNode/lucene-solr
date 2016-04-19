@@ -1,5 +1,3 @@
-package org.apache.lucene.queries.function.docvalues;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queries.function.docvalues;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queries.function.docvalues;
 
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.queries.function.FunctionValues;
@@ -106,7 +105,7 @@ public abstract class DoubleDocValues extends FunctionValues {
     if (includeLower && includeUpper) {
       return new ValueSourceScorer(reader, this) {
         @Override
-        public boolean matchesValue(int doc) {
+        public boolean matches(int doc) {
           double docVal = doubleVal(doc);
           return docVal >= l && docVal <= u;
         }
@@ -115,7 +114,7 @@ public abstract class DoubleDocValues extends FunctionValues {
     else if (includeLower && !includeUpper) {
       return new ValueSourceScorer(reader, this) {
         @Override
-        public boolean matchesValue(int doc) {
+        public boolean matches(int doc) {
           double docVal = doubleVal(doc);
           return docVal >= l && docVal < u;
         }
@@ -124,7 +123,7 @@ public abstract class DoubleDocValues extends FunctionValues {
     else if (!includeLower && includeUpper) {
       return new ValueSourceScorer(reader, this) {
         @Override
-        public boolean matchesValue(int doc) {
+        public boolean matches(int doc) {
           double docVal = doubleVal(doc);
           return docVal > l && docVal <= u;
         }
@@ -133,7 +132,7 @@ public abstract class DoubleDocValues extends FunctionValues {
     else {
       return new ValueSourceScorer(reader, this) {
         @Override
-        public boolean matchesValue(int doc) {
+        public boolean matches(int doc) {
           double docVal = doubleVal(doc);
           return docVal > l && docVal < u;
         }

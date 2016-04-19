@@ -1,5 +1,3 @@
-package org.apache.lucene.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
+
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -66,7 +66,7 @@ public class TestArrayUtil extends LuceneTestCase {
     final Random rnd = random();
     final int num = atLeast(10000);
     for (int iter = 0; iter < num; iter++) {
-      final int minTargetSize = rnd.nextInt(Integer.MAX_VALUE);
+      final int minTargetSize = rnd.nextInt(ArrayUtil.MAX_ARRAY_LENGTH);
       final int elemSize = rnd.nextInt(11);
       final int v = ArrayUtil.oversize(minTargetSize, elemSize);
       assertTrue(v >= minTargetSize);

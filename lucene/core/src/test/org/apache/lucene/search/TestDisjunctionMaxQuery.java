@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,33 +14,35 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
-import org.apache.lucene.document.Field;
-import org.apache.lucene.util.LuceneTestCase;
+
+import java.io.IOException;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
+import java.util.Arrays;
+import java.util.Locale;
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.SlowCompositeReaderWrapper;
-import org.apache.lucene.index.FieldInvertState;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
+import org.apache.lucene.index.SlowCompositeReaderWrapper;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
-import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.search.spans.SpanTermQuery;
 import org.apache.lucene.store.Directory;
-
-import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
-import java.util.Locale;
-import java.io.IOException;
+import org.apache.lucene.util.LuceneTestCase;
 
 /**
  * Test of the DisjunctionMaxQuery.
@@ -171,16 +171,15 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
   }
   
   public void testSkipToFirsttimeMiss() throws IOException {
-    final DisjunctionMaxQuery dq = new DisjunctionMaxQuery(0.0f);
-    dq.add(tq("id", "d1"));
-    dq.add(tq("dek", "DOES_NOT_EXIST"));
-    
+    final DisjunctionMaxQuery dq = new DisjunctionMaxQuery(
+        Arrays.asList(tq("id", "d1"), tq("dek", "DOES_NOT_EXIST")), 0.0f);
+
     QueryUtils.check(random(), dq, s);
-    assertTrue(s.getTopReaderContext() instanceof AtomicReaderContext);
-    final Weight dw = s.createNormalizedWeight(dq);
-    AtomicReaderContext context = (AtomicReaderContext)s.getTopReaderContext();
-    final Scorer ds = dw.scorer(context, context.reader().getLiveDocs());
-    final boolean skipOk = ds.advance(3) != DocIdSetIterator.NO_MORE_DOCS;
+    assertTrue(s.getTopReaderContext() instanceof LeafReaderContext);
+    final Weight dw = s.createNormalizedWeight(dq, true);
+    LeafReaderContext context = (LeafReaderContext)s.getTopReaderContext();
+    final Scorer ds = dw.scorer(context);
+    final boolean skipOk = ds.iterator().advance(3) != DocIdSetIterator.NO_MORE_DOCS;
     if (skipOk) {
       fail("firsttime skipTo found a match? ... "
           + r.document(ds.docID()).get("id"));
@@ -188,27 +187,27 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
   }
   
   public void testSkipToFirsttimeHit() throws IOException {
-    final DisjunctionMaxQuery dq = new DisjunctionMaxQuery(0.0f);
-    dq.add(tq("dek", "albino"));
-    dq.add(tq("dek", "DOES_NOT_EXIST"));
-    assertTrue(s.getTopReaderContext() instanceof AtomicReaderContext);
+    final DisjunctionMaxQuery dq = new DisjunctionMaxQuery(
+        Arrays.asList(tq("dek", "albino"), tq("dek", "DOES_NOT_EXIST")), 0.0f);
+
+    assertTrue(s.getTopReaderContext() instanceof LeafReaderContext);
     QueryUtils.check(random(), dq, s);
-    final Weight dw = s.createNormalizedWeight(dq);
-    AtomicReaderContext context = (AtomicReaderContext)s.getTopReaderContext();
-    final Scorer ds = dw.scorer(context, context.reader().getLiveDocs());
+    final Weight dw = s.createNormalizedWeight(dq, true);
+    LeafReaderContext context = (LeafReaderContext)s.getTopReaderContext();
+    final Scorer ds = dw.scorer(context);
     assertTrue("firsttime skipTo found no match",
-        ds.advance(3) != DocIdSetIterator.NO_MORE_DOCS);
+        ds.iterator().advance(3) != DocIdSetIterator.NO_MORE_DOCS);
     assertEquals("found wrong docid", "d4", r.document(ds.docID()).get("id"));
   }
   
   public void testSimpleEqualScores1() throws Exception {
     
-    DisjunctionMaxQuery q = new DisjunctionMaxQuery(0.0f);
-    q.add(tq("hed", "albino"));
-    q.add(tq("hed", "elephant"));
+    DisjunctionMaxQuery q = new DisjunctionMaxQuery(
+        Arrays.asList(tq("hed", "albino"), tq("hed", "elephant")),
+        0.0f);
     QueryUtils.check(random(), q, s);
     
-    ScoreDoc[] h = s.search(q, null, 1000).scoreDocs;
+    ScoreDoc[] h = s.search(q, 1000).scoreDocs;
     
     try {
       assertEquals("all docs should match " + q.toString(), 4, h.length);
@@ -227,12 +226,12 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
   
   public void testSimpleEqualScores2() throws Exception {
     
-    DisjunctionMaxQuery q = new DisjunctionMaxQuery(0.0f);
-    q.add(tq("dek", "albino"));
-    q.add(tq("dek", "elephant"));
+    DisjunctionMaxQuery q = new DisjunctionMaxQuery(
+        Arrays.asList(tq("dek", "albino"), tq("dek", "elephant")),
+        0.0f);
     QueryUtils.check(random(), q, s);
     
-    ScoreDoc[] h = s.search(q, null, 1000).scoreDocs;
+    ScoreDoc[] h = s.search(q, 1000).scoreDocs;
     
     try {
       assertEquals("3 docs should match " + q.toString(), 3, h.length);
@@ -250,14 +249,16 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
   
   public void testSimpleEqualScores3() throws Exception {
     
-    DisjunctionMaxQuery q = new DisjunctionMaxQuery(0.0f);
-    q.add(tq("hed", "albino"));
-    q.add(tq("hed", "elephant"));
-    q.add(tq("dek", "albino"));
-    q.add(tq("dek", "elephant"));
+    DisjunctionMaxQuery q = new DisjunctionMaxQuery(
+        Arrays.asList(
+            tq("hed", "albino"),
+            tq("hed", "elephant"),
+            tq("dek", "albino"),
+            tq("dek", "elephant")),
+        0.0f);
     QueryUtils.check(random(), q, s);
     
-    ScoreDoc[] h = s.search(q, null, 1000).scoreDocs;
+    ScoreDoc[] h = s.search(q, 1000).scoreDocs;
     
     try {
       assertEquals("all docs should match " + q.toString(), 4, h.length);
@@ -275,12 +276,12 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
   
   public void testSimpleTiebreaker() throws Exception {
     
-    DisjunctionMaxQuery q = new DisjunctionMaxQuery(0.01f);
-    q.add(tq("dek", "albino"));
-    q.add(tq("dek", "elephant"));
+    DisjunctionMaxQuery q = new DisjunctionMaxQuery(
+        Arrays.asList(tq("dek", "albino"), tq("dek", "elephant")),
+        0.01f);
     QueryUtils.check(random(), q, s);
     
-    ScoreDoc[] h = s.search(q, null, 1000).scoreDocs;
+    ScoreDoc[] h = s.search(q, 1000).scoreDocs;
     
     try {
       assertEquals("3 docs should match " + q.toString(), 3, h.length);
@@ -300,26 +301,26 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
   
   public void testBooleanRequiredEqualScores() throws Exception {
     
-    BooleanQuery q = new BooleanQuery();
+    BooleanQuery.Builder q = new BooleanQuery.Builder();
     {
-      DisjunctionMaxQuery q1 = new DisjunctionMaxQuery(0.0f);
-      q1.add(tq("hed", "albino"));
-      q1.add(tq("dek", "albino"));
+      DisjunctionMaxQuery q1 = new DisjunctionMaxQuery(
+          Arrays.asList(tq("hed", "albino"), tq("dek", "albino")),
+          0.0f);
       q.add(q1, BooleanClause.Occur.MUST);// true,false);
       QueryUtils.check(random(), q1, s);
       
     }
     {
-      DisjunctionMaxQuery q2 = new DisjunctionMaxQuery(0.0f);
-      q2.add(tq("hed", "elephant"));
-      q2.add(tq("dek", "elephant"));
+      DisjunctionMaxQuery q2 = new DisjunctionMaxQuery(
+          Arrays.asList(tq("hed", "elephant"), tq("dek", "elephant")),
+          0.0f);
       q.add(q2, BooleanClause.Occur.MUST);// true,false);
       QueryUtils.check(random(), q2, s);
     }
     
-    QueryUtils.check(random(), q, s);
+    QueryUtils.check(random(), q.build(), s);
     
-    ScoreDoc[] h = s.search(q, null, 1000).scoreDocs;
+    ScoreDoc[] h = s.search(q.build(), 1000).scoreDocs;
     
     try {
       assertEquals("3 docs should match " + q.toString(), 3, h.length);
@@ -336,22 +337,22 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
   
   public void testBooleanOptionalNoTiebreaker() throws Exception {
     
-    BooleanQuery q = new BooleanQuery();
+    BooleanQuery.Builder q = new BooleanQuery.Builder();
     {
-      DisjunctionMaxQuery q1 = new DisjunctionMaxQuery(0.0f);
-      q1.add(tq("hed", "albino"));
-      q1.add(tq("dek", "albino"));
+      DisjunctionMaxQuery q1 = new DisjunctionMaxQuery(
+          Arrays.asList(tq("hed", "albino"), tq("dek", "albino")),
+          0.0f);
       q.add(q1, BooleanClause.Occur.SHOULD);// false,false);
     }
     {
-      DisjunctionMaxQuery q2 = new DisjunctionMaxQuery(0.0f);
-      q2.add(tq("hed", "elephant"));
-      q2.add(tq("dek", "elephant"));
+      DisjunctionMaxQuery q2 = new DisjunctionMaxQuery(
+          Arrays.asList(tq("hed", "elephant"), tq("dek", "elephant")),
+          0.0f);
       q.add(q2, BooleanClause.Occur.SHOULD);// false,false);
     }
-    QueryUtils.check(random(), q, s);
+    QueryUtils.check(random(), q.build(), s);
     
-    ScoreDoc[] h = s.search(q, null, 1000).scoreDocs;
+    ScoreDoc[] h = s.search(q.build(), 1000).scoreDocs;
     
     try {
       assertEquals("4 docs should match " + q.toString(), 4, h.length);
@@ -372,22 +373,22 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
   
   public void testBooleanOptionalWithTiebreaker() throws Exception {
     
-    BooleanQuery q = new BooleanQuery();
+    BooleanQuery.Builder q = new BooleanQuery.Builder();
     {
-      DisjunctionMaxQuery q1 = new DisjunctionMaxQuery(0.01f);
-      q1.add(tq("hed", "albino"));
-      q1.add(tq("dek", "albino"));
+      DisjunctionMaxQuery q1 = new DisjunctionMaxQuery(
+          Arrays.asList(tq("hed", "albino"), tq("dek", "albino")),
+          0.01f);
       q.add(q1, BooleanClause.Occur.SHOULD);// false,false);
     }
     {
-      DisjunctionMaxQuery q2 = new DisjunctionMaxQuery(0.01f);
-      q2.add(tq("hed", "elephant"));
-      q2.add(tq("dek", "elephant"));
+      DisjunctionMaxQuery q2 = new DisjunctionMaxQuery(
+          Arrays.asList(tq("hed", "elephant"), tq("dek", "elephant")),
+          0.01f);
       q.add(q2, BooleanClause.Occur.SHOULD);// false,false);
     }
-    QueryUtils.check(random(), q, s);
+    QueryUtils.check(random(), q.build(), s);
     
-    ScoreDoc[] h = s.search(q, null, 1000).scoreDocs;
+    ScoreDoc[] h = s.search(q.build(), 1000).scoreDocs;
     
     try {
       
@@ -426,22 +427,22 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
   
   public void testBooleanOptionalWithTiebreakerAndBoost() throws Exception {
     
-    BooleanQuery q = new BooleanQuery();
+    BooleanQuery.Builder q = new BooleanQuery.Builder();
     {
-      DisjunctionMaxQuery q1 = new DisjunctionMaxQuery(0.01f);
-      q1.add(tq("hed", "albino", 1.5f));
-      q1.add(tq("dek", "albino"));
+      DisjunctionMaxQuery q1 = new DisjunctionMaxQuery(
+          Arrays.asList(tq("hed", "albino", 1.5f), tq("dek", "albino")),
+          0.01f);
       q.add(q1, BooleanClause.Occur.SHOULD);// false,false);
     }
     {
-      DisjunctionMaxQuery q2 = new DisjunctionMaxQuery(0.01f);
-      q2.add(tq("hed", "elephant", 1.5f));
-      q2.add(tq("dek", "elephant"));
+      DisjunctionMaxQuery q2 = new DisjunctionMaxQuery(
+          Arrays.asList(tq("hed", "elephant", 1.5f), tq("dek", "elephant")),
+          0.01f);
       q.add(q2, BooleanClause.Occur.SHOULD);// false,false);
     }
-    QueryUtils.check(random(), q, s);
+    QueryUtils.check(random(), q.build(), s);
     
-    ScoreDoc[] h = s.search(q, null, 1000).scoreDocs;
+    ScoreDoc[] h = s.search(q.build(), 1000).scoreDocs;
     
     try {
       
@@ -481,7 +482,7 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
     Directory directory = newDirectory();
     Analyzer indexerAnalyzer = new MockAnalyzer(random());
 
-    IndexWriterConfig config = new IndexWriterConfig(TEST_VERSION_CURRENT, indexerAnalyzer);
+    IndexWriterConfig config = new IndexWriterConfig(indexerAnalyzer);
     IndexWriter writer = new IndexWriter(directory, config);
     String FIELD = "content";
     Document d = new Document();
@@ -492,12 +493,12 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
     IndexReader indexReader = DirectoryReader.open(directory);
     IndexSearcher searcher = newSearcher(indexReader);
 
-    DisjunctionMaxQuery query = new DisjunctionMaxQuery(1.0f);
-    SpanQuery sq1 = new SpanTermQuery(new Term(FIELD, "clockwork"));
-    SpanQuery sq2 = new SpanTermQuery(new Term(FIELD, "clckwork"));
-    query.add(sq1);
-    query.add(sq2);
-    TopScoreDocCollector collector = TopScoreDocCollector.create(1000, true);
+    DisjunctionMaxQuery query = new DisjunctionMaxQuery(
+        Arrays.<Query>asList(
+            new SpanTermQuery(new Term(FIELD, "clockwork")),
+            new SpanTermQuery(new Term(FIELD, "clckwork"))),
+        1.0f);
+    TopScoreDocCollector collector = TopScoreDocCollector.create(1000);
     searcher.search(query, collector);
     hits = collector.topDocs().scoreDocs.length;
     for (ScoreDoc scoreDoc : collector.topDocs().scoreDocs){
@@ -516,8 +517,7 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
   /** macro */
   protected Query tq(String f, String t, float b) {
     Query q = tq(f, t);
-    q.setBoost(b);
-    return q;
+    return new BoostQuery(q, b);
   }
   
   protected void printHits(String test, ScoreDoc[] h, IndexSearcher searcher)
@@ -533,5 +533,22 @@ public class TestDisjunctionMaxQuery extends LuceneTestCase {
       System.err
           .println("#" + i + ": " + f.format(score) + " - " + d.get("id"));
     }
+  }
+
+  public void testAdd() {
+    Query q1 = new MatchAllDocsQuery();
+    Query q2 = new TermQuery(new Term("foo", "bar"));
+
+    float tiebreak = random().nextFloat();
+    Query dmq = new DisjunctionMaxQuery(Arrays.asList(q1, q2), tiebreak);
+
+    DisjunctionMaxQuery dmq2 = new DisjunctionMaxQuery(tiebreak);
+    dmq2.add(q1);
+    dmq2.add(q2);
+    assertEquals(dmq, dmq2);
+
+    DisjunctionMaxQuery dmq3 = new DisjunctionMaxQuery(tiebreak);
+    dmq3.add(Arrays.asList(q1, q2));
+    assertEquals(dmq, dmq3);
   }
 }

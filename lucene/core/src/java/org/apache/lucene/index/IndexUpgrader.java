@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,16 +14,20 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.util.CommandLineUtil;
 import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.PrintStreamInfoStream;
+import org.apache.lucene.util.SuppressForbidden;
 import org.apache.lucene.util.Version;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Paths;
+import java.nio.file.Path;
 import java.util.Collection;
 
 /**
@@ -41,7 +43,7 @@ import java.util.Collection;
   * refuses to run by default. Specify {@code -delete-prior-commits}
   * to override this, allowing the tool to delete all but the last commit.
   * From Java code this can be enabled by passing {@code true} to
-  * {@link #IndexUpgrader(Directory,Version,InfoStream,boolean)}.
+  * {@link #IndexUpgrader(Directory,InfoStream,boolean)}.
   * <p><b>Warning:</b> This tool may reorder documents if the index was partially
   * upgraded before execution (e.g., documents were added). If your application relies
   * on &quot;monotonicity&quot; of doc IDs (which means that the order in which the documents
@@ -50,7 +52,10 @@ import java.util.Collection;
   * documents.
   */
 public final class IndexUpgrader {
+  
+  private static final String LOG_PREFIX = "IndexUpgrader";
 
+  @SuppressForbidden(reason = "System.out required: command line tool")
   private static void printUsage() {
     System.err.println("Upgrades an index so all segments created with a previous Lucene version are rewritten.");
     System.err.println("Usage:");
@@ -72,6 +77,8 @@ public final class IndexUpgrader {
   public static void main(String[] args) throws IOException {
     parseArgs(args).upgrade();
   }
+  
+  @SuppressForbidden(reason = "System.out required: command line tool")
   static IndexUpgrader parseArgs(String[] args) throws IOException {
     String path = null;
     boolean deletePriorCommits = false;
@@ -102,13 +109,14 @@ public final class IndexUpgrader {
       printUsage();
     }
     
+    Path p = Paths.get(path);
     Directory dir = null;
     if (dirImpl == null) {
-      dir = FSDirectory.open(new File(path));
+      dir = FSDirectory.open(p);
     } else {
-      dir = CommandLineUtil.newFSDirectory(dirImpl, new File(path));
+      dir = CommandLineUtil.newFSDirectory(dirImpl, p);
     }
-    return new IndexUpgrader(dir, Version.LUCENE_CURRENT, out, deletePriorCommits);
+    return new IndexUpgrader(dir, out, deletePriorCommits);
   }
   
   private final Directory dir;
@@ -117,15 +125,15 @@ public final class IndexUpgrader {
   
   /** Creates index upgrader on the given directory, using an {@link IndexWriter} using the given
    * {@code matchVersion}. The tool refuses to upgrade indexes with multiple commit points. */
-  public IndexUpgrader(Directory dir, Version matchVersion) {
-    this(dir, new IndexWriterConfig(matchVersion, null), false);
+  public IndexUpgrader(Directory dir) {
+    this(dir, new IndexWriterConfig(null), false);
   }
   
   /** Creates index upgrader on the given directory, using an {@link IndexWriter} using the given
    * {@code matchVersion}. You have the possibility to upgrade indexes with multiple commit points by removing
    * all older ones. If {@code infoStream} is not {@code null}, all logging output will be sent to this stream. */
-  public IndexUpgrader(Directory dir, Version matchVersion, InfoStream infoStream, boolean deletePriorCommits) {
-    this(dir, new IndexWriterConfig(matchVersion, null), deletePriorCommits);
+  public IndexUpgrader(Directory dir, InfoStream infoStream, boolean deletePriorCommits) {
+    this(dir, new IndexWriterConfig(null), deletePriorCommits);
     if (null != infoStream) {
       this.iwc.setInfoStream(infoStream);
     }
@@ -156,18 +164,22 @@ public final class IndexUpgrader {
     iwc.setMergePolicy(new UpgradeIndexMergePolicy(iwc.getMergePolicy()));
     iwc.setIndexDeletionPolicy(new KeepOnlyLastCommitDeletionPolicy());
     
-    final IndexWriter w = new IndexWriter(dir, iwc);
-    try {
+    try (final IndexWriter w = new IndexWriter(dir, iwc)) {
       InfoStream infoStream = iwc.getInfoStream();
-      if (infoStream.isEnabled("IndexUpgrader")) {
-        infoStream.message("IndexUpgrader", "Upgrading all pre-" + Version.LATEST + " segments of index directory '" + dir + "' to version " + Version.LATEST + "...");
+      if (infoStream.isEnabled(LOG_PREFIX)) {
+        infoStream.message(LOG_PREFIX, "Upgrading all pre-" + Version.LATEST + " segments of index directory '" + dir + "' to version " + Version.LATEST + "...");
       }
       w.forceMerge(1);
-      if (infoStream.isEnabled("IndexUpgrader")) {
-        infoStream.message("IndexUpgrader", "All segments upgraded to version " + Version.LATEST);
+      if (infoStream.isEnabled(LOG_PREFIX)) {
+        infoStream.message(LOG_PREFIX, "All segments upgraded to version " + Version.LATEST);
+        infoStream.message(LOG_PREFIX, "Enforcing commit to rewrite all index metadata...");
       }
-    } finally {
-      w.close();
+      w.setCommitData(w.getCommitData()); // fake change to enforce a commit (e.g. if index has no segments)
+      assert w.hasUncommittedChanges();
+      w.commit();
+      if (infoStream.isEnabled(LOG_PREFIX)) {
+        infoStream.message(LOG_PREFIX, "Committed upgraded metadata to index.");
+      }
     }
   }
   

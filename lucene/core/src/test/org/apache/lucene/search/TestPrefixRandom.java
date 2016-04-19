@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,13 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
-import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.FilteredTermsEnum;
@@ -35,7 +34,6 @@ import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.StringHelper;
-import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.TestUtil;
 
 /**
@@ -59,10 +57,7 @@ public class TestPrefixRandom extends LuceneTestCase {
     Field field = newStringField("field", "", Field.Store.NO);
     doc.add(field);
 
-    // we generate aweful prefixes: good for testing.
-    // but for preflex codec, the test can be very slow, so use less iterations.
-    final String codec = Codec.getDefault().getName();
-    int num = codec.equals("Lucene3x") ? 200 * RANDOM_MULTIPLIER : atLeast(1000);
+    int num = atLeast(1000);
     for (int i = 0; i < num; i++) {
       field.setStringValue(TestUtil.randomUnicodeString(random(), 10));
       writer.addDocument(doc);
@@ -90,7 +85,7 @@ public class TestPrefixRandom extends LuceneTestCase {
     
     @Override
     protected TermsEnum getTermsEnum(Terms terms, AttributeSource atts) throws IOException {
-      return new SimplePrefixTermsEnum(terms.iterator(null), prefix);
+      return new SimplePrefixTermsEnum(terms.iterator(), prefix);
     }
 
     private class SimplePrefixTermsEnum extends FilteredTermsEnum {
@@ -111,6 +106,15 @@ public class TestPrefixRandom extends LuceneTestCase {
     @Override
     public String toString(String field) {
       return field.toString() + ":" + prefix.toString();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (super.equals(obj) == false) {
+        return false;
+      }
+      final DumbPrefixQuery that = (DumbPrefixQuery) obj;
+      return prefix.equals(that.prefix);
     }
   }
   

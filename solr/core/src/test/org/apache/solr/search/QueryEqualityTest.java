@@ -1,4 +1,3 @@
-package org.apache.solr.search;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.search;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.QueryUtils;
 import org.apache.solr.SolrTestCaseJ4;
@@ -54,11 +53,7 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
   public static void afterClassParserCoverageTest() {
 
     if ( ! doAssertParserCoverage) return;
-
-    for (int i=0; i < QParserPlugin.standardPlugins.length; i+=2) {
-      assertTrue("qparser #"+i+" name not a string", 
-                 QParserPlugin.standardPlugins[i] instanceof String);
-      final String name = (String)QParserPlugin.standardPlugins[i];
+    for (String name : QParserPlugin.standardPlugins.keySet()) {
       assertTrue("testParserCoverage was run w/o any other method explicitly testing qparser: " + name, qParsersTested.contains(name));
     }
 
@@ -128,6 +123,7 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
   }
 
   public void testReRankQuery() throws Exception {
+    final String defType = ReRankQParserPlugin.NAME;
     SolrQueryRequest req = req("q", "*:*",
                                "rqq", "{!edismax}hello",
                                "rdocs", "20",
@@ -135,9 +131,9 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
                                "rows", "10",
                                "start", "0");
     try {
-      assertQueryEquals("rerank", req,
-          "{!rerank reRankQuery=$rqq reRankDocs=$rdocs reRankWeight=$rweight}",
-          "{!rerank reRankQuery=$rqq reRankDocs=20 reRankWeight=2}");
+      assertQueryEquals(defType, req,
+          "{!"+defType+" "+ReRankQParserPlugin.RERANK_QUERY+"=$rqq "+ReRankQParserPlugin.RERANK_DOCS+"=$rdocs "+ReRankQParserPlugin.RERANK_WEIGHT+"=$rweight}",
+          "{!"+defType+" "+ReRankQParserPlugin.RERANK_QUERY+"=$rqq "+ReRankQParserPlugin.RERANK_DOCS+"=20 "+ReRankQParserPlugin.RERANK_WEIGHT+"=2}");
 
     } finally {
       req.close();
@@ -151,9 +147,9 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
         "rows", "100",
         "start", "50");
     try {
-      assertQueryEquals("rerank", req,
-          "{!rerank mainQuery=$qq reRankQuery=$rqq reRankDocs=$rdocs reRankWeight=$rweight}",
-          "{!rerank mainQuery=$qq reRankQuery=$rqq reRankDocs=20 reRankWeight=2}");
+      assertQueryEquals(defType, req,
+          "{!"+defType+" mainQuery=$qq "+ReRankQParserPlugin.RERANK_QUERY+"=$rqq "+ReRankQParserPlugin.RERANK_DOCS+"=$rdocs "+ReRankQParserPlugin.RERANK_WEIGHT+"=$rweight}",
+          "{!"+defType+" mainQuery=$qq "+ReRankQParserPlugin.RERANK_QUERY+"=$rqq "+ReRankQParserPlugin.RERANK_DOCS+"=20 "+ReRankQParserPlugin.RERANK_WEIGHT+"=2}");
 
     } finally {
       req.close();
@@ -192,6 +188,14 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
     } finally {
       req.close();
     }
+  }
+
+  public void testMatchAllDocsQueryXmlParser() throws Exception {
+    final String type = "xmlparser";
+      assertQueryEquals(type,
+          "{!"+type+"}<MatchAllDocsQuery/>",
+          "<MatchAllDocsQuery/>",
+          "<MatchAllDocsQuery></MatchAllDocsQuery>");
   }
 
   public void testQueryDismax() throws Exception {
@@ -239,7 +243,8 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
   }
 
   public void testQueryCollapse() throws Exception {
-    SolrQueryRequest req = req("myField","foo_s");
+    SolrQueryRequest req = req("myField","foo_s",
+                               "g_sort","foo_s1 asc, foo_i desc");
 
     try {
       assertQueryEquals("collapse", req,
@@ -249,7 +254,13 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
           "{!collapse field=$myField max=a}");
 
       assertQueryEquals("collapse", req,
-          "{!collapse field=$myField min=a}");
+                        "{!collapse field=$myField min=a}",
+                        "{!collapse field=$myField min=a nullPolicy=ignore}");
+      
+      assertQueryEquals("collapse", req,
+                        "{!collapse field=$myField sort=$g_sort}",
+                        "{!collapse field=$myField sort='foo_s1 asc, foo_i desc'}",
+                        "{!collapse field=$myField sort=$g_sort nullPolicy=ignore}");
 
       assertQueryEquals("collapse", req,
           "{!collapse field=$myField max=a nullPolicy=expand}");
@@ -265,6 +276,19 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
           "{!collapse field=$myField min=a}",
           "{!collapse field=$myField min=a nullPolicy=ignore}");
 
+
+    } finally {
+      req.close();
+    }
+  }
+
+
+  public void testHash() throws Exception {
+    SolrQueryRequest req = req("partitionKeys","foo_s");
+
+    try {
+      assertQueryEquals("hash", req,
+          "{!hash workers=3 worker=0}");
 
     } finally {
       req.close();
@@ -330,6 +354,21 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
     checkQuerySpatial("bbox");
   }
 
+  public void testLocalParamsWithRepeatingParam() throws Exception {
+    SolrQueryRequest req = req("q", "foo",
+                               "bq", "111",
+                               "bq", "222");
+    try {
+      assertQueryEquals("dismax",
+                        req,
+                        "{!dismax}foo",
+                        "{!dismax bq=111 bq=222}foo",
+                        "{!dismax bq=222 bq=111}foo");
+    } finally {
+      req.close();
+    }
+  }
+
   private void checkQuerySpatial(final String type) throws Exception {
     SolrQueryRequest req = req("myVar", "5",
                                "d","109",
@@ -369,6 +408,23 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
                         "{!join from=foo_s to=bar_s}asdf",
                         "{!join from=$ff to=$tt}asdf",
                         "{!join from=$ff to='bar_s'}text:asdf");
+    } finally {
+      req.close();
+    }
+  }
+
+  public void testQueryScoreJoin() throws Exception {
+    SolrQueryRequest req = req("myVar", "5",
+        "df", "text",
+        "ff", "foo_s",
+        "tt", "bar_s",
+        "scoreavg","avg");
+
+    try {
+      assertQueryEquals("join", req,
+          "{!join from=foo_s to=bar_s score=avg}asdf",
+          "{!join from=$ff to=$tt score=Avg}asdf",
+          "{!join from=$ff to='bar_s' score=$scoreavg}text:asdf");
     } finally {
       req.close();
     }
@@ -790,6 +846,28 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
     assertFuncEquals("field(\"foo_i\")", 
                      "field('foo_i\')", 
                      "foo_i");
+    
+    // simple VS of single valued field should be same as asking for min/max on that field
+    assertFuncEquals("field(\"foo_i\")", 
+                     "field('foo_i',min)", 
+                     "field(foo_i,'min')", 
+                     "field('foo_i',max)", 
+                     "field(foo_i,'max')", 
+                     "foo_i");
+
+    // multivalued field with selector
+    String multif = "multi_int_with_docvals";
+    SolrQueryRequest req = req("my_field", multif);
+    // this test is only viable if it's a multivalued field, sanity check the schema
+    assertTrue(multif + " is no longer multivalued, who broke this schema?",
+               req.getSchema().getField(multif).multiValued());
+    assertFuncEquals(req,
+                     "field($my_field,'MIN')", 
+                     "field('"+multif+"',min)");
+    assertFuncEquals(req,
+                     "field($my_field,'max')", 
+                     "field('"+multif+"',Max)"); 
+    
   }
   public void testFuncCurrency() throws Exception {
     assertFuncEquals("currency(\"amount\")", 
@@ -838,6 +916,19 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
     }
   }
 
+  public void testQueryMLT() throws Exception {
+    assertU(adoc("id", "1", "lowerfilt", "sample data"));
+    assertU(commit());
+    try {
+      assertQueryEquals("mlt", "{!mlt qf=lowerfilt}1",
+          "{!mlt qf=lowerfilt v=1}");
+    } finally {
+      delQ("*:*");
+      assertU(commit());
+    }
+  }
+
+
   /**
    * NOTE: defType is not only used to pick the parser, but also to record 
    * the parser being tested for coverage sanity checking
@@ -876,18 +967,17 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
       for (int i = 0; i < inputs.length; i++) {
         queries[i] = (QParser.getParser(inputs[i], defType, req).getQuery());
       }
+      for (int i = 0; i < queries.length; i++) {
+        QueryUtils.check(queries[i]);
+        // yes starting j=0 is redundent, we're making sure every query 
+        // is equal to itself, and that the quality checks work regardless 
+        // of which caller/callee is used.
+        for (int j = 0; j < queries.length; j++) {
+          QueryUtils.checkEqual(queries[i], queries[j]);
+        }
+      }
     } finally {
       SolrRequestInfo.clearRequestInfo();
-    }
-
-    for (int i = 0; i < queries.length; i++) {
-      QueryUtils.check(queries[i]);
-      // yes starting j=0 is redundent, we're making sure every query 
-      // is equal to itself, and that the quality checks work regardless 
-      // of which caller/callee is used.
-      for (int j = 0; j < queries.length; j++) {
-        QueryUtils.checkEqual(queries[i], queries[j]);
-      }
     }
   }
 
@@ -915,12 +1005,28 @@ public class QueryEqualityTest extends SolrTestCaseJ4 {
   protected void assertFuncEquals(final SolrQueryRequest req,
                                   final String... inputs) throws Exception {
     // pull out the function name
-    final String funcName = (new QueryParsing.StrParser(inputs[0])).getId();
+    final String funcName = (new StrParser(inputs[0])).getId();
     valParsersTested.add(funcName);
 
     assertQueryEquals(FunctionQParserPlugin.NAME, req, inputs);
   }
 
 
+  public void testAggs() throws Exception {
+    assertFuncEquals("agg(avg(foo_i))", "agg(avg(foo_i))");
+    assertFuncEquals("agg(avg(foo_i))", "agg_avg(foo_i)");
+    assertFuncEquals("agg_min(foo_i)", "agg(min(foo_i))");
+    assertFuncEquals("agg_max(foo_i)", "agg(max(foo_i))");
+
+    assertFuncEquals("agg_avg(foo_i)", "agg_avg(foo_i)");
+    assertFuncEquals("agg_sum(foo_i)", "agg_sum(foo_i)");
+    assertFuncEquals("agg_count()", "agg_count()");
+    assertFuncEquals("agg_unique(foo_i)", "agg_unique(foo_i)");
+    assertFuncEquals("agg_hll(foo_i)", "agg_hll(foo_i)");
+    assertFuncEquals("agg_sumsq(foo_i)", "agg_sumsq(foo_i)");
+    assertFuncEquals("agg_percentile(foo_i,50)", "agg_percentile(foo_i,50)");
+    // assertFuncEquals("agg_stdev(foo_i)", "agg_stdev(foo_i)");
+    // assertFuncEquals("agg_multistat(foo_i)", "agg_multistat(foo_i)");
+  }
 
 }

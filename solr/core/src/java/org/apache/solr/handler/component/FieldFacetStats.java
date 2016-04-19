@@ -1,4 +1,3 @@
-package org.apache.solr.handler.component;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.handler.component;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.handler.component;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -23,13 +22,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.lucene.index.AtomicReader;
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
-import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.util.BytesRef;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.search.SolrIndexSearcher;
@@ -40,36 +38,33 @@ import org.apache.solr.search.SolrIndexSearcher;
  * for facet values present in another field.
  * <p>
  * 9/10/2009 - Moved out of StatsComponent to allow open access to UnInvertedField
- * <p/>
  * @see org.apache.solr.handler.component.StatsComponent
  *
  */
 
 public class FieldFacetStats {
   public final String name;
+  final StatsField statsField;
   final SchemaField facet_sf;
-  final SchemaField field_sf;
-  final boolean calcDistinct;
 
   public final Map<String, StatsValues> facetStatsValues;
   private final Map<Integer, Integer> missingStats;
   List<HashMap<String, Integer>> facetStatsTerms;
 
-  final AtomicReader topLevelReader;
-  AtomicReaderContext leave;
+  final LeafReader topLevelReader;
+  LeafReaderContext leave;
   final ValueSource valueSource;
-  AtomicReaderContext context;
+  LeafReaderContext context;
   FunctionValues values;
 
   SortedDocValues topLevelSortedValues = null;
 
-  public FieldFacetStats(SolrIndexSearcher searcher, String name, SchemaField field_sf, SchemaField facet_sf, boolean calcDistinct) {
-    this.name = name;
-    this.field_sf = field_sf;
+  public FieldFacetStats(SolrIndexSearcher searcher, SchemaField facet_sf, StatsField statsField) {
+    this.statsField = statsField;
     this.facet_sf = facet_sf;
-    this.calcDistinct = calcDistinct;
+    this.name = facet_sf.getName();
 
-    topLevelReader = searcher.getAtomicReader();
+    topLevelReader = searcher.getLeafReader();
     valueSource = facet_sf.getType().getValueSource(facet_sf, null);
 
     facetStatsValues = new HashMap<>();
@@ -80,7 +75,7 @@ public class FieldFacetStats {
   private StatsValues getStatsValues(String key) throws IOException {
     StatsValues stats = facetStatsValues.get(key);
     if (stats == null) {
-      stats = StatsValuesFactory.createStatsValues(field_sf, calcDistinct);
+      stats = StatsValuesFactory.createStatsValues(statsField);
       facetStatsValues.put(key, stats);
       stats.setNextReader(context);
     }
@@ -100,7 +95,7 @@ public class FieldFacetStats {
   // Currently only used by UnInvertedField stats
   public boolean facetTermNum(int docID, int statsTermNum) throws IOException {
     if (topLevelSortedValues == null) {
-      topLevelSortedValues = FieldCache.DEFAULT.getTermsIndex(topLevelReader, name);
+      topLevelSortedValues = DocValues.getSorted(topLevelReader, name);
     }
  
     
@@ -143,7 +138,7 @@ public class FieldFacetStats {
       String key = (String) pairs.getKey();
       StatsValues facetStats = facetStatsValues.get(key);
       if (facetStats == null) {
-        facetStats = StatsValuesFactory.createStatsValues(field_sf, calcDistinct);
+        facetStats = StatsValuesFactory.createStatsValues(statsField);
         facetStatsValues.put(key, facetStats);
       }
       Integer count = (Integer) pairs.getValue();
@@ -154,7 +149,7 @@ public class FieldFacetStats {
     return true;
   }
 
-  public void setNextReader(AtomicReaderContext ctx) throws IOException {
+  public void setNextReader(LeafReaderContext ctx) throws IOException {
     this.context = ctx;
     values = valueSource.getValues(Collections.emptyMap(), ctx);
     for (StatsValues stats : facetStatsValues.values()) {

@@ -1,5 +1,3 @@
-package org.apache.solr.handler.component;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,33 +14,32 @@ package org.apache.solr.handler.component;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.component;
 
+import java.io.IOException;
 import java.util.Date;
 import java.util.List;
-import java.io.IOException;
 
+import junit.framework.AssertionFailedError;
 import org.apache.solr.BaseDistributedSearchTestCase;
-import org.apache.solr.client.solrj.SolrServer;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrServerException;
+import org.apache.solr.client.solrj.response.FieldStatsInfo;
 import org.apache.solr.client.solrj.response.PivotField;
 import org.apache.solr.client.solrj.response.QueryResponse;
+import org.apache.solr.client.solrj.response.RangeFacet;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.params.FacetParams;
 import org.apache.solr.common.params.SolrParams;
-
-import junit.framework.AssertionFailedError;
+import org.junit.Test;
 
 public class DistributedFacetPivotLargeTest extends BaseDistributedSearchTestCase {
   
   public static final String SPECIAL = ""; 
 
-  public DistributedFacetPivotLargeTest() {
-    this.fixShardCount = true;
-    this.shardCount = 4; // we leave one empty as an edge case
-  }
-  
-  @Override
-  public void doTest() throws Exception {
+  @Test
+  @ShardsFixed(num = 4)
+  public void test() throws Exception {
     this.stress = 0 ;
     handle.clear();
     handle.put("QTime", SKIPVAL);
@@ -177,7 +174,7 @@ public class DistributedFacetPivotLargeTest extends BaseDistributedSearchTestCas
     //
     // This is tricky, here's what i think is happening.... 
     // - "company:honda" only exists on twoShard, and only w/ "place:cardiff"
-    // - twoShard has no other places in it's docs
+    // - twoShard has no other places in its docs
     // - twoShard can't return any other places to w/ honda as a count=0 sub-value
     // - if we refined all other companies places, would twoShard return honda==0 ?
     //   ... but there's no refinement since mincount==0
@@ -204,9 +201,39 @@ public class DistributedFacetPivotLargeTest extends BaseDistributedSearchTestCas
     //                      FacetParams.FACET_PIVOT_MINCOUNT,"0",
     //                      "facet.pivot", "top_s,sub_s") );
 
+    // facet.missing=true + facet.sort=index + facet.pivot.mincount > 0 (SOLR-7829)
+    final int expectedNumDocsMissingBool = 111;
+    for (String facetSort : new String[] {"count", "index"}) {
+      for (int mincount : new int[] { 1, 20,
+                                      (expectedNumDocsMissingBool / 2) - 1,
+                                      (expectedNumDocsMissingBool / 2) + 1,
+                                      expectedNumDocsMissingBool }) {
+             
+        SolrParams p = params( "q", "*:*",
+                               "fq","-real_b:true", // simplify asserts by ruling out true counts
+                               "rows", "0",
+                               "facet","true",
+                               "facet.pivot", "real_b",
+                               "facet.missing", "true",
+                               "facet.pivot.mincount", ""+mincount,
+                               "facet.sort", facetSort);
+        
+        try {
+          rsp = query( p );
+          pivots = rsp.getFacetPivot().get("real_b");
+          assertEquals(2, pivots.size()); // false, missing - in that order, regardless of sort
+          assertPivot("real_b", false, 300, pivots.get(0)); 
+          assertPivot("real_b", null, expectedNumDocsMissingBool, pivots.get(1));
+          
+        } catch (AssertionFailedError ae) {
+          throw new AssertionError(ae.getMessage() + " <== " + p.toString(), ae);
+        }
+      }
+    }
+    
     // basic check w/ limit & index sort
     for (SolrParams facetParams : 
-           // results should be the same regardless of wether local params are used
+           // results should be the same regardless of whether local params are used
            new SolrParams[] {
              // Broken: SOLR-6193
              // params("facet.pivot","{!facet.limit=4 facet.sort=index}place_s,company_t"),
@@ -475,7 +502,7 @@ public class DistributedFacetPivotLargeTest extends BaseDistributedSearchTestCas
 
     // Negative facet limit
     for (SolrParams facetParams : 
-           // results should be the same regardless of wether facet.limit is global, 
+           // results should be the same regardless of whether facet.limit is global,
            // a local param, or specified as a per-field override for both fields
            new SolrParams[] {
              params(FacetParams.FACET_LIMIT, "-1",
@@ -507,7 +534,7 @@ public class DistributedFacetPivotLargeTest extends BaseDistributedSearchTestCas
 
     // Negative per-field facet limit (outer)
     for (SolrParams facetParams : 
-           // results should be the same regardless of wether per-field facet.limit is 
+           // results should be the same regardless of whether per-field facet.limit is
            // a global or a local param
            new SolrParams[] {
              // Broken: SOLR-6193
@@ -534,7 +561,7 @@ public class DistributedFacetPivotLargeTest extends BaseDistributedSearchTestCas
 
     // Negative per-field facet limit (inner)
     for (SolrParams facetParams : 
-           // results should be the same regardless of wether per-field facet.limit is 
+           // results should be the same regardless of whether per-field facet.limit is
            // a global or a local param
            new SolrParams[] {
              // Broken: SOLR-6193
@@ -665,7 +692,176 @@ public class DistributedFacetPivotLargeTest extends BaseDistributedSearchTestCas
                 "facet.pivot","place_s,company_t",
                 FacetParams.FACET_OVERREQUEST_RATIO, "0",
                 FacetParams.FACET_OVERREQUEST_COUNT, "0");
-    
+
+    doTestDeepPivotStats();
+    doTestPivotRanges();
+  }
+
+  private void doTestDeepPivotStats() throws Exception {
+
+    QueryResponse rsp = query("q", "*:*",
+                              "rows", "0",
+                              "facet", "true",
+                              "facet.pivot","{!stats=s1}place_s,company_t",
+                              "stats", "true",
+                              "stats.field", "{!key=avg_price tag=s1}pay_i");
+
+    List<PivotField> pivots = rsp.getFacetPivot().get("place_s,company_t");
+
+    PivotField cardiffPivotField = pivots.get(0);
+    assertEquals("cardiff", cardiffPivotField.getValue());
+    assertEquals(257, cardiffPivotField.getCount());
+
+    FieldStatsInfo cardiffStatsInfo = cardiffPivotField.getFieldStatsInfo().get("avg_price");
+    assertEquals("avg_price", cardiffStatsInfo.getName());
+    assertEquals(0.0, cardiffStatsInfo.getMin());
+    assertEquals(8742.0, cardiffStatsInfo.getMax());
+    assertEquals(257, (long) cardiffStatsInfo.getCount());
+    assertEquals(0, (long) cardiffStatsInfo.getMissing());
+    assertEquals(347554.0, cardiffStatsInfo.getSum());
+    assertEquals(8.20968772E8, cardiffStatsInfo.getSumOfSquares(), 0.1E-7);
+    assertEquals(1352.35019455253, (double) cardiffStatsInfo.getMean(), 0.1E-7);
+    assertEquals(1170.86048165857, cardiffStatsInfo.getStddev(), 0.1E-7);
+
+    PivotField bbcCardifftPivotField = cardiffPivotField.getPivot().get(0);
+    assertEquals("bbc", bbcCardifftPivotField.getValue());
+    assertEquals(101, bbcCardifftPivotField.getCount());
+
+    FieldStatsInfo bbcCardifftPivotFieldStatsInfo = bbcCardifftPivotField.getFieldStatsInfo().get("avg_price");
+    assertEquals(2400.0, bbcCardifftPivotFieldStatsInfo.getMin());
+    assertEquals(8742.0, bbcCardifftPivotFieldStatsInfo.getMax());
+    assertEquals(101, (long) bbcCardifftPivotFieldStatsInfo.getCount());
+    assertEquals(0, (long) bbcCardifftPivotFieldStatsInfo.getMissing());
+    assertEquals(248742.0, bbcCardifftPivotFieldStatsInfo.getSum());
+    assertEquals(6.52422564E8, bbcCardifftPivotFieldStatsInfo.getSumOfSquares(), 0.1E-7);
+    assertEquals(2462.792079208, (double) bbcCardifftPivotFieldStatsInfo.getMean(), 0.1E-7);
+    assertEquals(631.0525860312, bbcCardifftPivotFieldStatsInfo.getStddev(), 0.1E-7);
+
+
+    PivotField placeholder0PivotField = pivots.get(2);
+    assertEquals("0placeholder", placeholder0PivotField.getValue());
+    assertEquals(6, placeholder0PivotField.getCount());
+
+    FieldStatsInfo placeholder0PivotFieldStatsInfo = placeholder0PivotField.getFieldStatsInfo().get("avg_price");
+    assertEquals("avg_price", placeholder0PivotFieldStatsInfo.getName());
+    assertEquals(2000.0, placeholder0PivotFieldStatsInfo.getMin());
+    assertEquals(6400.0, placeholder0PivotFieldStatsInfo.getMax());
+    assertEquals(6, (long) placeholder0PivotFieldStatsInfo.getCount());
+    assertEquals(0, (long) placeholder0PivotFieldStatsInfo.getMissing());
+    assertEquals(22700.0, placeholder0PivotFieldStatsInfo.getSum());
+    assertEquals(1.0105E8, placeholder0PivotFieldStatsInfo.getSumOfSquares(), 0.1E-7);
+    assertEquals(3783.333333333, (double) placeholder0PivotFieldStatsInfo.getMean(), 0.1E-7);
+    assertEquals(1741.742422595, placeholder0PivotFieldStatsInfo.getStddev(), 0.1E-7);
+
+    PivotField microsoftPlaceholder0PivotField = placeholder0PivotField.getPivot().get(1);
+    assertEquals("microsoft", microsoftPlaceholder0PivotField.getValue());
+    assertEquals(6, microsoftPlaceholder0PivotField.getCount());
+
+    FieldStatsInfo microsoftPlaceholder0PivotFieldStatsInfo = microsoftPlaceholder0PivotField.getFieldStatsInfo().get("avg_price");
+    assertEquals("avg_price", microsoftPlaceholder0PivotFieldStatsInfo.getName());
+    assertEquals(2000.0, microsoftPlaceholder0PivotFieldStatsInfo.getMin());
+    assertEquals(6400.0, microsoftPlaceholder0PivotFieldStatsInfo.getMax());
+    assertEquals(6, (long) microsoftPlaceholder0PivotFieldStatsInfo.getCount());
+    assertEquals(0, (long) microsoftPlaceholder0PivotFieldStatsInfo.getMissing());
+    assertEquals(22700.0, microsoftPlaceholder0PivotFieldStatsInfo.getSum());
+    assertEquals(1.0105E8, microsoftPlaceholder0PivotFieldStatsInfo.getSumOfSquares(), 0.1E-7);
+    assertEquals(3783.333333333, (double) microsoftPlaceholder0PivotFieldStatsInfo.getMean(), 0.1E-7);
+    assertEquals(1741.742422595, microsoftPlaceholder0PivotFieldStatsInfo.getStddev(), 0.1E-7);
+  }
+
+  /**
+   * spot checks some pivot values and the ranges hanging on them
+   */
+  private void doTestPivotRanges() throws Exception {
+
+    // note: 'p0' is only a top level range, not included in per-pivot ranges
+    for (SolrParams p : new SolrParams[]{
+        // results should be identical for all of these
+        params("facet.range", "{!key=p0 facet.range.gap=500}pay_i",
+            "facet.range", "{!key=p1 tag=t1 facet.range.gap=100}pay_i",
+            "facet.range", "{!key=p2 tag=t1 facet.range.gap=200}pay_i",
+            "facet.range.start", "0",
+            "facet.range.end", "1000"),
+        params("facet.range", "{!key=p0 facet.range.gap=500}pay_i",
+            "facet.range", "{!key=p1 tag=t1 facet.range.gap=100}pay_i",
+            "facet.range", "{!key=p2 tag=t1 facet.range.gap=200}pay_i",
+            "f.pay_i.facet.range.start", "0",
+            "facet.range.end", "1000"),
+        params("facet.range", "{!key=p0 facet.range.gap=500 facet.range.start=0}pay_i",
+            "facet.range", "{!key=p1 tag=t1 facet.range.gap=100 facet.range.start=0}pay_i",
+            "facet.range", "{!key=p2 tag=t1 facet.range.gap=200 facet.range.start=0}pay_i",
+            "facet.range.end", "1000")}) {
+
+      QueryResponse rsp
+          = query(SolrParams.wrapDefaults(p, params("q", "*:*",
+          "rows", "0",
+          "facet", "true",
+          "facet.pivot", "{!range=t1}place_s,company_t")));
+
+      List<PivotField> pivots = rsp.getFacetPivot().get("place_s,company_t");
+      PivotField pf = null; // changes as we spot check
+      List<RangeFacet.Count> rfc = null; // changes as we spot check
+
+      // 1st sanity check top level ranges
+      assertEquals(3, rsp.getFacetRanges().size());
+      assertRange("p0", 0, 500, 1000, 2, rsp.getFacetRanges().get(0));
+      assertRange("p1", 0, 100, 1000, 10, rsp.getFacetRanges().get(1));
+      assertRange("p2", 0, 200, 1000, 5, rsp.getFacetRanges().get(2));
+
+      // check pivots...
+
+      // first top level pivot value
+      pf = pivots.get(0);
+      assertPivot("place_s", "cardiff", 257, pf);
+      assertRange("p1", 0, 100, 1000, 10, pf.getFacetRanges().get(0));
+      assertRange("p2", 0, 200, 1000, 5, pf.getFacetRanges().get(1));
+
+      rfc = pf.getFacetRanges().get(0).getCounts();
+      assertEquals("200", rfc.get(2).getValue());
+      assertEquals(14, rfc.get(2).getCount());
+      assertEquals("300", rfc.get(3).getValue());
+      assertEquals(15, rfc.get(3).getCount());
+
+      rfc = pf.getFacetRanges().get(1).getCounts();
+      assertEquals("200", rfc.get(1).getValue());
+      assertEquals(29, rfc.get(1).getCount());
+
+      // drill down one level of the pivot
+      pf = pf.getPivot().get(0);
+      assertPivot("company_t", "bbc", 101, pf);
+      assertRange("p1", 0, 100, 1000, 10, pf.getFacetRanges().get(0));
+      assertRange("p2", 0, 200, 1000, 5, pf.getFacetRanges().get(1));
+
+      rfc = pf.getFacetRanges().get(0).getCounts();
+      for (RangeFacet.Count c : rfc) {
+        assertEquals(0, c.getCount()); // no docs in our ranges for this pivot drill down
+      }
+
+      // pop back up and spot check a different top level pivot value
+      pf = pivots.get(53);
+      assertPivot("place_s", "placeholder0", 1, pf);
+      assertRange("p1", 0, 100, 1000, 10, pf.getFacetRanges().get(0));
+      assertRange("p2", 0, 200, 1000, 5, pf.getFacetRanges().get(1));
+
+      rfc = pf.getFacetRanges().get(0).getCounts();
+      assertEquals("0", rfc.get(0).getValue());
+      assertEquals(1, rfc.get(0).getCount());
+      assertEquals("100", rfc.get(1).getValue());
+      assertEquals(0, rfc.get(1).getCount());
+
+      // drill down one level of the pivot
+      pf = pf.getPivot().get(0);
+      assertPivot("company_t", "compholder0", 1, pf);
+      assertRange("p1", 0, 100, 1000, 10, pf.getFacetRanges().get(0));
+      assertRange("p2", 0, 200, 1000, 5, pf.getFacetRanges().get(1));
+
+      rfc = pf.getFacetRanges().get(0).getCounts();
+      assertEquals("0", rfc.get(0).getValue());
+      assertEquals(1, rfc.get(0).getCount());
+      assertEquals("100", rfc.get(1).getValue());
+      assertEquals(0, rfc.get(1).getCount());
+
+    }
   }
 
   /**
@@ -680,8 +876,18 @@ public class DistributedFacetPivotLargeTest extends BaseDistributedSearchTestCas
     //assertEquals("#KIDS: " + actual.toString(), numKids, actual.getPivot().size());
   }
 
+  /**
+   * asserts that the actual RangeFacet matches the expected criteria
+   */
+  private void assertRange(String name, Object start, Object gap, Object end, int numCount,
+                           RangeFacet actual) {
+    assertEquals("NAME: " + actual.toString(), name, actual.getName());
+    assertEquals("START: " + actual.toString(), start, actual.getStart());
+    assertEquals("GAP: " + actual.toString(), gap, actual.getGap());
+    assertEquals("END: " + actual.toString(), end, actual.getEnd());
+    assertEquals("#COUNT: " + actual.toString(), numCount, actual.getCounts().size());
+  }
 
-  
   private void setupDistributedPivotFacetDocuments() throws Exception{
     
     //Clear docs
@@ -689,10 +895,10 @@ public class DistributedFacetPivotLargeTest extends BaseDistributedSearchTestCas
     commit();
 
     final int maxDocs = 50;
-    final SolrServer zeroShard = clients.get(0);
-    final SolrServer oneShard = clients.get(1);
-    final SolrServer twoShard = clients.get(2);
-    final SolrServer threeShard = clients.get(3); // edge case: never gets any matching docs
+    final SolrClient zeroShard = clients.get(0);
+    final SolrClient oneShard = clients.get(1);
+    final SolrClient twoShard = clients.get(2);
+    final SolrClient threeShard = clients.get(3); // edge case: never gets any matching docs
 
     for(Integer i=0;i<maxDocs;i++){//50 entries
       addPivotDoc(zeroShard, "id", getDocNum(), "place_s", "cardiff", "company_t", "microsoft polecat bbc","pay_i",2400,"hiredate_dt", "2012-07-01T12:30:00Z","real_b","true");
@@ -743,10 +949,10 @@ public class DistributedFacetPivotLargeTest extends BaseDistributedSearchTestCas
   /**
    * Builds up a SolrInputDocument using the specified fields, then adds it to the 
    * specified client as well as the control client 
-   * @see #indexDoc(SolrServer,SolrParams,SolrInputDocument...)
+   * @see #indexDoc(org.apache.solr.client.solrj.SolrClient,SolrParams,SolrInputDocument...)
    * @see #sdoc
    */
-  private void addPivotDoc(SolrServer client, Object... fields) 
+  private void addPivotDoc(SolrClient client, Object... fields)
     throws IOException, SolrServerException {
 
     indexDoc(client, params(), sdoc(fields));

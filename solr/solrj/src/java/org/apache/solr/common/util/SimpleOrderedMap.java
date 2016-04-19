@@ -1,5 +1,3 @@
-package org.apache.solr.common.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.common.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.common.util;
 
 import java.util.*;
 
@@ -32,7 +31,7 @@ import java.util.*;
  * the same way.
  * </p>
  * <p>
- * This class does not provide efficient lookup by key, it's main purpose is
+ * This class does not provide efficient lookup by key, its main purpose is
  * to hold data to be serialized.  It aims to minimize overhead and to be
  * efficient at adding new elements.
  * </p>
@@ -41,6 +40,10 @@ public class SimpleOrderedMap<T> extends NamedList<T> {
   /** Creates an empty instance */
   public SimpleOrderedMap() {
     super();
+  }
+
+  public SimpleOrderedMap(int sz) {
+    super(sz);
   }
 
   /**

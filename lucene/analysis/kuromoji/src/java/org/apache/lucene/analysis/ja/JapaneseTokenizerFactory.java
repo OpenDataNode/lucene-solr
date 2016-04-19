@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.ja;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.ja;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.ja;
+
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -91,14 +91,14 @@ public class JapaneseTokenizerFactory extends TokenizerFactory implements Resour
           .onMalformedInput(CodingErrorAction.REPORT)
           .onUnmappableCharacter(CodingErrorAction.REPORT);
       Reader reader = new InputStreamReader(stream, decoder);
-      userDictionary = new UserDictionary(reader);
+      userDictionary = UserDictionary.open(reader);
     } else {
       userDictionary = null;
     }
   }
   
   @Override
-  public JapaneseTokenizer create(AttributeFactory factory, Reader input) {
-    return new JapaneseTokenizer(factory, input, userDictionary, discardPunctuation, mode);
+  public JapaneseTokenizer create(AttributeFactory factory) {
+    return new JapaneseTokenizer(factory, userDictionary, discardPunctuation, mode);
   }
 }

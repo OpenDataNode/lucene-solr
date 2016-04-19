@@ -1,5 +1,3 @@
-package org.apache.lucene.benchmark.byTask.tasks;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,13 @@ package org.apache.lucene.benchmark.byTask.tasks;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.benchmark.byTask.tasks;
+
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
@@ -28,11 +33,6 @@ import org.apache.lucene.search.highlight.QueryScorer;
 import org.apache.lucene.search.highlight.SimpleHTMLFormatter;
 import org.apache.lucene.search.highlight.TextFragment;
 import org.apache.lucene.search.highlight.TokenSources;
-
-import java.util.Set;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Collections;
 
 /**
  * Search and Traverse and Retrieve docs task.  Highlight the fields in the retrieved documents.
@@ -52,7 +52,7 @@ import java.util.Collections;
  * <li>fields - The fields to highlight.  If not specified all fields will be highlighted (or at least attempted)</li>
  * </ul>
  * Example:
- * <pre>"SearchHlgtSameRdr" SearchTravRetHighlight(size[10],highlight[10],mergeContiguous[true],maxFrags[3],fields[body]) > : 1000
+ * <pre>"SearchHlgtSameRdr" SearchTravRetHighlight(size[10],highlight[10],mergeContiguous[true],maxFrags[3],fields[body]) &gt; : 1000
  * </pre>
  *
  * Documents must be stored in order for this task to work.  Additionally, term vector positions can be used as well.
@@ -102,7 +102,8 @@ public class SearchTravRetHighlightTask extends SearchTravTask {
       @Override
       public int doHighlight(IndexReader reader, int doc, String field,
           Document document, Analyzer analyzer, String text) throws Exception {
-        TokenStream ts = TokenSources.getAnyTokenStream(reader, doc, field, document, analyzer);
+        final int maxStartOffset = highlighter.getMaxDocCharsToAnalyze() - 1;
+        TokenStream ts = TokenSources.getTokenStream(field, reader.getTermVectors(doc), text, analyzer, maxStartOffset);
         TextFragment[] frag = highlighter.getBestTextFragments(ts, text, mergeContiguous, maxFrags);
         return frag != null ? frag.length : 0;
       }

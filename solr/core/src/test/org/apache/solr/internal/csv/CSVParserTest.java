@@ -5,9 +5,9 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
- * 
- *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -29,7 +29,7 @@ import junit.framework.TestCase;
  * The test are organized in three different sections:
  * The 'setter/getter' section, the lexer section and finally the parser 
  * section. In case a test fails, you should follow a top-down approach for 
- * fixing a potential bug (its likely that the parser itself fails if the lexer
+ * fixing a potential bug (it's likely that the parser itself fails if the lexer
  * has problems...).
  */
 public class CSVParserTest extends TestCase {

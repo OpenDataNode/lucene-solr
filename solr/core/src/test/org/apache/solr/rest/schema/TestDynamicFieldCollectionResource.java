@@ -1,4 +1,3 @@
-package org.apache.solr.rest.schema;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.rest.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.rest.schema;
 import org.apache.solr.rest.SolrRestletTestBase;
 import org.junit.Test;
 
@@ -58,5 +57,12 @@ public class TestDynamicFieldCollectionResource extends SolrRestletTestBase {
     assertJQ("/schema/dynamicfields?indent=on&fl=*_i,*_s&wt=xml", // assertJQ will fix the wt param to be json
              "/dynamicFields/[0]/name=='*_i'",
              "/dynamicFields/[1]/name=='*_s'");
+  }
+
+  @Test
+  public void testJsonPostFieldsToNonMutableIndexSchema() throws Exception {
+    assertJPost("/schema/dynamicfields",
+        "[{\"name\":\"foobarbaz\", \"type\":\"text_general\", \"stored\":\"false\"}]",
+        "/error/msg=='This IndexSchema is not mutable.'");
   }
 }

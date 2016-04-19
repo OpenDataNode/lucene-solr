@@ -1,5 +1,3 @@
-package org.apache.solr.spelling.suggest;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,13 +14,12 @@ package org.apache.solr.spelling.suggest;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.spelling.suggest;
 
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.params.SpellingParams;
 import org.junit.BeforeClass;
 
-@SuppressCodecs("Lucene3x")
 public class TestFreeTextSuggestions extends SolrTestCaseJ4 {
   static final String URI = "/free_text_suggest";
   

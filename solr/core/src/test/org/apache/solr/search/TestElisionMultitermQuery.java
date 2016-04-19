@@ -1,10 +1,4 @@
-package org.apache.solr.search;
-
-import org.apache.solr.SolrTestCaseJ4;
-import org.junit.BeforeClass;
-import org.junit.Test;
-
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -20,6 +14,11 @@ import org.junit.Test;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search;
+
+import org.apache.solr.SolrTestCaseJ4;
+import org.junit.BeforeClass;
+import org.junit.Test;
 
 public class TestElisionMultitermQuery extends SolrTestCaseJ4 {
 

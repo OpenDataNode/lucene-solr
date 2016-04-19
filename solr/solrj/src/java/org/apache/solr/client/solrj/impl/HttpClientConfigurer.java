@@ -1,5 +1,3 @@
-package org.apache.solr.client.solrj.impl;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,15 @@ package org.apache.solr.client.solrj.impl;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.client.solrj.impl;
 
-
+import org.apache.http.HttpRequest;
+import org.apache.http.HttpRequestInterceptor;
 import org.apache.http.conn.ssl.SSLSocketFactory;
 import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.protocol.HttpContext;
+import org.apache.solr.common.SolrException;
+import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.params.SolrParams;
 
 /**
@@ -29,7 +32,7 @@ import org.apache.solr.common.params.SolrParams;
  */
 public class HttpClientConfigurer {
   
-  protected void configure(DefaultHttpClient httpClient, SolrParams config) {
+  public void configure(DefaultHttpClient httpClient, SolrParams config) {
     
     if (config.get(HttpClientUtil.PROP_MAX_CONNECTIONS) != null) {
       HttpClientUtil.setMaxConnections(httpClient,
@@ -51,15 +54,14 @@ public class HttpClientConfigurer {
           config.getInt(HttpClientUtil.PROP_SO_TIMEOUT));
     }
     
-    if (config.get(HttpClientUtil.PROP_USE_RETRY) != null) {
-      HttpClientUtil.setUseRetry(httpClient,
-          config.getBool(HttpClientUtil.PROP_USE_RETRY));
-    }
-    
     if (config.get(HttpClientUtil.PROP_FOLLOW_REDIRECTS) != null) {
       HttpClientUtil.setFollowRedirects(httpClient,
           config.getBool(HttpClientUtil.PROP_FOLLOW_REDIRECTS));
     }
+    
+    // always call setUseRetry, whether it is in config or not
+    HttpClientUtil.setUseRetry(httpClient,
+        config.getBool(HttpClientUtil.PROP_USE_RETRY, true));
     
     final String basicAuthUser = config
         .get(HttpClientUtil.PROP_BASIC_AUTH_USER);

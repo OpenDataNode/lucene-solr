@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.miscellaneous;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.miscellaneous;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.miscellaneous;
+
 
 import java.io.IOException;
 
@@ -43,7 +43,7 @@ public class TestLimitTokenCountAnalyzer extends BaseTokenStreamTestCase {
       mock.setEnableChecks(consumeAll);
       Analyzer a = new LimitTokenCountAnalyzer(mock, 2, consumeAll);
     
-      // dont use assertAnalyzesTo here, as the end offset is not the end of the string (unless consumeAll is true, in which case its correct)!
+      // dont use assertAnalyzesTo here, as the end offset is not the end of the string (unless consumeAll is true, in which case it's correct)!
       assertTokenStreamContents(a.tokenStream("dummy", "1  2     3  4  5"), new String[] { "1", "2" }, new int[] { 0, 3 }, new int[] { 1, 4 }, consumeAll ? 16 : null);
       assertTokenStreamContents(a.tokenStream("dummy", "1 2 3 4 5"), new String[] { "1", "2" }, new int[] { 0, 2 }, new int[] { 1, 3 }, consumeAll ? 9 : null);
       
@@ -52,6 +52,7 @@ public class TestLimitTokenCountAnalyzer extends BaseTokenStreamTestCase {
     
       // equal to limit
       assertTokenStreamContents(a.tokenStream("dummy", "1  2  "), new String[] { "1", "2" }, new int[] { 0, 3 }, new int[] { 1, 4 }, consumeAll ? 6 : null);
+      a.close();
     }
   }
 
@@ -67,8 +68,7 @@ public class TestLimitTokenCountAnalyzer extends BaseTokenStreamTestCase {
       mock.setEnableChecks(consumeAll);
       Analyzer a = new LimitTokenCountAnalyzer(mock, limit, consumeAll);
 
-      IndexWriter writer = new IndexWriter(dir, new IndexWriterConfig
-                                           (TEST_VERSION_CURRENT, a));
+      IndexWriter writer = new IndexWriter(dir, new IndexWriterConfig(a));
 
       Document doc = new Document();
       StringBuilder b = new StringBuilder();
@@ -87,6 +87,7 @@ public class TestLimitTokenCountAnalyzer extends BaseTokenStreamTestCase {
       assertEquals(0, reader.docFreq(t));
       reader.close();
       dir.close();
+      a.close();
     }
   }
 

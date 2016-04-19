@@ -1,5 +1,3 @@
-package org.apache.lucene.search.similarities;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.similarities;
+
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,7 +24,7 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
@@ -69,9 +69,12 @@ public class TestSimilarity2 extends LuceneTestCase {
     sims.add(new LMDirichletSimilarity());
     sims.add(new LMJelinekMercerSimilarity(0.1f));
     sims.add(new LMJelinekMercerSimilarity(0.7f));
+    for (Independence independence : TestSimilarityBase.INDEPENDENCE_MEASURES) {
+      sims.add(new DFISimilarity(independence));
+    }
   }
   
-  /** because of stupid things like querynorm, its possible we computeStats on a field that doesnt exist at all
+  /** because of stupid things like querynorm, it's possible we computeStats on a field that doesnt exist at all
    *  test this against a totally empty index, to make sure sims handle it
    */
   public void testEmptyIndex() throws Exception {
@@ -102,10 +105,11 @@ public class TestSimilarity2 extends LuceneTestCase {
     
     for (Similarity sim : sims) {
       is.setSimilarity(sim);
-      BooleanQuery query = new BooleanQuery(true);
+      BooleanQuery.Builder query = new BooleanQuery.Builder();
+      query.setDisableCoord(true);
       query.add(new TermQuery(new Term("foo", "bar")), BooleanClause.Occur.SHOULD);
       query.add(new TermQuery(new Term("bar", "baz")), BooleanClause.Occur.SHOULD);
-      assertEquals(1, is.search(query, 10).totalHits);
+      assertEquals(1, is.search(query.build(), 10).totalHits);
     }
     ir.close();
     dir.close();
@@ -124,10 +128,11 @@ public class TestSimilarity2 extends LuceneTestCase {
     
     for (Similarity sim : sims) {
       is.setSimilarity(sim);
-      BooleanQuery query = new BooleanQuery(true);
+      BooleanQuery.Builder query = new BooleanQuery.Builder();
+      query.setDisableCoord(true);
       query.add(new TermQuery(new Term("foo", "bar")), BooleanClause.Occur.SHOULD);
       query.add(new TermQuery(new Term("foo", "baz")), BooleanClause.Occur.SHOULD);
-      assertEquals(1, is.search(query, 10).totalHits);
+      assertEquals(1, is.search(query.build(), 10).totalHits);
     }
     ir.close();
     dir.close();
@@ -149,9 +154,10 @@ public class TestSimilarity2 extends LuceneTestCase {
     
     for (Similarity sim : sims) {
       is.setSimilarity(sim);
-      BooleanQuery query = new BooleanQuery(true);
+      BooleanQuery.Builder query = new BooleanQuery.Builder();
+      query.setDisableCoord(true);
       query.add(new TermQuery(new Term("foo", "bar")), BooleanClause.Occur.SHOULD);
-      assertEquals(1, is.search(query, 10).totalHits);
+      assertEquals(1, is.search(query.build(), 10).totalHits);
     }
     ir.close();
     dir.close();
@@ -163,7 +169,7 @@ public class TestSimilarity2 extends LuceneTestCase {
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir);
     Document doc = new Document();
     FieldType ft = new FieldType(TextField.TYPE_NOT_STORED);
-    ft.setIndexOptions(IndexOptions.DOCS_ONLY);
+    ft.setIndexOptions(IndexOptions.DOCS);
     ft.freeze();
     Field f = newField("foo", "bar", ft);
     doc.add(f);
@@ -174,9 +180,10 @@ public class TestSimilarity2 extends LuceneTestCase {
     
     for (Similarity sim : sims) {
       is.setSimilarity(sim);
-      BooleanQuery query = new BooleanQuery(true);
+      BooleanQuery.Builder query = new BooleanQuery.Builder();
+      query.setDisableCoord(true);
       query.add(new TermQuery(new Term("foo", "bar")), BooleanClause.Occur.SHOULD);
-      assertEquals(1, is.search(query, 10).totalHits);
+      assertEquals(1, is.search(query.build(), 10).totalHits);
     }
     ir.close();
     dir.close();
@@ -188,7 +195,7 @@ public class TestSimilarity2 extends LuceneTestCase {
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir);
     Document doc = new Document();
     FieldType ft = new FieldType(TextField.TYPE_NOT_STORED);
-    ft.setIndexOptions(IndexOptions.DOCS_ONLY);
+    ft.setIndexOptions(IndexOptions.DOCS);
     ft.setOmitNorms(true);
     ft.freeze();
     Field f = newField("foo", "bar", ft);
@@ -200,9 +207,10 @@ public class TestSimilarity2 extends LuceneTestCase {
     
     for (Similarity sim : sims) {
       is.setSimilarity(sim);
-      BooleanQuery query = new BooleanQuery(true);
+      BooleanQuery.Builder query = new BooleanQuery.Builder();
+      query.setDisableCoord(true);
       query.add(new TermQuery(new Term("foo", "bar")), BooleanClause.Occur.SHOULD);
-      assertEquals(1, is.search(query, 10).totalHits);
+      assertEquals(1, is.search(query.build(), 10).totalHits);
     }
     ir.close();
     dir.close();
@@ -232,8 +240,9 @@ public class TestSimilarity2 extends LuceneTestCase {
       TopDocs td = is.search(query, 10);
       assertEquals(1, td.totalHits);
       float score = td.scoreDocs[0].score;
-      assertTrue(score >= 0.0f);
+      assertFalse("negative score for " + sim, score < 0.0f);
       assertFalse("inf score for " + sim, Float.isInfinite(score));
+      assertFalse("nan score for " + sim, Float.isNaN(score));
     }
     ir.close();
     dir.close();

@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.ext;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.ext;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.ext;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.queryparser.ext.Extensions.Pair;
@@ -55,7 +54,6 @@ import org.apache.lucene.util.Version;
  * <pre>
  *   _customExt:"Apache Lucene\?" OR _customExt:prefix\*
  * </pre>
- * </p>
  * <p>
  * The {@link ExtendableQueryParser} itself does not implement the logic how
  * field and extension key are separated or ordered. All logic regarding the
@@ -94,14 +92,6 @@ public class ExtendableQueryParser extends QueryParser {
   }
 
   /**
-   * @deprecated Use {@link #ExtendableQueryParser(String, Analyzer)}
-   */
-  @Deprecated
-  public ExtendableQueryParser(final Version matchVersion, final String f, final Analyzer a) {
-    this(matchVersion, f, a, DEFAULT_EXTENSION);
-  }
-
-  /**
    * Creates a new {@link ExtendableQueryParser} instance
    * 
    * @param f
@@ -111,16 +101,9 @@ public class ExtendableQueryParser extends QueryParser {
    * @param ext
    *          the query parser extensions
    */
-  public ExtendableQueryParser(final String f, final Analyzer a, final Extensions ext) {
-    this(Version.LATEST, f, a, ext);
-  }
-
-  /**
-   * @deprecated Use {@link #ExtendableQueryParser(String, Analyzer, Extensions)}
-   */
-  @Deprecated
-  public ExtendableQueryParser(final Version matchVersion, final String f, final Analyzer a, final Extensions ext) {
-    super(matchVersion, f, a);
+  public ExtendableQueryParser(final String f,
+      final Analyzer a, final Extensions ext) {
+    super(f, a);
     this.defaultField = f;
     this.extensions = ext;
   }

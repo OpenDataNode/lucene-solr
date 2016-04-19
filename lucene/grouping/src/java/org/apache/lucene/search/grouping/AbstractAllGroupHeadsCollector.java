@@ -1,5 +1,3 @@
-package org.apache.lucene.search.grouping;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,13 +14,14 @@ package org.apache.lucene.search.grouping;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.search.Collector;
-import org.apache.lucene.util.FixedBitSet;
+package org.apache.lucene.search.grouping;
 
 import java.io.IOException;
 import java.util.Collection;
+
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.search.SimpleCollector;
+import org.apache.lucene.util.FixedBitSet;
 
 /**
  * This collector specializes in collecting the most relevant document (group head) for each group that match the query.
@@ -30,7 +29,7 @@ import java.util.Collection;
  * @lucene.experimental
  */
 @SuppressWarnings({"unchecked","rawtypes"})
-public abstract class AbstractAllGroupHeadsCollector<GH extends AbstractAllGroupHeadsCollector.GroupHead> extends Collector {
+public abstract class AbstractAllGroupHeadsCollector<GH extends AbstractAllGroupHeadsCollector.GroupHead> extends SimpleCollector {
 
   protected final int[] reversed;
   protected final int compIDXEnd;
@@ -82,7 +81,7 @@ public abstract class AbstractAllGroupHeadsCollector<GH extends AbstractAllGroup
   /**
    * Returns the group head and puts it into {@link #temporalResult}.
    * If the group head wasn't encountered before then it will be added to the collected group heads.
-   * <p/>
+   * <p>
    * The {@link TemporalResult#stop} property will be <code>true</code> if the group head wasn't encountered before
    * otherwise <code>false</code>.
    *
@@ -124,11 +123,6 @@ public abstract class AbstractAllGroupHeadsCollector<GH extends AbstractAllGroup
       }
     }
     groupHead.updateDocHead(doc);
-  }
-
-  @Override
-  public boolean acceptsDocsOutOfOrder() {
-    return false;
   }
 
   /**

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.util;
 
 import java.util.Arrays;
@@ -23,15 +22,16 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.lucene.util.LuceneTestCase;
+import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.common.util.StrUtils;
+import org.apache.solr.common.util.Utils;
 import org.junit.Assert;
 
 /**
  *
  */
-public class TestUtils extends LuceneTestCase {
+public class TestUtils extends SolrTestCaseJ4 {
   
   public void testJoin() {
     assertEquals("a|b|c",   StrUtils.join(Arrays.asList("a","b","c"), '|'));
@@ -136,7 +136,7 @@ public class TestUtils extends LuceneTestCase {
       try {
         iter.remove();
         Assert.fail( "should be unsupported..." );
-      } catch( UnsupportedOperationException ex ) {}
+      } catch( UnsupportedOperationException ignored) {}
     }
     // the values should be bigger
     assertEquals( new Integer(10), map.get( "one" ) );
@@ -149,9 +149,31 @@ public class TestUtils extends LuceneTestCase {
     String sortable = NumberUtils.double2sortableStr( number );
     assertEquals( number, NumberUtils.SortableStr2double(sortable), 0.001);
     
-    long num = System.currentTimeMillis();
+    long num = System.nanoTime();
     sortable = NumberUtils.long2sortableStr( num );
     assertEquals( num, NumberUtils.SortableStr2long(sortable, 0, sortable.length() ) );
     assertEquals( Long.toString(num), NumberUtils.SortableStr2long(sortable) );
+  }
+  
+  public void testUtilsJSPath(){
+    
+    String json = "{\n" +
+        "  'authorization':{\n" +
+        "    'class':'solr.RuleBasedAuthorizationPlugin',\n" +
+        "    'user-role':{\n" +
+        "      'solr':'admin',\n" +
+        "      'harry':'admin'},\n" +
+        "    'permissions':[{\n" +
+        "        'name':'security-edit',\n" +
+        "        'role':'admin'},\n" +
+        "      {\n" +
+        "        'name':'x-update',\n" +
+        "        'collection':'x',\n" +
+        "        'path':'/update/*',\n" +
+        "        'role':'dev'}],\n" +
+        "    '':{'v':4}}}";
+    Map m = (Map) Utils.fromJSONString(json);
+    assertEquals("x-update", Utils.getObjectByPath(m,false, "authorization/permissions[1]/name"));
+    
   }
 }

@@ -14,14 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.queries.function.valuesource;
 
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 
 /**
- * <code>MaxFloatFunction</code> returns the max of it's components.
+ * <code>MaxFloatFunction</code> returns the max of its components.
  */
 public class MaxFloatFunction extends MultiFloatFunction {
   public MaxFloatFunction(ValueSource[] sources) {
@@ -35,11 +34,25 @@ public class MaxFloatFunction extends MultiFloatFunction {
 
   @Override
   protected float func(int doc, FunctionValues[] valsArr) {
-    if (valsArr.length == 0) return 0.0f;
+    if ( ! exists(doc, valsArr) ) return 0.0f;
+
     float val = Float.NEGATIVE_INFINITY;
     for (FunctionValues vals : valsArr) {
-      val = Math.max(vals.floatVal(doc), val);
+      if (vals.exists(doc)) {
+        val = Math.max(vals.floatVal(doc), val);
+      }
     }
     return val;
+  }
+
+  /** 
+   * True if <em>any</em> of the specified <code>values</code> 
+   * {@link FunctionValues#exists} for the specified doc, else false.
+   *
+   * @see MultiFunction#anyExists
+   */
+  @Override
+  protected boolean exists(int doc, FunctionValues[] valsArr) {
+    return MultiFunction.anyExists(doc, valsArr);
   }
 }

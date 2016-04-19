@@ -1,11 +1,10 @@
-package org.apache.lucene.index;
-
-/**
- * Copyright 2006 The Apache Software Foundation
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
@@ -15,11 +14,10 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.util.Random;
-import java.io.Reader;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.Tokenizer;
@@ -42,8 +40,8 @@ class RepeatingTokenizer extends Tokenizer {
   CharTermAttribute termAtt;
   String value;
 
-   public RepeatingTokenizer(Reader reader, String val, Random random, float percentDocs, int maxTF) {
-     super(reader);
+   public RepeatingTokenizer(String val, Random random, float percentDocs, int maxTF) {
+     super();
      this.value = val;
      this.random = random;
      this.percentDocs = percentDocs;
@@ -80,8 +78,8 @@ public class TestTermdocPerf extends LuceneTestCase {
 
     Analyzer analyzer = new Analyzer() {
       @Override
-      public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        return new TokenStreamComponents(new RepeatingTokenizer(reader, val, random, percentDocs, maxTF));
+      public TokenStreamComponents createComponents(String fieldName) {
+        return new TokenStreamComponents(new RepeatingTokenizer(val, random, percentDocs, maxTF));
       }
     };
 
@@ -115,16 +113,16 @@ public class TestTermdocPerf extends LuceneTestCase {
 
     IndexReader reader = DirectoryReader.open(dir);
 
-    TermsEnum tenum = MultiFields.getTerms(reader, "foo").iterator(null);
+    TermsEnum tenum = MultiFields.getTerms(reader, "foo").iterator();
 
     start = System.currentTimeMillis();
 
     int ret=0;
-    DocsEnum tdocs = null;
+    PostingsEnum tdocs = null;
     final Random random = new Random(random().nextLong());
     for (int i=0; i<iter; i++) {
       tenum.seekCeil(new BytesRef("val"));
-      tdocs = TestUtil.docs(random, tenum, MultiFields.getLiveDocs(reader), tdocs, DocsEnum.FLAG_NONE);
+      tdocs = TestUtil.docs(random, tenum, tdocs, PostingsEnum.NONE);
       while (tdocs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
         ret += tdocs.docID();
       }

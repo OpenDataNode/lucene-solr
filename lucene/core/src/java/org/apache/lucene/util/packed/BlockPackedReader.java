@@ -1,5 +1,3 @@
-package org.apache.lucene.util.packed;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.util.packed;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util.packed;
+
 
 import static org.apache.lucene.util.BitUtil.zigZagDecode;
 import static org.apache.lucene.util.packed.AbstractBlockPackedWriter.BPV_SHIFT;
@@ -27,6 +27,8 @@ import static org.apache.lucene.util.packed.PackedInts.checkBlockSize;
 import static org.apache.lucene.util.packed.PackedInts.numBlocks;
 
 import java.io.IOException;
+import java.util.Collection;
+import java.util.Collections;
 
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.Accountable;
@@ -42,6 +44,7 @@ public final class BlockPackedReader extends LongValues implements Accountable {
   private final long valueCount;
   private final long[] minValues;
   private final PackedInts.Reader[] subReaders;
+  private final long sumBPV;
 
   /** Sole constructor. */
   public BlockPackedReader(IndexInput in, int packedIntsVersion, int blockSize, long valueCount, boolean direct) throws IOException {
@@ -51,9 +54,11 @@ public final class BlockPackedReader extends LongValues implements Accountable {
     final int numBlocks = numBlocks(valueCount, blockSize);
     long[] minValues = null;
     subReaders = new PackedInts.Reader[numBlocks];
+    long sumBPV = 0;
     for (int i = 0; i < numBlocks; ++i) {
       final int token = in.readByte() & 0xFF;
       final int bitsPerValue = token >>> BPV_SHIFT;
+      sumBPV += bitsPerValue;
       if (bitsPerValue > 64) {
         throw new IOException("Corrupted");
       }
@@ -77,6 +82,7 @@ public final class BlockPackedReader extends LongValues implements Accountable {
       }
     }
     this.minValues = minValues;
+    this.sumBPV = sumBPV;
   }
 
   @Override
@@ -94,5 +100,16 @@ public final class BlockPackedReader extends LongValues implements Accountable {
       size += reader.ramBytesUsed();
     }
     return size;
+  }
+
+  @Override
+  public Collection<Accountable> getChildResources() {
+    return Collections.emptyList();
+  }
+  
+  @Override
+  public String toString() {
+    long avgBPV = subReaders.length == 0 ? 0 : sumBPV / subReaders.length;
+    return getClass().getSimpleName() + "(blocksize=" + (1<<blockShift) + ",size=" + valueCount + ",avgBPV=" + avgBPV + ")";
   }
 }

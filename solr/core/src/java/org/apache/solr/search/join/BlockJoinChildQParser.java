@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.search.join;
 
 import org.apache.lucene.search.Query;
@@ -28,8 +27,9 @@ public class BlockJoinChildQParser extends BlockJoinParentQParser {
     super(qstr, localParams, params, req);
   }
 
-  protected Query createQuery(Query parentListQuery, Query query) {
-    return new ToChildBlockJoinQuery(query, getFilter(parentListQuery), false);
+  @Override
+  protected Query createQuery(Query parentListQuery, Query query, String scoreMode) {
+    return new ToChildBlockJoinQuery(query, getFilter(parentListQuery).filter);
   }
 
   @Override
@@ -37,5 +37,3 @@ public class BlockJoinChildQParser extends BlockJoinParentQParser {
     return "of";
   }
 }
-
-

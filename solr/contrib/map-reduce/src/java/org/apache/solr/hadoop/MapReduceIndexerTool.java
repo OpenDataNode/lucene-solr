@@ -28,6 +28,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
+import java.lang.invoke.MethodHandles;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -74,7 +75,6 @@ import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.util.GenericOptionsParser;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
-import org.apache.log4j.PropertyConfigurator;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.hadoop.dedup.RetainMostRecentUpdateConflictResolver;
 import org.apache.solr.hadoop.morphline.MorphlineMapRunner;
@@ -104,7 +104,7 @@ public class MapReduceIndexerTool extends Configured implements Tool {
   
   private static final String FULL_INPUT_LIST = "full-input-list.txt";
   
-  private static final Logger LOG = LoggerFactory.getLogger(MapReduceIndexerTool.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   
   /**
@@ -483,7 +483,7 @@ public class MapReduceIndexerTool extends Configured implements Tool {
       
       opts.log4jConfigFile = (File) ns.get(log4jConfigFileArg.getDest());
       if (opts.log4jConfigFile != null) {
-        PropertyConfigurator.configure(opts.log4jConfigFile.getPath());        
+        Utils.configureLog4jProperties(opts.log4jConfigFile.getPath());
       }
       LOG.debug("Parsed command line args: {}", ns);
       

@@ -1,6 +1,4 @@
-package org.apache.lucene.analysis.icu.segmentation;
-
-/** 
+/*
  * Copyright (C) 1999-2010, International Business Machines
  * Corporation and others.  All Rights Reserved.
  *
@@ -27,6 +25,7 @@ package org.apache.lucene.analysis.icu.segmentation;
  * dealings in this Software without prior written authorization of the 
  * copyright holder.
  */
+package org.apache.lucene.analysis.icu.segmentation;
 
 import com.ibm.icu.lang.UCharacter;
 import com.ibm.icu.lang.UCharacterEnums.ECharacterCategory;
@@ -44,7 +43,7 @@ import com.ibm.icu.text.UTF16;
  * differences:
  * <ul>
  *  <li>Doesn't attempt to match paired punctuation. For tokenization purposes, this
- * is not necessary. Its also quite expensive. 
+ * is not necessary. It's also quite expensive. 
  *  <li>Non-spacing marks inherit the script of their base character, following 
  *  recommendations from UTR #24.
  * </ul>

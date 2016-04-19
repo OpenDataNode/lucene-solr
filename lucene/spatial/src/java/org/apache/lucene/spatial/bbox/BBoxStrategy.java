@@ -1,5 +1,3 @@
-package org.apache.lucene.spatial.bbox;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,34 +14,30 @@ package org.apache.lucene.spatial.bbox;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.spatial.bbox;
 
 import com.spatial4j.core.context.SpatialContext;
 import com.spatial4j.core.shape.Point;
 import com.spatial4j.core.shape.Rectangle;
 import com.spatial4j.core.shape.Shape;
-
 import org.apache.lucene.document.DoubleField;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.StringField;
-import org.apache.lucene.index.AtomicReader;
-import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.DocValuesType;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.ConstantScoreQuery;
-import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.NumericRangeQuery;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.QueryWrapperFilter;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.spatial.SpatialStrategy;
 import org.apache.lucene.spatial.query.SpatialArgs;
 import org.apache.lucene.spatial.query.SpatialOperation;
 import org.apache.lucene.spatial.query.UnsupportedSpatialOperation;
 import org.apache.lucene.spatial.util.DistanceToShapeValueSource;
-import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.NumericUtils;
 
@@ -53,8 +47,9 @@ import org.apache.lucene.util.NumericUtils;
  * coordinates in numeric fields. It supports all {@link SpatialOperation}s and
  * has a custom overlap relevancy. It is based on GeoPortal's <a
  * href="http://geoportal.svn.sourceforge.net/svnroot/geoportal/Geoportal/trunk/src/com/esri/gpt/catalog/lucene/SpatialClauseAdapter.java">SpatialClauseAdapter</a>.
- *
- * <h4>Characteristics:</h4>
+ * <p>
+ * <b>Characteristics:</b>
+ * <br>
  * <ul>
  * <li>Only indexes Rectangles; just one per field value. Other shapes can be provided
  * and the bounding box will be used.</li>
@@ -62,8 +57,9 @@ import org.apache.lucene.util.NumericUtils;
  * <li>Supports most {@link SpatialOperation}s but not Overlaps.</li>
  * <li>Uses the DocValues API for any sorting / relevancy.</li>
  * </ul>
- *
- * <h4>Implementation:</h4>
+ * <p>
+ * <b>Implementation:</b>
+ * <p>
  * This uses 4 double fields for minX, maxX, minY, maxY
  * and a boolean to mark a dateline cross. Depending on the particular {@link
  * SpatialOperation}s, there are a variety of {@link NumericRangeQuery}s to be
@@ -71,7 +67,7 @@ import org.apache.lucene.util.NumericUtils;
  * The {@link #makeOverlapRatioValueSource(com.spatial4j.core.shape.Rectangle, double)}
  * works by calculating the query bbox overlap percentage against the indexed
  * shape overlap percentage. The indexed shape's coordinates are retrieved from
- * {@link AtomicReader#getNumericDocValues}.
+ * {@link org.apache.lucene.index.LeafReader#getNumericDocValues}.
  *
  * @lucene.experimental
  */
@@ -108,7 +104,7 @@ public class BBoxStrategy extends SpatialStrategy {
 
     FieldType fieldType = new FieldType(DoubleField.TYPE_NOT_STORED);
     fieldType.setNumericPrecisionStep(8);//Solr's default
-    fieldType.setDocValueType(FieldInfo.DocValuesType.NUMERIC);
+    fieldType.setDocValuesType(DocValuesType.NUMERIC);
     setFieldType(fieldType);
   }
 
@@ -132,7 +128,7 @@ public class BBoxStrategy extends SpatialStrategy {
     //for xdlFieldType, copy some similar options. Don't do docValues since it isn't needed here.
     xdlFieldType = new FieldType(StringField.TYPE_NOT_STORED);
     xdlFieldType.setStored(fieldType.stored());
-    xdlFieldType.setIndexed(fieldType.indexed());
+    xdlFieldType.setIndexOptions(fieldType.indexOptions());
     xdlFieldType.freeze();
   }
 
@@ -206,25 +202,21 @@ public class BBoxStrategy extends SpatialStrategy {
   }
 
   //---------------------------------
-  // Query / Filter Building
+  // Query Building
   //---------------------------------
 
-  @Override
-  public Filter makeFilter(SpatialArgs args) {
-    return new QueryWrapperFilter(makeSpatialQuery(args));
-  }
-
-  @Override
-  public ConstantScoreQuery makeQuery(SpatialArgs args) {
-    return new ConstantScoreQuery(makeSpatialQuery(args));
-  }
-
-//  Utility on SpatialStrategy?
+  //  Utility on SpatialStrategy?
 //  public Query makeQueryWithValueSource(SpatialArgs args, ValueSource valueSource) {
-//    return new FilteredQuery(new FunctionQuery(valueSource), makeFilter(args));
+//    return new CustomScoreQuery(makeQuery(args), new FunctionQuery(valueSource));
+  //or...
+//  return new BooleanQuery.Builder()
+//      .add(new FunctionQuery(valueSource), BooleanClause.Occur.MUST)//matches everything and provides score
+//      .add(filterQuery, BooleanClause.Occur.FILTER)//filters (score isn't used)
+//  .build();
 //  }
 
-  private Query makeSpatialQuery(SpatialArgs args) {
+  @Override
+  public Query makeQuery(SpatialArgs args) {
     Shape shape = args.getShape();
     if (!(shape instanceof Rectangle))
       throw new UnsupportedOperationException("Can only query by Rectangle, not " + shape);
@@ -245,7 +237,7 @@ public class BBoxStrategy extends SpatialStrategy {
     else { //no Overlaps support yet
         throw new UnsupportedSpatialOperation(op);
     }
-    return spatial;
+    return new ConstantScoreQuery(spatial);
   }
 
   /**
@@ -349,17 +341,17 @@ public class BBoxStrategy extends SpatialStrategy {
       // docMinX > queryExtent.getMaxX() OR docMaxX < queryExtent.getMinX()
       Query qMinX = NumericRangeQuery.newDoubleRange(field_minX, getPrecisionStep(), bbox.getMaxX(), null, false, false);
       if (bbox.getMinX() == -180.0 && ctx.isGeo()) {//touches dateline; -180 == 180
-        BooleanQuery bq = new BooleanQuery();
+        BooleanQuery.Builder bq = new BooleanQuery.Builder();
         bq.add(qMinX, BooleanClause.Occur.MUST);
         bq.add(makeNumberTermQuery(field_maxX, 180.0), BooleanClause.Occur.MUST_NOT);
-        qMinX = bq;
+        qMinX = bq.build();
       }
       Query qMaxX = NumericRangeQuery.newDoubleRange(field_maxX, getPrecisionStep(), null, bbox.getMinX(), false, false);
       if (bbox.getMaxX() == 180.0 && ctx.isGeo()) {//touches dateline; -180 == 180
-        BooleanQuery bq = new BooleanQuery();
+        BooleanQuery.Builder bq = new BooleanQuery.Builder();
         bq.add(qMaxX, BooleanClause.Occur.MUST);
         bq.add(makeNumberTermQuery(field_minX, -180.0), BooleanClause.Occur.MUST_NOT);
-        qMaxX = bq;
+        qMaxX = bq.build();
       }
       Query qMinMax = this.makeQuery(BooleanClause.Occur.SHOULD, qMinX, qMaxX);
       Query qNonXDL = this.makeXDL(false, qMinMax);
@@ -445,7 +437,7 @@ public class BBoxStrategy extends SpatialStrategy {
       qHasEnv = this.makeXDL(false);
     }
 
-    BooleanQuery qNotDisjoint = new BooleanQuery();
+    BooleanQuery.Builder qNotDisjoint = new BooleanQuery.Builder();
     qNotDisjoint.add(qHasEnv, BooleanClause.Occur.MUST);
     Query qDisjoint = makeDisjoint(bbox);
     qNotDisjoint.add(qDisjoint, BooleanClause.Occur.MUST_NOT);
@@ -454,7 +446,7 @@ public class BBoxStrategy extends SpatialStrategy {
     //BooleanQuery qNotDisjoint = new BooleanQuery();
     //qNotDisjoint.add(new MatchAllDocsQuery(),BooleanClause.Occur.SHOULD);
     //qNotDisjoint.add(qDisjoint,BooleanClause.Occur.MUST_NOT);
-    return qNotDisjoint;
+    return qNotDisjoint.build();
   }
 
   /**
@@ -465,12 +457,12 @@ public class BBoxStrategy extends SpatialStrategy {
    * @return the query
    */
   BooleanQuery makeQuery(BooleanClause.Occur occur, Query... queries) {
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
     for (Query query : queries) {
       if (query != null)
         bq.add(query, occur);
     }
-    return bq;
+    return bq.build();
   }
 
   /**
@@ -581,10 +573,10 @@ public class BBoxStrategy extends SpatialStrategy {
       assert !crossedDateLine;
       return query;
     }
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
     bq.add(this.makeXDL(crossedDateLine), BooleanClause.Occur.MUST);
     bq.add(query, BooleanClause.Occur.MUST);
-    return bq;
+    return bq.build();
   }
 
   private Query makeNumberTermQuery(String field, double number) {

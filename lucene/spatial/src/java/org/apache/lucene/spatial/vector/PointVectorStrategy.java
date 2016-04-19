@@ -1,5 +1,3 @@
-package org.apache.lucene.spatial.vector;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.spatial.vector;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.spatial.vector;
 
 import com.spatial4j.core.context.SpatialContext;
 import com.spatial4j.core.shape.Circle;
@@ -25,29 +24,27 @@ import com.spatial4j.core.shape.Shape;
 import org.apache.lucene.document.DoubleField;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
-import org.apache.lucene.queries.function.FunctionQuery;
+import org.apache.lucene.queries.function.FunctionRangeQuery;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.ConstantScoreQuery;
-import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.FilteredQuery;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.NumericRangeQuery;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.QueryWrapperFilter;
 import org.apache.lucene.spatial.SpatialStrategy;
 import org.apache.lucene.spatial.query.SpatialArgs;
 import org.apache.lucene.spatial.query.SpatialOperation;
 import org.apache.lucene.spatial.query.UnsupportedSpatialOperation;
-import org.apache.lucene.spatial.util.CachingDoubleValueSource;
-import org.apache.lucene.spatial.util.ValueSourceFilter;
 
 /**
  * Simple {@link SpatialStrategy} which represents Points in two numeric {@link
  * DoubleField}s.  The Strategy's best feature is decent distance sort.
  *
- * <h4>Characteristics:</h4>
+ * <p>
+ * <b>Characteristics:</b>
+ * <br>
  * <ul>
  * <li>Only indexes points; just one per field value.</li>
  * <li>Can query by a rectangle or circle.</li>
@@ -59,12 +56,14 @@ import org.apache.lucene.spatial.util.ValueSourceFilter;
  * searching with a Circle.</li>
  * </ul>
  *
- * <h4>Implementation:</h4>
+ * <p>
+ * <b>Implementation:</b>
+ * <p>
  * This is a simple Strategy.  Search works with {@link NumericRangeQuery}s on
- * an x & y pair of fields.  A Circle query does the same bbox query but adds a
+ * an x and y pair of fields.  A Circle query does the same bbox query but adds a
  * ValueSource filter on
  * {@link #makeDistanceValueSource(com.spatial4j.core.shape.Point)}.
- * <p />
+ * <p>
  * One performance shortcoming with this strategy is that a scenario involving
  * both a search using a Circle and sort will result in calculations for the
  * spatial distance being done twice -- once for the filter and second for the
@@ -125,17 +124,6 @@ public class PointVectorStrategy extends SpatialStrategy {
   }
 
   @Override
-  public Filter makeFilter(SpatialArgs args) {
-    //unwrap the CSQ from makeQuery
-    ConstantScoreQuery csq = makeQuery(args);
-    Filter filter = csq.getFilter();
-    if (filter != null)
-      return filter;
-    else
-      return new QueryWrapperFilter(csq.getQuery());
-  }
-
-  @Override
   public ConstantScoreQuery makeQuery(SpatialArgs args) {
     if(! SpatialOperation.is( args.getOperation(),
         SpatialOperation.Intersects,
@@ -148,85 +136,24 @@ public class PointVectorStrategy extends SpatialStrategy {
     } else if (shape instanceof Circle) {
       Circle circle = (Circle)shape;
       Rectangle bbox = circle.getBoundingBox();
-      ValueSourceFilter vsf = new ValueSourceFilter(
-          new QueryWrapperFilter(makeWithin(bbox)),
-          makeDistanceValueSource(circle.getCenter()),
-          0,
-          circle.getRadius() );
-      return new ConstantScoreQuery(vsf);
+      Query approxQuery = makeWithin(bbox);
+      BooleanQuery.Builder bqBuilder = new BooleanQuery.Builder();
+      FunctionRangeQuery vsRangeQuery =
+          new FunctionRangeQuery(makeDistanceValueSource(circle.getCenter()), 0.0, circle.getRadius(), true, true);
+      bqBuilder.add(approxQuery, BooleanClause.Occur.FILTER);//should have lowest "cost" value; will drive iteration
+      bqBuilder.add(vsRangeQuery, BooleanClause.Occur.FILTER);
+      return new ConstantScoreQuery(bqBuilder.build());
     } else {
       throw new UnsupportedOperationException("Only Rectangles and Circles are currently supported, " +
           "found [" + shape.getClass() + "]");//TODO
     }
   }
 
-  //TODO this is basically old code that hasn't been verified well and should probably be removed
-  public Query makeQueryDistanceScore(SpatialArgs args) {
-    // For starters, just limit the bbox
-    Shape shape = args.getShape();
-    if (!(shape instanceof Rectangle || shape instanceof Circle)) {
-      throw new UnsupportedOperationException("Only Rectangles and Circles are currently supported, " +
-          "found [" + shape.getClass() + "]");//TODO
-    }
-
-    Rectangle bbox = shape.getBoundingBox();
-
-    if (bbox.getCrossesDateLine()) {
-      throw new UnsupportedOperationException( "Crossing dateline not yet supported" );
-    }
-
-    ValueSource valueSource = null;
-
-    Query spatial = null;
-    SpatialOperation op = args.getOperation();
-
-    if( SpatialOperation.is( op,
-        SpatialOperation.BBoxWithin,
-        SpatialOperation.BBoxIntersects ) ) {
-        spatial = makeWithin(bbox);
-    }
-    else if( SpatialOperation.is( op,
-      SpatialOperation.Intersects,
-      SpatialOperation.IsWithin ) ) {
-      spatial = makeWithin(bbox);
-      if( args.getShape() instanceof Circle) {
-        Circle circle = (Circle)args.getShape();
-
-        // Make the ValueSource
-        valueSource = makeDistanceValueSource(shape.getCenter());
-
-        ValueSourceFilter vsf = new ValueSourceFilter(
-            new QueryWrapperFilter( spatial ), valueSource, 0, circle.getRadius() );
-
-        spatial = new FilteredQuery( new MatchAllDocsQuery(), vsf );
-      }
-    }
-    else if( op == SpatialOperation.IsDisjointTo ) {
-      spatial =  makeDisjoint(bbox);
-    }
-
-    if( spatial == null ) {
-      throw new UnsupportedSpatialOperation(args.getOperation());
-    }
-
-    if( valueSource != null ) {
-      valueSource = new CachingDoubleValueSource(valueSource);
-    }
-    else {
-      valueSource = makeDistanceValueSource(shape.getCenter());
-    }
-    Query spatialRankingQuery = new FunctionQuery(valueSource);
-    BooleanQuery bq = new BooleanQuery();
-    bq.add(spatial,BooleanClause.Occur.MUST);
-    bq.add(spatialRankingQuery,BooleanClause.Occur.MUST);
-    return bq;
-  }
-
   /**
    * Constructs a query to retrieve documents that fully contain the input envelope.
    */
   private Query makeWithin(Rectangle bbox) {
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
     BooleanClause.Occur MUST = BooleanClause.Occur.MUST;
     if (bbox.getCrossesDateLine()) {
       //use null as performance trick since no data will be beyond the world bounds
@@ -237,7 +164,7 @@ public class PointVectorStrategy extends SpatialStrategy {
       bq.add(rangeQuery(fieldNameX, bbox.getMinX(), bbox.getMaxX()), MUST);
     }
     bq.add(rangeQuery(fieldNameY, bbox.getMinY(), bbox.getMaxY()), MUST);
-    return bq;
+    return bq.build();
   }
 
   private NumericRangeQuery<Double> rangeQuery(String fieldName, Double min, Double max) {
@@ -248,21 +175,6 @@ public class PointVectorStrategy extends SpatialStrategy {
         max,
         true,
         true);//inclusive
-  }
-
-  /**
-   * Constructs a query to retrieve documents that fully contain the input envelope.
-   */
-  private Query makeDisjoint(Rectangle bbox) {
-    if (bbox.getCrossesDateLine())
-      throw new UnsupportedOperationException("makeDisjoint doesn't handle dateline cross");
-    Query qX = rangeQuery(fieldNameX, bbox.getMinX(), bbox.getMaxX());
-    Query qY = rangeQuery(fieldNameY, bbox.getMinY(), bbox.getMaxY());
-
-    BooleanQuery bq = new BooleanQuery();
-    bq.add(qX,BooleanClause.Occur.MUST_NOT);
-    bq.add(qY,BooleanClause.Occur.MUST_NOT);
-    return bq;
   }
 
 }

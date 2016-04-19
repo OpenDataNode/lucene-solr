@@ -1,5 +1,3 @@
-package org.apache.lucene.facet;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,22 +14,23 @@ package org.apache.lucene.facet;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.FieldDoc;
-import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.FilteredQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MultiCollector;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.SimpleCollector;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopDocsCollector;
@@ -39,6 +38,7 @@ import org.apache.lucene.search.TopFieldCollector;
 import org.apache.lucene.search.TopFieldDocs;
 import org.apache.lucene.search.TopScoreDocCollector;
 import org.apache.lucene.util.ArrayUtil;
+import org.apache.lucene.util.BitDocIdSet;
 import org.apache.lucene.util.FixedBitSet;
 
 /** Collects hits for subsequent faceting.  Once you've run
@@ -47,9 +47,10 @@ import org.apache.lucene.util.FixedBitSet;
  *  counting.  Use the {@code search} utility methods to
  *  perform an "ordinary" search but also collect into a
  *  {@link Collector}. */
-public class FacetsCollector extends Collector {
+// redundant 'implements Collector' to workaround javadocs bugs
+public class FacetsCollector extends SimpleCollector implements Collector {
 
-  private AtomicReaderContext context;
+  private LeafReaderContext context;
   private Scorer scorer;
   private int totalHits;
   private float[] scores;
@@ -74,13 +75,13 @@ public class FacetsCollector extends Collector {
   }
 
   /**
-   * Holds the documents that were matched in the {@link AtomicReaderContext}.
+   * Holds the documents that were matched in the {@link org.apache.lucene.index.LeafReaderContext}.
    * If scores were required, then {@code scores} is not null.
    */
   public final static class MatchingDocs {
     
     /** Context for this segment. */
-    public final AtomicReaderContext context;
+    public final LeafReaderContext context;
 
     /** Which documents were seen. */
     public final DocIdSet bits;
@@ -92,7 +93,7 @@ public class FacetsCollector extends Collector {
     public final int totalHits;
 
     /** Sole constructor. */
-    public MatchingDocs(AtomicReaderContext context, DocIdSet bits, int totalHits, float[] scores) {
+    public MatchingDocs(LeafReaderContext context, DocIdSet bits, int totalHits, float[] scores) {
       this.context = context;
       this.bits = bits;
       this.scores = scores;
@@ -127,7 +128,7 @@ public class FacetsCollector extends Collector {
       
       @Override
       public DocIdSet getDocIdSet() {
-        return bits;
+        return new BitDocIdSet(bits);
       }
     };
   }
@@ -151,14 +152,6 @@ public class FacetsCollector extends Collector {
 
     return matchingDocs;
   }
-    
-  @Override
-  public final boolean acceptsDocsOutOfOrder() {
-    // If we are keeping scores then we require in-order
-    // because we append each score to the float[] and
-    // expect that they correlate in order to the hits:
-    return keepScores == false;
-  }
 
   @Override
   public final void collect(int doc) throws IOException {
@@ -175,12 +168,17 @@ public class FacetsCollector extends Collector {
   }
 
   @Override
+  public boolean needsScores() {
+    return true;
+  }
+
+  @Override
   public final void setScorer(Scorer scorer) throws IOException {
     this.scorer = scorer;
   }
     
   @Override
-  public final void setNextReader(AtomicReaderContext context) throws IOException {
+  protected void doSetNextReader(LeafReaderContext context) throws IOException {
     if (docs != null) {
       matchingDocs.add(new MatchingDocs(this.context, docs.getDocIdSet(), totalHits, scores));
     }
@@ -195,69 +193,53 @@ public class FacetsCollector extends Collector {
   /** Utility method, to search and also collect all hits
    *  into the provided {@link Collector}. */
   public static TopDocs search(IndexSearcher searcher, Query q, int n, Collector fc) throws IOException {
-    return doSearch(searcher, null, q, null, n, null, false, false, fc);
+    return doSearch(searcher, null, q, n, null, false, false, fc);
   }
 
   /** Utility method, to search and also collect all hits
    *  into the provided {@link Collector}. */
-  public static TopDocs search(IndexSearcher searcher, Query q, Filter filter, int n, Collector fc) throws IOException {
-    return doSearch(searcher, null, q, filter, n, null, false, false, fc);
-  }
-
-  /** Utility method, to search and also collect all hits
-   *  into the provided {@link Collector}. */
-  public static TopFieldDocs search(IndexSearcher searcher, Query q, Filter filter, int n, Sort sort, Collector fc) throws IOException {
+  public static TopFieldDocs search(IndexSearcher searcher, Query q, int n, Sort sort, Collector fc) throws IOException {
     if (sort == null) {
       throw new IllegalArgumentException("sort must not be null");
     }
-    return (TopFieldDocs) doSearch(searcher, null, q, filter, n, sort, false, false, fc);
+    return (TopFieldDocs) doSearch(searcher, null, q, n, sort, false, false, fc);
   }
 
   /** Utility method, to search and also collect all hits
    *  into the provided {@link Collector}. */
-  public static TopFieldDocs search(IndexSearcher searcher, Query q, Filter filter, int n, Sort sort, boolean doDocScores, boolean doMaxScore, Collector fc) throws IOException {
+  public static TopFieldDocs search(IndexSearcher searcher, Query q, int n, Sort sort, boolean doDocScores, boolean doMaxScore, Collector fc) throws IOException {
     if (sort == null) {
       throw new IllegalArgumentException("sort must not be null");
     }
-    return (TopFieldDocs) doSearch(searcher, null, q, filter, n, sort, doDocScores, doMaxScore, fc);
+    return (TopFieldDocs) doSearch(searcher, null, q, n, sort, doDocScores, doMaxScore, fc);
   }
 
   /** Utility method, to search and also collect all hits
    *  into the provided {@link Collector}. */
-  public TopDocs searchAfter(IndexSearcher searcher, ScoreDoc after, Query q, int n, Collector fc) throws IOException {
-    return doSearch(searcher, after, q, null, n, null, false, false, fc);
+  public static TopDocs searchAfter(IndexSearcher searcher, ScoreDoc after, Query q, int n, Collector fc) throws IOException {
+    return doSearch(searcher, after, q, n, null, false, false, fc);
   }
 
   /** Utility method, to search and also collect all hits
    *  into the provided {@link Collector}. */
-  public static TopDocs searchAfter(IndexSearcher searcher, ScoreDoc after, Query q, Filter filter, int n, Collector fc) throws IOException {
-    return doSearch(searcher, after, q, filter, n, null, false, false, fc);
-  }
-
-  /** Utility method, to search and also collect all hits
-   *  into the provided {@link Collector}. */
-  public static TopDocs searchAfter(IndexSearcher searcher, ScoreDoc after, Query q, Filter filter, int n, Sort sort, Collector fc) throws IOException {
+  public static TopDocs searchAfter(IndexSearcher searcher, ScoreDoc after, Query q, int n, Sort sort, Collector fc) throws IOException {
     if (sort == null) {
       throw new IllegalArgumentException("sort must not be null");
     }
-    return doSearch(searcher, after, q, filter, n, sort, false, false, fc);
+    return doSearch(searcher, after, q, n, sort, false, false, fc);
   }
 
   /** Utility method, to search and also collect all hits
    *  into the provided {@link Collector}. */
-  public static TopDocs searchAfter(IndexSearcher searcher, ScoreDoc after, Query q, Filter filter, int n, Sort sort, boolean doDocScores, boolean doMaxScore, Collector fc) throws IOException {
+  public static TopDocs searchAfter(IndexSearcher searcher, ScoreDoc after, Query q, int n, Sort sort, boolean doDocScores, boolean doMaxScore, Collector fc) throws IOException {
     if (sort == null) {
       throw new IllegalArgumentException("sort must not be null");
     }
-    return doSearch(searcher, after, q, filter, n, sort, doDocScores, doMaxScore, fc);
+    return doSearch(searcher, after, q, n, sort, doDocScores, doMaxScore, fc);
   }
 
-  private static TopDocs doSearch(IndexSearcher searcher, ScoreDoc after, Query q, Filter filter, int n, Sort sort,
+  private static TopDocs doSearch(IndexSearcher searcher, ScoreDoc after, Query q, int n, Sort sort,
                                   boolean doDocScores, boolean doMaxScore, Collector fc) throws IOException {
-
-    if (filter != null) {
-      q = new FilteredQuery(q, filter);
-    }
 
     int limit = searcher.getIndexReader().maxDoc();
     if (limit == 0) {
@@ -282,14 +264,9 @@ public class FacetsCollector extends Collector {
                                                (FieldDoc) after,
                                                fillFields,
                                                doDocScores,
-                                               doMaxScore,
-                                               false);
+                                               doMaxScore);
     } else {
-      // TODO: can we pass the right boolean for
-      // in-order instead of hardwired to false...?  we'd
-      // need access to the protected IS.search methods
-      // taking Weight... could use reflection...
-      hitsCollector = TopScoreDocCollector.create(n, after, false);
+      hitsCollector = TopScoreDocCollector.create(n, after);
     }
     searcher.search(q, MultiCollector.wrap(hitsCollector, fc));
     return hitsCollector.topDocs();

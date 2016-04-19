@@ -1,5 +1,3 @@
-package org.apache.lucene.benchmark.byTask.tasks;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,20 +14,27 @@ package org.apache.lucene.benchmark.byTask.tasks;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.benchmark.byTask.tasks;
 
-import java.io.File;
+
+import java.nio.file.Paths;
+import java.util.List;
 
 import org.apache.lucene.benchmark.byTask.PerfRunData;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.CodecReader;
+import org.apache.lucene.index.SlowCodecReaderWrapper;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 
 /**
  * Adds an input index to an existing index, using
  * {@link IndexWriter#addIndexes(Directory...)} or
- * {@link IndexWriter#addIndexes(IndexReader...)}. The location of the input
+ * {@link IndexWriter#addIndexes(CodecReader...)}. The location of the input
  * index is specified by the parameter {@link #ADDINDEXES_INPUT_DIR} and is
  * assumed to be a directory on the file system.
  * <p>
@@ -54,7 +59,7 @@ public class AddIndexesTask extends PerfTask {
     if (inputDirProp == null) {
       throw new IllegalArgumentException("config parameter " + ADDINDEXES_INPUT_DIR + " not specified in configuration");
     }
-    inputDir = FSDirectory.open(new File(inputDirProp));
+    inputDir = FSDirectory.open(Paths.get(inputDirProp));
   }
   
   @Override
@@ -63,11 +68,13 @@ public class AddIndexesTask extends PerfTask {
     if (useAddIndexesDir) {
       writer.addIndexes(inputDir);
     } else {
-      IndexReader r = DirectoryReader.open(inputDir);
-      try {
-        writer.addIndexes(r);
-      } finally {
-        r.close();
+      try (IndexReader r = DirectoryReader.open(inputDir)) {
+        CodecReader leaves[] = new CodecReader[r.leaves().size()];
+        int i = 0;
+        for (LeafReaderContext leaf : r.leaves()) {
+          leaves[i++] = SlowCodecReaderWrapper.wrap(leaf.reader());
+        }
+        writer.addIndexes(leaves);
       }
     }
     return 1;
@@ -79,7 +86,7 @@ public class AddIndexesTask extends PerfTask {
    * @param params
    *          {@code useAddIndexesDir=true} for using
    *          {@link IndexWriter#addIndexes(Directory...)} or {@code false} for
-   *          using {@link IndexWriter#addIndexes(IndexReader...)}. Defaults to
+   *          using {@link IndexWriter#addIndexes(CodecReader...)}. Defaults to
    *          {@code true}.
    */
   @Override

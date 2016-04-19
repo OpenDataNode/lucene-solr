@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.path;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,9 @@ package org.apache.lucene.analysis.path;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.path;
 
-import java.io.Reader;
+
 import java.util.Map;
 
 import org.apache.lucene.analysis.Tokenizer;
@@ -87,11 +86,11 @@ public class PathHierarchyTokenizerFactory extends TokenizerFactory {
   }
   
   @Override
-  public Tokenizer create(AttributeFactory factory, Reader input) {
+  public Tokenizer create(AttributeFactory factory) {
     if (reverse) {
-      return new ReversePathHierarchyTokenizer(factory, input, delimiter, replacement, skip);
+      return new ReversePathHierarchyTokenizer(factory, delimiter, replacement, skip);
     }
-    return new PathHierarchyTokenizer(factory, input, delimiter, replacement, skip);
+    return new PathHierarchyTokenizer(factory, delimiter, replacement, skip);
   }
 }
 

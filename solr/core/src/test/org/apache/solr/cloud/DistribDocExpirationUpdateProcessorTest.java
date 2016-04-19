@@ -17,16 +17,8 @@
 package org.apache.solr.cloud;
 
 import org.apache.lucene.util.LuceneTestCase.Slow;
-import org.apache.lucene.util.TestUtil;
-import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.request.QueryRequest;
-import org.apache.solr.client.solrj.response.QueryResponse;
-import org.apache.solr.common.SolrInputDocument;
-import org.apache.solr.common.SolrDocument;
-import org.apache.solr.common.SolrDocumentList;
-import org.apache.solr.common.SolrException;
-import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
@@ -34,23 +26,25 @@ import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.update.processor.DocExpirationUpdateProcessorFactory; // jdoc
 import org.apache.solr.update.processor.DocExpirationUpdateProcessorFactoryTest;
 
+import org.apache.solr.util.TimeOut;
+import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.List;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.HashMap;
+import java.util.concurrent.TimeUnit;
 
 /** Test of {@link DocExpirationUpdateProcessorFactory} in a cloud setup */
 @Slow // Has to do some sleeping to wait for a future expiration
 public class DistribDocExpirationUpdateProcessorTest extends AbstractFullDistribZkTestBase {
 
-  public static Logger log = LoggerFactory.getLogger(DistribDocExpirationUpdateProcessorTest.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   public DistribDocExpirationUpdateProcessorTest() {
     configString = DocExpirationUpdateProcessorFactoryTest.CONFIG_XML;
@@ -62,8 +56,8 @@ public class DistribDocExpirationUpdateProcessorTest extends AbstractFullDistrib
     return configString;
   }
 
-  @Override
-  public void doTest() throws Exception {
+  @Test
+  public void test() throws Exception {
     assertTrue("only one shard?!?!?!", 1 < shardToJetty.keySet().size());
     log.info("number of shards: {}", shardToJetty.keySet().size());
 
@@ -76,7 +70,7 @@ public class DistribDocExpirationUpdateProcessorTest extends AbstractFullDistrib
       indexDoc(sdoc("id", i));
     }
     commit();
-    waitForThingsToLevelOut(30);
+    waitForRecoveriesToFinish(false, 45);
 
     // this doc better not already exist
     waitForNoResults(0, params("q","id:999","rows","0","_trace","sanity_check"));
@@ -95,7 +89,6 @@ public class DistribDocExpirationUpdateProcessorTest extends AbstractFullDistrib
     waitForNoResults(180, params("q","id:999","rows","0","_trace","did_it_expire_yet"));
 
     // verify only one shard changed
-    waitForThingsToLevelOut(30);
     final Map<String,Long> finalIndexVersions = getIndexVersionOfAllReplicas();
     assertEquals("WTF? not same num versions?", 
                  initIndexVersions.size(),
@@ -177,13 +170,13 @@ public class DistribDocExpirationUpdateProcessorTest extends AbstractFullDistrib
    * Query is garunteed to be executed at least once.
    */
   private void waitForNoResults(int maxTimeLimitSeconds,
-                                SolrParams params) 
-    throws SolrServerException, InterruptedException {
+                                SolrParams params)
+      throws SolrServerException, InterruptedException, IOException {
 
-    final long giveUpAfter = System.currentTimeMillis() + (1000L * maxTimeLimitSeconds);
+    final TimeOut timeout = new TimeOut(maxTimeLimitSeconds, TimeUnit.SECONDS);
     long numFound = cloudClient.query(params).getResults().getNumFound();
-    while (0L < numFound && System.currentTimeMillis() < giveUpAfter) {
-      Thread.sleep(Math.min(5000, giveUpAfter - System.currentTimeMillis()));
+    while (0L < numFound && ! timeout.hasTimedOut()) {
+      Thread.sleep(Math.max(1, Math.min(5000, timeout.timeLeft(TimeUnit.MILLISECONDS))));
       numFound = cloudClient.query(params).getResults().getNumFound();
     }
     assertEquals("Give up waiting for no results: " + params,

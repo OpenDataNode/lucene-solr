@@ -1,5 +1,3 @@
-package org.apache.solr.logging;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.logging;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.logging;
 
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
@@ -24,13 +23,14 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.invoke.MethodHandles;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 public class TestLogWatcher {
-
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   private LogWatcherConfig config;
 
   @Before
@@ -40,8 +40,6 @@ public class TestLogWatcher {
 
   @Test
   public void testLog4jWatcher() {
-
-    Logger log = LoggerFactory.getLogger("testlogger");
     LogWatcher watcher = LogWatcher.newRegisteredLogWatcher(config, null);
 
     assertEquals(watcher.getLastEvent(), -1);
@@ -54,9 +52,8 @@ public class TestLogWatcher {
     assertEquals(events.size(), 1);
 
     SolrDocument event = events.get(0);
-    assertEquals(event.get("logger"), "testlogger");
+    assertEquals(event.get("logger"), "org.apache.solr.logging.TestLogWatcher");
     assertEquals(event.get("message"), "This is a test message");
 
   }
-
 }

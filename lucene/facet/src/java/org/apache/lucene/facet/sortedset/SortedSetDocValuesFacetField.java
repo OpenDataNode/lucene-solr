@@ -1,5 +1,3 @@
-package org.apache.lucene.facet.sortedset;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,12 @@ package org.apache.lucene.facet.sortedset;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet.sortedset;
 
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.facet.FacetField;
+import org.apache.lucene.index.IndexOptions;
 
 /** Add an instance of this to your Document for every facet
  *  label to be indexed via SortedSetDocValues. */
@@ -28,7 +28,7 @@ public class SortedSetDocValuesFacetField extends Field {
   /** Indexed {@link FieldType}. */
   public static final FieldType TYPE = new FieldType();
   static {
-    TYPE.setIndexed(true);
+    TYPE.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
     TYPE.freeze();
   }
 

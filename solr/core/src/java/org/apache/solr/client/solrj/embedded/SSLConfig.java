@@ -1,5 +1,3 @@
-package org.apache.solr.client.solrj.embedded;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,9 @@ package org.apache.solr.client.solrj.embedded;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.client.solrj.embedded;
+
+import org.eclipse.jetty.util.ssl.SslContextFactory;
 
 public class SSLConfig {
   
@@ -65,5 +66,56 @@ public class SSLConfig {
 
   public String getTrustStorePassword() {
     return trustStorePassword;
+  }
+
+  public static SslContextFactory createContextFactory(SSLConfig sslConfig) {
+
+    if (sslConfig == null) {
+      if (Boolean.getBoolean(System.getProperty("tests.jettySsl"))) {
+        return configureSslFromSysProps();
+      }
+      return null;
+    }
+
+    if (!sslConfig.useSsl)
+      return null;
+
+    SslContextFactory factory = new SslContextFactory(false);
+    if (sslConfig.getKeyStore() != null)
+      factory.setKeyStorePath(sslConfig.getKeyStore());
+    if (sslConfig.getKeyStorePassword() != null)
+      factory.setKeyStorePassword(sslConfig.getKeyStorePassword());
+    if (sslConfig.getTrustStore() != null)
+      factory.setTrustStorePath(System.getProperty(sslConfig.getTrustStore()));
+    if (sslConfig.getTrustStorePassword() != null)
+      factory.setTrustStorePassword(sslConfig.getTrustStorePassword());
+
+    return factory;
+
+  }
+
+  private static SslContextFactory configureSslFromSysProps() {
+
+    SslContextFactory sslcontext = new SslContextFactory(false);
+
+    if (null != System.getProperty("javax.net.ssl.keyStore")) {
+      sslcontext.setKeyStorePath
+          (System.getProperty("javax.net.ssl.keyStore"));
+    }
+    if (null != System.getProperty("javax.net.ssl.keyStorePassword")) {
+      sslcontext.setKeyStorePassword
+          (System.getProperty("javax.net.ssl.keyStorePassword"));
+    }
+    if (null != System.getProperty("javax.net.ssl.trustStore")) {
+      sslcontext.setTrustStorePath
+          (System.getProperty("javax.net.ssl.trustStore"));
+    }
+    if (null != System.getProperty("javax.net.ssl.trustStorePassword")) {
+      sslcontext.setTrustStorePassword
+          (System.getProperty("javax.net.ssl.trustStorePassword"));
+    }
+    sslcontext.setNeedClientAuth(Boolean.getBoolean("tests.jettySsl.clientAuth"));
+
+    return sslcontext;
   }
 }

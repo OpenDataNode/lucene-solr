@@ -1,5 +1,3 @@
-package org.apache.lucene.util.fst;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.util.fst;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util.fst;
+
 
 import java.io.IOException;
 
@@ -159,5 +159,10 @@ public final class IntSequenceOutputs extends Outputs<IntsRef> {
   @Override
   public long ramBytesUsed(IntsRef output) {
     return BASE_NUM_BYTES + RamUsageEstimator.sizeOf(output.ints);
+  }
+  
+  @Override
+  public String toString() {
+    return "IntSequenceOutputs";
   }
 }

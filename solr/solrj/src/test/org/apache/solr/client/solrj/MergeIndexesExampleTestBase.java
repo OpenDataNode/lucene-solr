@@ -14,13 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.client.solrj;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.Arrays;
-
+import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.client.solrj.request.AbstractUpdateRequest;
 import org.apache.solr.client.solrj.request.CoreAdminRequest;
 import org.apache.solr.client.solrj.request.QueryRequest;
@@ -30,8 +26,14 @@ import org.apache.solr.common.params.CoreAdminParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.SolrCore;
-import org.apache.solr.util.ExternalPaths;
 import org.junit.BeforeClass;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.io.IOException;
+import java.lang.invoke.MethodHandles;
+import java.util.Arrays;
 
 /**
  * Abstract base class for testing merge indexes command
@@ -46,9 +48,11 @@ public abstract class MergeIndexesExampleTestBase extends SolrExampleTestBase {
   private File dataDir1;
   private File dataDir2;
 
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
   @Override
   public String getSolrHome() {
-    return ExternalPaths.EXAMPLE_MULTICORE_HOME;
+    return SolrTestCaseJ4.getFile("solrj/solr/multicore").getAbsolutePath();
   }
 
   @BeforeClass
@@ -67,16 +71,16 @@ public abstract class MergeIndexesExampleTestBase extends SolrExampleTestBase {
     saveProp = System.getProperty("solr.directoryFactory");
     System.setProperty("solr.directoryFactory", "solr.StandardDirectoryFactory");
     super.setUp();
-    File dataDir1 = createTempDir();
+    File dataDir1 = createTempDir().toFile();
     // setup datadirs
     System.setProperty( "solr.core0.data.dir", dataDir1.getCanonicalPath() );
 
-    dataDir2 = createTempDir();
+    dataDir2 = createTempDir().toFile();
 
     System.setProperty( "solr.core1.data.dir", this.dataDir2.getCanonicalPath() );
 
     setupCoreContainer();
-    SolrCore.log.info("CORES=" + cores + " : " + cores.getCoreNames());
+    log.info("CORES=" + cores + " : " + cores.getCoreNames());
 
   }
 
@@ -91,22 +95,22 @@ public abstract class MergeIndexesExampleTestBase extends SolrExampleTestBase {
   }
 
   @Override
-  protected final SolrServer getSolrServer() {
+  protected final SolrClient getSolrClient() {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  protected final SolrServer createNewSolrServer() {
+  protected final SolrClient createNewSolrClient() {
     throw new UnsupportedOperationException();
   }
 
-  protected abstract SolrServer getSolrCore0();
+  protected abstract SolrClient getSolrCore0();
 
-  protected abstract SolrServer getSolrCore1();
+  protected abstract SolrClient getSolrCore1();
 
-  protected abstract SolrServer getSolrAdmin();
+  protected abstract SolrClient getSolrAdmin();
 
-  protected abstract SolrServer getSolrCore(String name);
+  protected abstract SolrClient getSolrCore(String name);
 
   protected abstract String getIndexDirCore1();
 

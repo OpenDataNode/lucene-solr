@@ -1,6 +1,3 @@
-package org.apache.lucene.search.spell;
-
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -17,13 +14,13 @@ package org.apache.lucene.search.spell;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.spell;
+
 
 /**
- *  SuggestWord, used in suggestSimilar method in SpellChecker class.
- * <p/>
+ * SuggestWord, used in suggestSimilar method in SpellChecker class.
+ * <p>
  * Default sort is first by score, then by frequency.
- * 
- *
  */
 public final class SuggestWord{
   

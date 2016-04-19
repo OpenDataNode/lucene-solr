@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.core;
+
 
 import java.util.Map;
 
@@ -47,10 +47,7 @@ public class LowerCaseFilterFactory extends TokenFilterFactory implements MultiT
 
   @Override
   public LowerCaseFilter create(TokenStream input) {
-    if (luceneMatchVersion == null) {
-      return new LowerCaseFilter(input);
-    }
-    return new LowerCaseFilter(luceneMatchVersion, input);
+    return new LowerCaseFilter(input);
   }
 
   @Override

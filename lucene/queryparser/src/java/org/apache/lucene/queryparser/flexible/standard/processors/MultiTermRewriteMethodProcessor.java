@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.processors;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard.processors;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.processors;
 
 import java.util.List;
 
@@ -30,7 +29,7 @@ import org.apache.lucene.search.MultiTermQuery;
 /**
  * This processor instates the default
  * {@link org.apache.lucene.search.MultiTermQuery.RewriteMethod},
- * {@link MultiTermQuery#CONSTANT_SCORE_AUTO_REWRITE_DEFAULT}, for multi-term
+ * {@link MultiTermQuery#CONSTANT_SCORE_REWRITE}, for multi-term
  * query nodes.
  */
 public class MultiTermRewriteMethodProcessor extends QueryNodeProcessorImpl {

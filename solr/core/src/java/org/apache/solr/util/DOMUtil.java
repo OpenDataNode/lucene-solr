@@ -1,5 +1,3 @@
-package org.apache.solr.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,14 @@ package org.apache.solr.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.util;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
 
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.util.NamedList;
@@ -25,6 +29,8 @@ import org.apache.solr.common.util.StrUtils;
 import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
+
+import static org.apache.solr.common.params.CommonParams.NAME;
 
 /**
  *
@@ -137,7 +143,7 @@ public class DOMUtil {
 
     final String type = nd.getNodeName();
 
-    final String name = getAttr(nd, "name");
+    final String name = getAttr(nd, NAME);
 
     Object val=null;
 

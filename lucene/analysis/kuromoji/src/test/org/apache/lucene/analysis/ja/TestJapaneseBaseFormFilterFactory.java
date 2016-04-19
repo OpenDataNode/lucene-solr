@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.ja;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.ja;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.ja;
+
 
 import java.io.IOException;
 import java.io.StringReader;
@@ -23,6 +23,7 @@ import java.util.HashMap;
 
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
 
 /**
  * Simple tests for {@link JapaneseBaseFormFilterFactory}
@@ -31,7 +32,8 @@ public class TestJapaneseBaseFormFilterFactory extends BaseTokenStreamTestCase {
   public void testBasics() throws IOException {
     JapaneseTokenizerFactory tokenizerFactory = new JapaneseTokenizerFactory(new HashMap<String,String>());
     tokenizerFactory.inform(new StringMockResourceLoader(""));
-    TokenStream ts = tokenizerFactory.create(newAttributeFactory(), new StringReader("それはまだ実験段階にあります"));
+    TokenStream ts = tokenizerFactory.create(newAttributeFactory());
+    ((Tokenizer)ts).setReader(new StringReader("それはまだ実験段階にあります"));
     JapaneseBaseFormFilterFactory factory = new JapaneseBaseFormFilterFactory(new HashMap<String,String>());
     ts = factory.create(ts);
     assertTokenStreamContents(ts,

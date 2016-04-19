@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.processors;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard.processors;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.processors;
 
 import java.text.NumberFormat;
 import java.text.ParseException;
@@ -46,8 +45,8 @@ import org.apache.lucene.queryparser.flexible.standard.nodes.NumericRangeQueryNo
  * {@link NumericRangeQueryNode} with upper and lower inclusive and lower and
  * upper equals to the value represented by the {@link FieldQueryNode} converted
  * to {@link Number}. It means that <b>field:1</b> is converted to <b>field:[1
- * TO 1]</b>. <br/>
- * <br/>
+ * TO 1]</b>. <br>
+ * <br>
  * Note that {@link FieldQueryNode}s children of a
  * {@link RangeQueryNode} are ignored.
  * 

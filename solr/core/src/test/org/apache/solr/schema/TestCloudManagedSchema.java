@@ -1,4 +1,3 @@
-package org.apache.solr.schema;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,18 +14,18 @@ package org.apache.solr.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.schema;
 import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.cloud.AbstractFullDistribZkTestBase;
-import org.apache.solr.common.SolrException;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.params.CoreAdminParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.zookeeper.KeeperException;
 import org.junit.BeforeClass;
+import org.junit.Test;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -48,15 +47,15 @@ public class TestCloudManagedSchema extends AbstractFullDistribZkTestBase {
   protected String getCloudSolrConfig() {
     return "solrconfig-managed-schema.xml";
   }
-      
-  @Override
-  public void doTest() throws Exception {
+
+  @Test
+  public void test() throws Exception {
     ModifiableSolrParams params = new ModifiableSolrParams();
     params.set(CoreAdminParams.ACTION, CoreAdminParams.CoreAdminAction.STATUS.toString());
     QueryRequest request = new QueryRequest(params);
     request.setPath("/admin/cores");
     int which = r.nextInt(clients.size());
-    HttpSolrServer client = (HttpSolrServer)clients.get(which);
+    HttpSolrClient client = (HttpSolrClient)clients.get(which);
     String previousBaseURL = client.getBaseURL();
     // Strip /collection1 step from baseURL - requests fail otherwise
     client.setBaseURL(previousBaseURL.substring(0, previousBaseURL.lastIndexOf("/")));

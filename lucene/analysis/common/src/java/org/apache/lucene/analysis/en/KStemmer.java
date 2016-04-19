@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 /*
 This file was partially derived from the
 original CIIR University of Massachusetts Amherst version of KStemmer.java (license for
@@ -248,7 +247,7 @@ public class KStemmer {
                   * word, use the method wordLength, which returns (k+1).
                   */
   
-  /***
+  /*
    * private void initializeStemHash() { if (maxCacheSize > 0) cache = new
    * CharArrayMap<String>(maxCacheSize,false); }
    ***/

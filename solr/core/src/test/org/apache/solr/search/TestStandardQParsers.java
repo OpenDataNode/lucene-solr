@@ -1,5 +1,3 @@
-package org.apache.solr.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search;
 
 import org.apache.lucene.util.LuceneTestCase;
 import org.junit.Test;
@@ -24,7 +23,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -48,15 +46,13 @@ public class TestStandardQParsers extends LuceneTestCase {
    */
   @Test
   public void testRegisteredName() throws Exception {
-    Map<String, Class<QParserPlugin>> standardPlugins = getStandardQParsers();
+    List<String> notStatic = new ArrayList<>(QParserPlugin.standardPlugins.size());
+    List<String> notFinal = new ArrayList<>(QParserPlugin.standardPlugins.size());
+    List<String> mismatch = new ArrayList<>(QParserPlugin.standardPlugins.size());
 
-    List<String> notStatic = new ArrayList<>(standardPlugins.size());
-    List<String> notFinal = new ArrayList<>(standardPlugins.size());
-    List<String> mismatch = new ArrayList<>(standardPlugins.size());
- 
-    for (Map.Entry<String,Class<QParserPlugin>> pair : standardPlugins.entrySet()) {
+    for (Map.Entry<String, Class<? extends QParserPlugin>> pair : QParserPlugin.standardPlugins.entrySet()) {
       String regName = pair.getKey();
-      Class<QParserPlugin> clazz = pair.getValue();
+      Class<? extends QParserPlugin> clazz = pair.getValue();
 
       Field nameField = clazz.getField(FIELD_NAME);
       int modifiers = nameField.getModifiers();
@@ -79,30 +75,8 @@ public class TestStandardQParsers extends LuceneTestCase {
 
     assertTrue("DEFAULT_QTYPE is not in the standard set of registered names: " + 
                QParserPlugin.DEFAULT_QTYPE,
-               standardPlugins.keySet().contains(QParserPlugin.DEFAULT_QTYPE));
+        QParserPlugin.standardPlugins.keySet().contains(QParserPlugin.DEFAULT_QTYPE));
 
-  }
-
-  /**
-   * Get standard query parsers registered by default.
-   *
-   * @see org.apache.solr.search.QParserPlugin#standardPlugins
-   * @return Map of classes extending QParserPlugin keyed by the registered name
-   */
-  private Map<String,Class<QParserPlugin>> getStandardQParsers() {
-    Object[] standardPluginsValue = QParserPlugin.standardPlugins;
-
-    Map<String, Class<QParserPlugin>> standardPlugins 
-      = new HashMap<>(standardPluginsValue.length / 2);
-
-    for (int i = 0; i < standardPluginsValue.length; i += 2) {
-      @SuppressWarnings("unchecked")
-      String registeredName = (String) standardPluginsValue[i];
-      @SuppressWarnings("unchecked")
-      Class<QParserPlugin> clazz = (Class<QParserPlugin>) standardPluginsValue[i + 1];
-      standardPlugins.put(registeredName, clazz);
-    }
-    return standardPlugins;
   }
 
 }

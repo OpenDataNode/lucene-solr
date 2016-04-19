@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,25 +14,24 @@ package org.apache.lucene.analysis.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.util;
 
-import java.io.File;
-import java.io.FileOutputStream;
+
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.TestUtil;
-import org.apache.lucene.util.TestUtil;
 
 public class TestFilesystemResourceLoader extends LuceneTestCase {
   
   private void assertNotFound(ResourceLoader rl) throws Exception {
     try {
-      IOUtils.closeWhileHandlingException(rl.openResource("/this-directory-really-really-really-should-not-exist/foo/bar.txt"));
+      IOUtils.closeWhileHandlingException(rl.openResource("this-directory-really-really-really-should-not-exist/foo/bar.txt"));
       fail("The resource does not exist, should fail!");
     } catch (IOException ioe) {
       // pass
@@ -56,15 +53,12 @@ public class TestFilesystemResourceLoader extends LuceneTestCase {
     // try to load a class; we use string comparison because classloader may be different...
     assertEquals("org.apache.lucene.analysis.util.RollingCharBuffer",
         rl.newInstance("org.apache.lucene.analysis.util.RollingCharBuffer", Object.class).getClass().getName());
-    // theoretically classes should also be loadable:
-    IOUtils.closeWhileHandlingException(rl.openResource("java/lang/String.class"));
   }
   
   public void testBaseDir() throws Exception {
-    final File base = createTempDir("fsResourceLoaderBase").getAbsoluteFile();
+    final Path base = createTempDir("fsResourceLoaderBase");
     try {
-      base.mkdirs();
-      Writer os = new OutputStreamWriter(new FileOutputStream(new File(base, "template.txt")), StandardCharsets.UTF_8);
+      Writer os = Files.newBufferedWriter(base.resolve("template.txt"), StandardCharsets.UTF_8);
       try {
         os.write("foobar\n");
       } finally {
@@ -74,25 +68,18 @@ public class TestFilesystemResourceLoader extends LuceneTestCase {
       ResourceLoader rl = new FilesystemResourceLoader(base);
       assertEquals("foobar", WordlistLoader.getLines(rl.openResource("template.txt"), StandardCharsets.UTF_8).get(0));
       // Same with full path name:
-      String fullPath = new File(base, "template.txt").toString();
+      String fullPath = base.resolve("template.txt").toAbsolutePath().toString();
       assertEquals("foobar",
           WordlistLoader.getLines(rl.openResource(fullPath), StandardCharsets.UTF_8).get(0));
       assertClasspathDelegation(rl);
       assertNotFound(rl);
-      
-      // now use RL without base dir:
-      rl = new FilesystemResourceLoader();
-      assertEquals("foobar",
-          WordlistLoader.getLines(rl.openResource(new File(base, "template.txt").toString()), StandardCharsets.UTF_8).get(0));
-      assertClasspathDelegation(rl);
-      assertNotFound(rl);
     } finally {
-      TestUtil.rm(base);
+      IOUtils.rm(base);
     }
   }
   
   public void testDelegation() throws Exception {
-    ResourceLoader rl = new FilesystemResourceLoader(null, new StringMockResourceLoader("foobar\n"));
+    ResourceLoader rl = new FilesystemResourceLoader(createTempDir("empty"), new StringMockResourceLoader("foobar\n"));
     assertEquals("foobar", WordlistLoader.getLines(rl.openResource("template.txt"), StandardCharsets.UTF_8).get(0));
   }
   

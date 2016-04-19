@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.ext;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.ext;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.ext;
 
 import java.util.Locale;
 
@@ -76,7 +75,7 @@ public class TestExtendableQueryParser extends TestQueryParser {
       assertTrue("expected instance of BooleanQuery but was "
           + query.getClass(), query instanceof BooleanQuery);
       BooleanQuery bquery = (BooleanQuery) query;
-      BooleanClause[] clauses = bquery.getClauses();
+      BooleanClause[] clauses = bquery.clauses().toArray(new BooleanClause[0]);
       assertEquals(2, clauses.length);
       BooleanClause booleanClause = clauses[0];
       query = booleanClause.getQuery();

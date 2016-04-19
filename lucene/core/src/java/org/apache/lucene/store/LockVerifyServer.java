@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
+
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -26,6 +26,7 @@ import java.net.Socket;
 import java.util.concurrent.CountDownLatch;
 
 import org.apache.lucene.util.IOUtils;
+import org.apache.lucene.util.SuppressForbidden;
 
 /**
  * Simple standalone server that must be running when you
@@ -39,6 +40,7 @@ import org.apache.lucene.util.IOUtils;
 
 public class LockVerifyServer {
 
+  @SuppressForbidden(reason = "System.out required: command line tool")
   public static void main(String[] args) throws Exception {
 
     if (args.length != 2) {

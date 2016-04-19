@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -24,9 +23,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.DocsAndPositionsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.IndexReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.ReaderUtil;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermContext;
@@ -34,11 +33,12 @@ import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.search.spans.SpanNearQuery;
-import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.automaton.Automaton;
 import org.apache.lucene.util.automaton.Operations;
 import org.apache.lucene.util.automaton.Transition;
+
+import static org.apache.lucene.util.automaton.Operations.DEFAULT_MAX_DETERMINIZED_STATES;
 
 // TODO
 //    - compare perf to PhraseQuery exact and sloppy
@@ -108,6 +108,16 @@ public class TermAutomatonQuery extends Query {
 
   /** Call this once you are done adding states/transitions. */
   public void finish() {
+    finish(DEFAULT_MAX_DETERMINIZED_STATES);
+  }
+
+  /**
+   * Call this once you are done adding states/transitions.
+   * @param maxDeterminizedStates Maximum number of states created when
+   *   determinizing the automaton.  Higher numbers allow this operation to
+   *   consume more memory but allow more complex automatons.
+   */
+  public void finish(int maxDeterminizedStates) {
     Automaton automaton = builder.finish();
 
     // System.out.println("before det:\n" + automaton.toDot());
@@ -171,11 +181,12 @@ public class TermAutomatonQuery extends Query {
       automaton = newAutomaton;
     }
 
-    det = Operations.removeDeadStates(Operations.determinize(automaton));
+    det = Operations.removeDeadStates(Operations.determinize(automaton,
+      maxDeterminizedStates));
   }
 
   @Override
-  public Weight createWeight(IndexSearcher searcher) throws IOException {
+  public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
     IndexReaderContext context = searcher.getTopReaderContext();
     Map<Integer,TermContext> termStates = new HashMap<>();
 
@@ -186,15 +197,6 @@ public class TermAutomatonQuery extends Query {
     }
 
     return new TermAutomatonWeight(det, searcher, termStates);
-  }
-
-  @Override
-  public void extractTerms(Set<Term> terms) {
-    for(BytesRef text : termToID.keySet()) {
-      if (text != null) {
-        terms.add(new Term(field, text));
-      }
-    }
   }
 
   @Override
@@ -245,7 +247,7 @@ public class TermAutomatonQuery extends Query {
 
     // NOTE: not quite correct, because if terms were added in different
     // order in each query but the language is the same, we return false:
-    return (this.getBoost() == other.getBoost())
+    return super.equals(o)
       && this.termToID.equals(other.termToID) &&
       Operations.sameLanguage(det, other.det);
   }
@@ -256,7 +258,7 @@ public class TermAutomatonQuery extends Query {
     if (det == null) {
       throw new IllegalStateException("please call finish first");
     }
-    return Float.floatToIntBits(getBoost()) ^ termToID.hashCode() + det.toDot().hashCode();
+    return super.hashCode() ^ termToID.hashCode() + det.toDot().hashCode();
   }
 
   /** Returns the dot (graphviz) representation of this automaton.
@@ -312,7 +314,7 @@ public class TermAutomatonQuery extends Query {
 
   static class EnumAndScorer {
     public final int termID;
-    public final DocsAndPositionsEnum posEnum;
+    public final PostingsEnum posEnum;
 
     // How many positions left in the current document:
     public int posLeft;
@@ -320,7 +322,7 @@ public class TermAutomatonQuery extends Query {
     // Current position
     public int pos;
 
-    public EnumAndScorer(int termID, DocsAndPositionsEnum posEnum) {
+    public EnumAndScorer(int termID, PostingsEnum posEnum) {
       this.termID = termID;
       this.posEnum = posEnum;
     }
@@ -334,10 +336,11 @@ public class TermAutomatonQuery extends Query {
     private final Similarity similarity;
 
     public TermAutomatonWeight(Automaton automaton, IndexSearcher searcher, Map<Integer,TermContext> termStates) throws IOException {
+      super(TermAutomatonQuery.this);
       this.automaton = automaton;
       this.searcher = searcher;
       this.termStates = termStates;
-      this.similarity = searcher.getSimilarity();
+      this.similarity = searcher.getSimilarity(true);
       List<TermStatistics> allTermStats = new ArrayList<>();
       for(Map.Entry<Integer,BytesRef> ent : idToTerm.entrySet()) {
         Integer termID = ent.getKey();
@@ -346,9 +349,17 @@ public class TermAutomatonQuery extends Query {
         }
       }
 
-      stats = similarity.computeWeight(getBoost(),
-                                       searcher.collectionStatistics(field),
+      stats = similarity.computeWeight(searcher.collectionStatistics(field),
                                        allTermStats.toArray(new TermStatistics[allTermStats.size()]));
+    }
+
+    @Override
+    public void extractTerms(Set<Term> terms) {
+      for(BytesRef text : termToID.keySet()) {
+        if (text != null) {
+          terms.add(new Term(field, text));
+        }
+      }
     }
 
     @Override
@@ -357,45 +368,44 @@ public class TermAutomatonQuery extends Query {
     }
 
     @Override
-    public Query getQuery() {
-      return TermAutomatonQuery.this;
-    }
-
-    @Override
     public float getValueForNormalization() {
       return stats.getValueForNormalization();
     }
 
     @Override
-    public void normalize(float queryNorm, float topLevelBoost) {
-      stats.normalize(queryNorm, topLevelBoost);
+    public void normalize(float queryNorm, float boost) {
+      stats.normalize(queryNorm, boost);
     }
 
     @Override
-    public Scorer scorer(AtomicReaderContext context, Bits acceptDocs) throws IOException {
+    public Scorer scorer(LeafReaderContext context) throws IOException {
 
       // Initialize the enums; null for a given slot means that term didn't appear in this reader
       EnumAndScorer[] enums = new EnumAndScorer[idToTerm.size()];
 
+      boolean any = false;
       for(Map.Entry<Integer,TermContext> ent : termStates.entrySet()) {
         TermContext termContext = ent.getValue();
         assert termContext.topReaderContext == ReaderUtil.getTopLevelContext(context) : "The top-reader used to create Weight (" + termContext.topReaderContext + ") is not the same as the current reader's top-reader (" + ReaderUtil.getTopLevelContext(context);
         BytesRef term = idToTerm.get(ent.getKey());
         TermState state = termContext.get(context.ord);
         if (state != null) {
-
-          TermsEnum termsEnum = context.reader().terms(field).iterator(null);
+          TermsEnum termsEnum = context.reader().terms(field).iterator();
           termsEnum.seekExact(term, state);
-          enums[ent.getKey()] = new EnumAndScorer(ent.getKey(),
-                                                  termsEnum.docsAndPositions(acceptDocs, null, 0));
+          enums[ent.getKey()] = new EnumAndScorer(ent.getKey(), termsEnum.postings(null, PostingsEnum.POSITIONS));
+          any = true;
         }
       }
 
-      return new TermAutomatonScorer(this, enums, anyTermID, idToTerm, similarity.simScorer(stats, context));
+      if (any) {
+        return new TermAutomatonScorer(this, enums, anyTermID, idToTerm, similarity.simScorer(stats, context));
+      } else {
+        return null;
+      }
     }
     
     @Override
-    public Explanation explain(AtomicReaderContext context, int doc) throws IOException {
+    public Explanation explain(LeafReaderContext context, int doc) throws IOException {
       // TODO
       return null;
     }

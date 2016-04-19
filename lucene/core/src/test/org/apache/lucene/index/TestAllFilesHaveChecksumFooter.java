@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,20 +14,16 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.codecs.CodecUtil;
-import org.apache.lucene.codecs.lucene410.Lucene410Codec;
-import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
-import org.apache.lucene.document.NumericDocValuesField;
-import org.apache.lucene.store.CompoundFileDirectory;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IndexInput;
-import org.apache.lucene.store.MockDirectoryWrapper;
-import org.apache.lucene.util.IOUtils;
+import org.apache.lucene.util.LineFileDocs;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
 
@@ -39,60 +33,50 @@ import org.apache.lucene.util.TestUtil;
 public class TestAllFilesHaveChecksumFooter extends LuceneTestCase {
   public void test() throws Exception {
     Directory dir = newDirectory();
-    if (dir instanceof MockDirectoryWrapper) {
-      // Else we might remove .cfe but not the corresponding .cfs, causing false exc when trying to verify headers:
-      ((MockDirectoryWrapper) dir).setEnableVirusScanner(false);
-    }
     IndexWriterConfig conf = newIndexWriterConfig(new MockAnalyzer(random()));
-    conf.setCodec(new Lucene410Codec());
+    conf.setCodec(TestUtil.getDefaultCodec());
     RandomIndexWriter riw = new RandomIndexWriter(random(), dir, conf);
-    Document doc = new Document();
-    // these fields should sometimes get term vectors, etc
-    Field idField = newStringField("id", "", Field.Store.NO);
-    Field bodyField = newTextField("body", "", Field.Store.NO);
-    Field dvField = new NumericDocValuesField("dv", 5);
-    doc.add(idField);
-    doc.add(bodyField);
-    doc.add(dvField);
+    // Use LineFileDocs so we (hopefully) get most Lucene features
+    // tested, e.g. IntPoint was recently added to it:
+    LineFileDocs docs = new LineFileDocs(random());
     for (int i = 0; i < 100; i++) {
-      idField.setStringValue(Integer.toString(i));
-      bodyField.setStringValue(TestUtil.randomUnicodeString(random()));
-      riw.addDocument(doc);
+      riw.addDocument(docs.nextDoc());
       if (random().nextInt(7) == 0) {
         riw.commit();
       }
       if (random().nextInt(20) == 0) {
-        riw.deleteDocuments(new Term("id", Integer.toString(i)));
+        riw.deleteDocuments(new Term("docid", Integer.toString(i)));
+      }
+      if (random().nextInt(15) == 0) {
+        riw.updateNumericDocValue(new Term("docid", Integer.toString(i)), "docid_intDV", Long.valueOf(i));
       }
     }
     riw.close();
-    checkHeaders(dir);
+    checkFooters(dir);
     dir.close();
   }
   
-  private void checkHeaders(Directory dir) throws IOException {
-    for (String file : dir.listAll()) {
-      if (file.equals(IndexWriter.WRITE_LOCK_NAME)) {
-        continue; // write.lock has no footer, thats ok
+  private void checkFooters(Directory dir) throws IOException {
+    SegmentInfos sis = SegmentInfos.readLatestCommit(dir);
+    checkFooter(dir, sis.getSegmentsFileName());
+    
+    for (SegmentCommitInfo si : sis) {
+      for (String file : si.files()) {
+        checkFooter(dir, file);
       }
-      if (file.endsWith(IndexFileNames.COMPOUND_FILE_EXTENSION)) {
-        CompoundFileDirectory cfsDir = new CompoundFileDirectory(dir, file, newIOContext(random()), false);
-        checkHeaders(cfsDir); // recurse into cfs
-        cfsDir.close();
-      }
-      IndexInput in = null;
-      boolean success = false;
-      try {
-        in = dir.openInput(file, newIOContext(random()));
-        CodecUtil.checksumEntireFile(in);
-        success = true;
-      } finally {
-        if (success) {
-          IOUtils.close(in);
-        } else {
-          IOUtils.closeWhileHandlingException(in);
+      if (si.info.getUseCompoundFile()) {
+        try (Directory cfsDir = si.info.getCodec().compoundFormat().getCompoundReader(dir, si.info, newIOContext(random()))) {
+          for (String cfsFile : cfsDir.listAll()) {
+            checkFooter(cfsDir, cfsFile);
+          }
         }
       }
+    }
+  }
+  
+  private void checkFooter(Directory dir, String file) throws IOException {
+    try (IndexInput in = dir.openInput(file, newIOContext(random()))) {
+      CodecUtil.checksumEntireFile(in);
     }
   }
 }

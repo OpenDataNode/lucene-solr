@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.ga;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.ga;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.ga;
+
 
 import java.io.IOException;
 import java.io.Reader;
@@ -29,6 +29,7 @@ import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.snowball.SnowballFilter;
 import org.apache.lucene.analysis.standard.StandardFilter;
 import org.apache.lucene.analysis.standard.StandardTokenizer;
+import org.apache.lucene.analysis.standard.std40.StandardTokenizer40;
 import org.apache.lucene.analysis.util.CharArraySet;
 import org.apache.lucene.analysis.util.ElisionFilter;
 import org.apache.lucene.analysis.util.StopwordAnalyzerBase;
@@ -94,30 +95,14 @@ public final class IrishAnalyzer extends StopwordAnalyzerBase {
   public IrishAnalyzer() {
     this(DefaultSetHolder.DEFAULT_STOP_SET);
   }
-
-  /**
-   * @deprecated Use {@link #IrishAnalyzer()}
-   */
-  @Deprecated
-  public IrishAnalyzer(Version matchVersion) {
-    this(matchVersion, DefaultSetHolder.DEFAULT_STOP_SET);
-  }
   
   /**
    * Builds an analyzer with the given stop words.
-   *
+   * 
    * @param stopwords a stopword set
    */
   public IrishAnalyzer(CharArraySet stopwords) {
     this(stopwords, CharArraySet.EMPTY_SET);
-  }
-
-  /**
-   * @deprecated Use {@link #IrishAnalyzer(CharArraySet)}
-   */
-  @Deprecated
-  public IrishAnalyzer(Version matchVersion, CharArraySet stopwords) {
-    this(matchVersion, stopwords, CharArraySet.EMPTY_SET);
   }
 
   /**
@@ -134,16 +119,6 @@ public final class IrishAnalyzer extends StopwordAnalyzerBase {
   }
 
   /**
-   * @deprecated Use {@link #IrishAnalyzer(CharArraySet,CharArraySet)}
-   */
-  @Deprecated
-  public IrishAnalyzer(Version matchVersion, CharArraySet stopwords, CharArraySet stemExclusionSet) {
-    super(matchVersion, stopwords);
-    this.stemExclusionSet = CharArraySet.unmodifiableSet(CharArraySet.copy(
-        matchVersion, stemExclusionSet));
-  }
-
-  /**
    * Creates a
    * {@link org.apache.lucene.analysis.Analyzer.TokenStreamComponents}
    * which tokenizes all the text in the provided {@link Reader}.
@@ -156,18 +131,18 @@ public final class IrishAnalyzer extends StopwordAnalyzerBase {
    *         provided and {@link SnowballFilter}.
    */
   @Override
-  protected TokenStreamComponents createComponents(String fieldName,
-      Reader reader) {
-    final Tokenizer source = new StandardTokenizer(getVersion(), reader);
-    TokenStream result = new StandardFilter(getVersion(), source);
-    StopFilter s = new StopFilter(getVersion(), result, HYPHENATIONS);
-    if (!getVersion().onOrAfter(Version.LUCENE_4_4)) {
-      s.setEnablePositionIncrements(false);
+  protected TokenStreamComponents createComponents(String fieldName) {
+    final Tokenizer source;
+    if (getVersion().onOrAfter(Version.LUCENE_4_7_0)) {
+      source = new StandardTokenizer();
+    } else {
+      source = new StandardTokenizer40();
     }
-    result = s;
+    TokenStream result = new StandardFilter(source);
+    result = new StopFilter(result, HYPHENATIONS);
     result = new ElisionFilter(result, DEFAULT_ARTICLES);
     result = new IrishLowerCaseFilter(result);
-    result = new StopFilter(getVersion(), result, stopwords);
+    result = new StopFilter(result, stopwords);
     if(!stemExclusionSet.isEmpty())
       result = new SetKeywordMarkerFilter(result, stemExclusionSet);
     result = new SnowballFilter(result, new IrishStemmer());

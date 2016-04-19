@@ -1,5 +1,3 @@
-package org.apache.lucene.document;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,13 @@ package org.apache.lucene.document;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.document;
+
 
 import java.io.Reader;
 
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.index.IndexOptions;
 
 /** A field that is indexed and tokenized, without term
  *  vectors.  For example this would be used on a 'body'
@@ -34,11 +35,11 @@ public final class TextField extends Field {
   public static final FieldType TYPE_STORED = new FieldType();
 
   static {
-    TYPE_NOT_STORED.setIndexed(true);
+    TYPE_NOT_STORED.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
     TYPE_NOT_STORED.setTokenized(true);
     TYPE_NOT_STORED.freeze();
 
-    TYPE_STORED.setIndexed(true);
+    TYPE_STORED.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
     TYPE_STORED.setTokenized(true);
     TYPE_STORED.setStored(true);
     TYPE_STORED.freeze();

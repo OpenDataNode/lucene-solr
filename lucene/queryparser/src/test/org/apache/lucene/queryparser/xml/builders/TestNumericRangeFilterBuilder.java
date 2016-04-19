@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.xml.builders;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,10 @@ package org.apache.lucene.queryparser.xml.builders;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.xml.builders;
 
-import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.SlowCompositeReaderWrapper;
 import org.apache.lucene.search.Filter;
@@ -66,7 +64,7 @@ public class TestNumericRangeFilterBuilder extends LuceneTestCase {
     IndexWriter writer = new IndexWriter(ramDir, newIndexWriterConfig(null));
     writer.commit();
     try {
-      AtomicReader reader = SlowCompositeReaderWrapper.wrap(DirectoryReader.open(ramDir));
+      LeafReader reader = SlowCompositeReaderWrapper.wrap(DirectoryReader.open(ramDir));
       try {
         assertNull(filter.getDocIdSet(reader.getContext(), reader.getLiveDocs()));
       }

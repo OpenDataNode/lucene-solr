@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis;
 
 import java.io.IOException;
 import java.util.Random;
@@ -26,7 +25,7 @@ import org.apache.lucene.util.TestUtil;
 // TODO: sometimes remove tokens too...?
 
 /** Randomly inserts overlapped (posInc=0) tokens with
- *  posLength sometimes > 1.  The chain must have
+ *  posLength sometimes &gt; 1.  The chain must have
  *  an OffsetAttribute.  */
 
 public final class MockGraphTokenFilter extends LookaheadTokenFilter<LookaheadTokenFilter.Position> {

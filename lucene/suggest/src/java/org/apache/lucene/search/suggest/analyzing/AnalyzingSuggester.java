@@ -1,5 +1,3 @@
-package org.apache.lucene.search.suggest.analyzing;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,18 @@ package org.apache.lucene.search.suggest.analyzing;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.suggest.analyzing;
 
-import java.io.File;
+import static org.apache.lucene.util.automaton.Operations.DEFAULT_MAX_DETERMINIZED_STATES;
+
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 
@@ -36,29 +38,30 @@ import org.apache.lucene.store.ByteArrayDataInput;
 import org.apache.lucene.store.ByteArrayDataOutput;
 import org.apache.lucene.store.DataInput;
 import org.apache.lucene.store.DataOutput;
+import org.apache.lucene.util.Accountable;
+import org.apache.lucene.util.Accountables;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
-import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.CharsRefBuilder;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.IntsRefBuilder;
 import org.apache.lucene.util.OfflineSorter;
-import org.apache.lucene.util.UnicodeUtil;
-import org.apache.lucene.util.automaton.Operations;
 import org.apache.lucene.util.automaton.Automaton;
+import org.apache.lucene.util.automaton.LimitedFiniteStringsIterator;
+import org.apache.lucene.util.automaton.Operations;
 import org.apache.lucene.util.automaton.Transition;
 import org.apache.lucene.util.fst.Builder;
 import org.apache.lucene.util.fst.ByteSequenceOutputs;
-import org.apache.lucene.util.fst.FST.BytesReader;
 import org.apache.lucene.util.fst.FST;
-import org.apache.lucene.util.fst.PairOutputs.Pair;
+import org.apache.lucene.util.fst.FST.BytesReader;
 import org.apache.lucene.util.fst.PairOutputs;
+import org.apache.lucene.util.fst.PairOutputs.Pair;
 import org.apache.lucene.util.fst.PositiveIntOutputs;
+import org.apache.lucene.util.fst.Util;
 import org.apache.lucene.util.fst.Util.Result;
 import org.apache.lucene.util.fst.Util.TopResults;
-import org.apache.lucene.util.fst.Util;
 
 /**
  * Suggester that first analyzes the surface form, adds the
@@ -115,7 +118,7 @@ import org.apache.lucene.util.fst.Util;
 public class AnalyzingSuggester extends Lookup {
  
   /**
-   * FST<Weight,Surface>: 
+   * FST&lt;Weight,Surface&gt;: 
    *  input is the analyzed form, with a null byte between terms
    *  weights are encoded as costs: (Integer.MAX_VALUE-weight)
    *  surface is the original, unanalyzed form.
@@ -257,49 +260,28 @@ public class AnalyzingSuggester extends Lookup {
     return fst == null ? 0 : fst.ramBytesUsed();
   }
 
-  private int[] topoSortStates(Automaton a) {
-    int[] states = new int[a.getNumStates()];
-    final Set<Integer> visited = new HashSet<>();
-    final LinkedList<Integer> worklist = new LinkedList<>();
-    worklist.add(0);
-    visited.add(0);
-    int upto = 0;
-    states[upto] = 0;
-    upto++;
-    Transition t = new Transition();
-    while (worklist.size() > 0) {
-      int s = worklist.removeFirst();
-      int count = a.initTransition(s, t);
-      for (int i=0;i<count;i++) {
-        a.getNextTransition(t);
-        if (!visited.contains(t.dest)) {
-          visited.add(t.dest);
-          worklist.add(t.dest);
-          states[upto++] = t.dest;
-        }
-      }
+  @Override
+  public Collection<Accountable> getChildResources() {
+    if (fst == null) {
+      return Collections.emptyList();
+    } else {
+      return Collections.singletonList(Accountables.namedAccountable("fst", fst));
     }
-    return states;
   }
-
 
   // Replaces SEP with epsilon or remaps them if
   // we were asked to preserve them:
   private Automaton replaceSep(Automaton a) {
 
-    Automaton result = new Automaton();
-
-    // Copy all states over
     int numStates = a.getNumStates();
-    for(int s=0;s<numStates;s++) {
-      result.createState();
-      result.setAccept(s, a.isAccept(s));
-    }
+    Automaton.Builder result = new Automaton.Builder(numStates, a.getNumTransitions());
+    // Copy all states over
+    result.copyStates(a);
 
     // Go in reverse topo sort so we know we only have to
     // make one pass:
     Transition t = new Transition();
-    int[] topoSortStates = topoSortStates(a);
+    int[] topoSortStates = Operations.topoSortStates(a);
     for(int i=0;i<topoSortStates.length;i++) {
       int state = topoSortStates[topoSortStates.length-1-i];
       int count = a.initTransition(state, t);
@@ -330,9 +312,7 @@ public class AnalyzingSuggester extends Lookup {
       }
     }
 
-    result.finishState();
-
-    return result;
+    return result.finish();
   }
 
   /** Used by subclass to change the lookup automaton, if
@@ -415,9 +395,9 @@ public class AnalyzingSuggester extends Lookup {
       throw new IllegalArgumentException("this suggester doesn't support contexts");
     }
     String prefix = getClass().getSimpleName();
-    File directory = OfflineSorter.defaultTempDir();
-    File tempInput = File.createTempFile(prefix, ".input", directory);
-    File tempSorted = File.createTempFile(prefix, ".sorted", directory);
+    Path directory = OfflineSorter.getDefaultTempDir();
+    Path tempInput = Files.createTempFile(directory, prefix, ".input");
+    Path tempSorted = Files.createTempFile(directory, prefix, ".sorted");
 
     hasPayloads = iterator.hasPayloads();
 
@@ -432,16 +412,13 @@ public class AnalyzingSuggester extends Lookup {
     byte buffer[] = new byte[8];
     try {
       ByteArrayDataOutput output = new ByteArrayDataOutput(buffer);
-      BytesRef surfaceForm;
 
-      while ((surfaceForm = iterator.next()) != null) {
-        Set<IntsRef> paths = toFiniteStrings(surfaceForm, ts2a);
-        
-        maxAnalyzedPathsForOneInput = Math.max(maxAnalyzedPathsForOneInput, paths.size());
+      for (BytesRef surfaceForm; (surfaceForm = iterator.next()) != null;) {
+        LimitedFiniteStringsIterator finiteStrings =
+            new LimitedFiniteStringsIterator(toAutomaton(surfaceForm, ts2a), maxGraphExpansions);
 
-        for (IntsRef path : paths) {
-
-          Util.toBytesRef(path, scratch);
+        for (IntsRef string; (string = finiteStrings.next()) != null; count++) {
+          Util.toBytesRef(string, scratch);
           
           // length of the analyzed text (FST input)
           if (scratch.length() > Short.MAX_VALUE-2) {
@@ -492,7 +469,8 @@ public class AnalyzingSuggester extends Lookup {
           assert output.getPosition() == requiredLength: output.getPosition() + " vs " + requiredLength;
           writer.write(buffer, 0, output.getPosition());
         }
-        count++;
+
+        maxAnalyzedPathsForOneInput = Math.max(maxAnalyzedPathsForOneInput, finiteStrings.size());
       }
       writer.close();
 
@@ -500,7 +478,7 @@ public class AnalyzingSuggester extends Lookup {
       new OfflineSorter(new AnalyzingComparator(hasPayloads)).sort(tempInput, tempSorted);
 
       // Free disk space:
-      tempInput.delete();
+      Files.delete(tempInput);
 
       reader = new OfflineSorter.ByteSequencesReader(tempSorted);
      
@@ -593,14 +571,13 @@ public class AnalyzingSuggester extends Lookup {
       
       success = true;
     } finally {
-      if (success) {
-        IOUtils.close(reader, writer);
-      } else {
-        IOUtils.closeWhileHandlingException(reader, writer);
-      }
+      IOUtils.closeWhileHandlingException(reader, writer);
       
-      tempInput.delete();
-      tempSorted.delete();
+      if (success) {
+        IOUtils.deleteFilesIfExist(tempInput, tempSorted);
+      } else {
+        IOUtils.deleteFilesIgnoringExceptions(tempInput, tempSorted);
+      }
     }
   }
 
@@ -853,18 +830,15 @@ public class AnalyzingSuggester extends Lookup {
     return prefixPaths;
   }
   
-  final Set<IntsRef> toFiniteStrings(final BytesRef surfaceForm, final TokenStreamToAutomaton ts2a) throws IOException {
+  final Automaton toAutomaton(final BytesRef surfaceForm, final TokenStreamToAutomaton ts2a) throws IOException {
     // Analyze surface form:
-    Automaton automaton = null;
-    TokenStream ts = indexAnalyzer.tokenStream("", surfaceForm.utf8ToString());
-    try {
+    Automaton automaton;
+    try (TokenStream ts = indexAnalyzer.tokenStream("", surfaceForm.utf8ToString())) {
 
       // Create corresponding automaton: labels are bytes
       // from each analyzed token, with byte 0 used as
       // separator between tokens:
       automaton = ts2a.toAutomaton(ts);
-    } finally {
-      IOUtils.closeWhileHandlingException(ts);
     }
 
     automaton = replaceSep(automaton);
@@ -876,30 +850,22 @@ public class AnalyzingSuggester extends Lookup {
     // Get all paths from the automaton (there can be
     // more than one path, eg if the analyzer created a
     // graph using SynFilter or WDF):
-
-    // TODO: we could walk & add simultaneously, so we
-    // don't have to alloc [possibly biggish]
-    // intermediate HashSet in RAM:
-
-    return Operations.getFiniteStrings(automaton, maxGraphExpansions);
+    return automaton;
   }
 
   final Automaton toLookupAutomaton(final CharSequence key) throws IOException {
     // TODO: is there a Reader from a CharSequence?
     // Turn tokenstream into automaton:
     Automaton automaton = null;
-    TokenStream ts = queryAnalyzer.tokenStream("", key.toString());
-    try {
+    try (TokenStream ts = queryAnalyzer.tokenStream("", key.toString())) {
         automaton = getTokenStreamToAutomaton().toAutomaton(ts);
-    } finally {
-      IOUtils.closeWhileHandlingException(ts);
     }
 
     automaton = replaceSep(automaton);
 
     // TODO: we can optimize this somewhat by determinizing
     // while we convert
-    automaton = Operations.determinize(automaton);
+    automaton = Operations.determinize(automaton, DEFAULT_MAX_DETERMINIZED_STATES);
     return automaton;
   }
 
@@ -911,12 +877,12 @@ public class AnalyzingSuggester extends Lookup {
     throw new UnsupportedOperationException();
   }
   
-  /** cost -> weight */
+  /** cost -&gt; weight */
   private static int decodeWeight(long encoded) {
     return (int)(Integer.MAX_VALUE - encoded);
   }
   
-  /** weight -> cost */
+  /** weight -&gt; cost */
   private static int encodeWeight(long value) {
     if (value < 0 || value > Integer.MAX_VALUE) {
       throw new UnsupportedOperationException("cannot encode value: " + value);

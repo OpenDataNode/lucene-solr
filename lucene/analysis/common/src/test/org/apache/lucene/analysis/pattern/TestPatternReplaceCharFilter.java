@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.analysis.pattern;
 
 import java.io.IOException;
@@ -139,7 +138,7 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
     final String BLOCK = "this is test.";
     CharFilter cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)\\s+(cc)"), "$1$2$3",
           new StringReader( BLOCK ) );
-    TokenStream ts = new MockTokenizer(cs, MockTokenizer.WHITESPACE, false);
+    TokenStream ts = whitespaceMockTokenizer(cs);
     assertTokenStreamContents(ts,
         new String[] { "this", "is", "test." },
         new int[] { 0, 5, 8 },
@@ -153,7 +152,7 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
     final String BLOCK = "aa bb cc";
     CharFilter cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)\\s+(cc)"), "",
           new StringReader( BLOCK ) );
-    TokenStream ts = new MockTokenizer(cs, MockTokenizer.WHITESPACE, false);
+    TokenStream ts = whitespaceMockTokenizer(cs);
     assertTokenStreamContents(ts, new String[] {});
   }
   
@@ -164,7 +163,7 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
     final String BLOCK = "aa bb cc";
     CharFilter cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)\\s+(cc)"), "$1#$2#$3",
           new StringReader( BLOCK ) );
-    TokenStream ts = new MockTokenizer(cs, MockTokenizer.WHITESPACE, false);
+    TokenStream ts = whitespaceMockTokenizer(cs);
     assertTokenStreamContents(ts,
         new String[] { "aa#bb#cc" },
         new int[] { 0 },
@@ -180,7 +179,7 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
     final String BLOCK = "aa bb cc dd";
     CharFilter cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)\\s+(cc)"), "$1##$2###$3",
           new StringReader( BLOCK ) );
-    TokenStream ts = new MockTokenizer(cs, MockTokenizer.WHITESPACE, false);
+    TokenStream ts = whitespaceMockTokenizer(cs);
     assertTokenStreamContents(ts,
         new String[] { "aa##bb###cc", "dd" },
         new int[] { 0, 9 },
@@ -195,7 +194,7 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
     final String BLOCK = " a  a";
     CharFilter cs = new PatternReplaceCharFilter( pattern("a"), "aa",
           new StringReader( BLOCK ) );
-    TokenStream ts = new MockTokenizer(cs, MockTokenizer.WHITESPACE, false);
+    TokenStream ts = whitespaceMockTokenizer(cs);
     assertTokenStreamContents(ts,
         new String[] { "aa", "aa" },
         new int[] { 1, 4 },
@@ -211,7 +210,7 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
     final String BLOCK = "aa  bb   cc dd";
     CharFilter cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)\\s+(cc)"), "$1#$2",
           new StringReader( BLOCK ) );
-    TokenStream ts = new MockTokenizer(cs, MockTokenizer.WHITESPACE, false);
+    TokenStream ts = whitespaceMockTokenizer(cs);
     assertTokenStreamContents(ts,
         new String[] { "aa#bb", "dd" },
         new int[] { 0, 12 },
@@ -227,7 +226,7 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
     final String BLOCK = "  aa bb cc --- aa bb aa   bb   cc";
     CharFilter cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)\\s+(cc)"), "$1  $2  $3",
           new StringReader( BLOCK ) );
-    TokenStream ts = new MockTokenizer(cs, MockTokenizer.WHITESPACE, false);
+    TokenStream ts = whitespaceMockTokenizer(cs);
     assertTokenStreamContents(ts,
         new String[] { "aa", "bb", "cc", "---", "aa", "bb", "aa", "bb", "cc" },
         new int[] { 2, 6, 9, 11, 15, 18, 21, 25, 29 },
@@ -247,7 +246,7 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
 
     CharFilter cs = new PatternReplaceCharFilter( pattern("(aa)\\s+(bb)"), "$1##$2",
           new StringReader( BLOCK ) );
-    TokenStream ts = new MockTokenizer(cs, MockTokenizer.WHITESPACE, false);
+    TokenStream ts = whitespaceMockTokenizer(cs);
     assertTokenStreamContents(ts,
         new String[] { "aa##bb", "cc", "---", "aa##bb", "aa.", "bb", "aa##bb", "cc" },
         new int[] { 2, 8, 11, 15, 21, 25, 28, 36 },
@@ -265,7 +264,7 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
         new StringReader( BLOCK ) );
     cs = new PatternReplaceCharFilter( pattern("bb"), "b", cs );
     cs = new PatternReplaceCharFilter( pattern("ccc"), "c", cs );
-    TokenStream ts = new MockTokenizer(cs, MockTokenizer.WHITESPACE, false);
+    TokenStream ts = whitespaceMockTokenizer(cs);
     assertTokenStreamContents(ts,
         new String[] { "aa", "b", "-", "c", ".", "---", "b", "aa", ".", "c", "c", "b" },
         new int[] { 1, 3, 6, 8, 12, 14, 18, 21, 23, 25, 29, 33 },
@@ -281,7 +280,7 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
    * A demonstration of how backtracking regular expressions can lead to relatively 
    * easy DoS attacks.
    * 
-   * @see "http://swtch.com/~rsc/regexp/regexp1.html"
+   * @see <a href="http://swtch.com/~rsc/regexp/regexp1.html">"http://swtch.com/~rsc/regexp/regexp1.html"</a>
    */
   @Ignore
   public void testNastyPattern() throws Exception {
@@ -307,8 +306,8 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
       final String replacement = TestUtil.randomSimpleString(random);
       Analyzer a = new Analyzer() {
         @Override
-        protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-          Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+        protected TokenStreamComponents createComponents(String fieldName) {
+          Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
           return new TokenStreamComponents(tokenizer, tokenizer);
         }
 
@@ -324,6 +323,7 @@ public class TestPatternReplaceCharFilter extends BaseTokenStreamTestCase {
       /* ASCII only input?: */
       final boolean asciiOnly = true;
       checkRandomData(random, a, 250 * RANDOM_MULTIPLIER, maxInputLength, asciiOnly);
+      a.close();
     }
   }
  }

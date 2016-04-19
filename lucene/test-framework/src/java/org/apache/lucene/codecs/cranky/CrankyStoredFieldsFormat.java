@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.cranky;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.codecs.cranky;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.cranky;
 
 import java.io.IOException;
 import java.util.Random;
@@ -61,14 +60,6 @@ class CrankyStoredFieldsFormat extends StoredFieldsFormat {
     CrankyStoredFieldsWriter(StoredFieldsWriter delegate, Random random) {
       this.delegate = delegate;
       this.random = random;
-    }
-
-    @Override
-    public void abort() {
-      delegate.abort();
-      if (random.nextInt(100) == 0) {
-        throw new RuntimeException(new IOException("Fake IOException from StoredFieldsWriter.abort()"));
-      }
     }
 
     @Override

@@ -1,4 +1,3 @@
-package org.apache.solr.schema;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,9 +14,10 @@ package org.apache.solr.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.schema;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Currency;
 import java.util.HashMap;
@@ -35,19 +35,21 @@ import javax.xml.xpath.XPathFactory;
 
 import org.apache.lucene.analysis.util.ResourceLoader;
 import org.apache.lucene.analysis.util.ResourceLoaderAware;
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.SortField;
+import org.apache.lucene.search.BooleanClause.Occur;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.FieldValueQuery;
 import org.apache.lucene.search.Filter;
-import org.apache.lucene.search.FieldValueFilter;
-import org.apache.lucene.queries.ChainedFilter;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.QueryWrapperFilter;
+import org.apache.lucene.search.SortField;
+import org.apache.lucene.uninverting.UninvertingReader.Type;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.response.TextResponseWriter;
-import org.apache.solr.response.XMLWriter;
 import org.apache.solr.search.QParser;
 import org.apache.solr.search.SolrConstantScoreQuery;
 import org.apache.solr.search.function.ValueSourceRangeFilter;
@@ -80,7 +82,7 @@ public class CurrencyField extends FieldType implements SchemaAware, ResourceLoa
   private String exchangeRateProviderClass;
   private String defaultCurrency;
   private ExchangeRateProvider provider;
-  public static Logger log = LoggerFactory.getLogger(CurrencyField.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   /**
    * A wrapper arround <code>Currency.getInstance</code> that returns null
@@ -251,7 +253,7 @@ public class CurrencyField extends FieldType implements SchemaAware, ResourceLoa
    * <p>
    * Returns a ValueSource over this field in which the numeric value for 
    * each document represents the indexed value as converted to the default 
-   * currency for the field, normalized to it's most granular form based 
+   * currency for the field, normalized to its most granular form based 
    * on the default fractional digits.
    * </p>
    * <p>
@@ -272,7 +274,7 @@ public class CurrencyField extends FieldType implements SchemaAware, ResourceLoa
    */
   public RawCurrencyValueSource getValueSource(SchemaField field, 
                                                QParser parser) {
-    field.checkFieldCacheSource(parser);
+    field.checkFieldCacheSource();
     return new RawCurrencyValueSource(field, defaultCurrency, parser);
   }
 
@@ -327,17 +329,17 @@ public class CurrencyField extends FieldType implements SchemaAware, ResourceLoa
                           (p2 != null) ? p2.getCurrencyCode() : defaultCurrency;
 
     // ValueSourceRangeFilter doesn't check exists(), so we have to
-    final Filter docsWithValues = new FieldValueFilter(getAmountField(field).getName());
+    final Filter docsWithValues = new QueryWrapperFilter(new FieldValueQuery(getAmountField(field).getName()));
     final Filter vsRangeFilter = new ValueSourceRangeFilter
       (new RawCurrencyValueSource(field, currencyCode, parser),
        p1 == null ? null : p1.getAmount() + "", 
        p2 == null ? null : p2.getAmount() + "",
        minInclusive, maxInclusive);
-    final Filter docsInRange = new ChainedFilter
-      (new Filter [] { docsWithValues, vsRangeFilter }, ChainedFilter.AND);
+    final BooleanQuery.Builder docsInRange = new BooleanQuery.Builder();
+    docsInRange.add(docsWithValues, Occur.FILTER);
+    docsInRange.add(vsRangeFilter, Occur.FILTER);
 
-    return new SolrConstantScoreQuery(docsInRange);
-    
+    return new SolrConstantScoreQuery(new QueryWrapperFilter(docsInRange.build()));
   }
 
   @Override
@@ -345,9 +347,10 @@ public class CurrencyField extends FieldType implements SchemaAware, ResourceLoa
     // Convert all values to default currency for sorting.
     return (new RawCurrencyValueSource(field, defaultCurrency, null)).getSortField(reverse);
   }
-
-  public void write(XMLWriter xmlWriter, String name, IndexableField field) throws IOException {
-    xmlWriter.writeStr(name, field.stringValue(), false);
+  
+  @Override
+  public Type getUninversionType(SchemaField sf) {
+    return null;
   }
 
   @Override
@@ -385,7 +388,7 @@ public class CurrencyField extends FieldType implements SchemaAware, ResourceLoa
     }
 
     @Override
-    public FunctionValues getValues(Map context, AtomicReaderContext reader) 
+    public FunctionValues getValues(Map context, LeafReaderContext reader) 
       throws IOException {
       final FunctionValues amounts = source.getValues(context, reader);
       // the target digits & currency of our source, 
@@ -498,7 +501,7 @@ public class CurrencyField extends FieldType implements SchemaAware, ResourceLoa
     public Currency getTargetCurrency() { return targetCurrency; }
 
     @Override
-    public FunctionValues getValues(Map context, AtomicReaderContext reader) throws IOException {
+    public FunctionValues getValues(Map context, LeafReaderContext reader) throws IOException {
       final FunctionValues amounts = amountValues.getValues(context, reader);
       final FunctionValues currencies = currencyValues.getValues(context, reader);
 
@@ -667,7 +670,7 @@ public class CurrencyField extends FieldType implements SchemaAware, ResourceLoa
  * Configuration for currency. Provides currency exchange rates.
  */
 class FileExchangeRateProvider implements ExchangeRateProvider {
-  public static Logger log = LoggerFactory.getLogger(FileExchangeRateProvider.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   protected static final String PARAM_CURRENCY_CONFIG       = "currencyConfig";
 
   // Exchange rate map, maps Currency Code -> Currency Code -> Rate
@@ -833,13 +836,7 @@ class FileExchangeRateProvider implements ExchangeRateProvider {
           
           addRate(tmpRates, fromCurrency, toCurrency, exchangeRate);
         }
-      } catch (SAXException e) {
-        throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Error parsing currency config.", e);
-      } catch (IOException e) {
-        throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Error parsing currency config.", e);
-      } catch (ParserConfigurationException e) {
-        throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Error parsing currency config.", e);
-      } catch (XPathExpressionException e) {
+      } catch (SAXException | XPathExpressionException | ParserConfigurationException | IOException e) {
         throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Error parsing currency config.", e);
       }
     } catch (IOException e) {

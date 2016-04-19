@@ -1,5 +1,4 @@
-package org.apache.lucene.codecs.bloom;
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -15,6 +14,7 @@ package org.apache.lucene.codecs.bloom;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.bloom;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.SegmentWriteState;
 
@@ -28,7 +28,7 @@ public class DefaultBloomFilterFactory extends BloomFilterFactory {
   @Override
   public FuzzySet getSetForField(SegmentWriteState state,FieldInfo info) {
     //Assume all of the docs have a unique term (e.g. a primary key) and we hope to maintain a set with 10% of bits set
-    return FuzzySet.createSetBasedOnQuality(state.segmentInfo.getDocCount(), 0.10f);
+    return FuzzySet.createSetBasedOnQuality(state.segmentInfo.maxDoc(), 0.10f);
   }
   
   @Override

@@ -1,8 +1,3 @@
-package org.apache.lucene.store;
-
-import java.io.IOException;
-import java.util.Map;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -19,6 +14,12 @@ import java.util.Map;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
+
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Used by MockDirectoryWrapper to create an input stream that
@@ -42,19 +43,21 @@ public class MockIndexInputWrapper extends IndexInput {
 
   @Override
   public void close() throws IOException {
-    try {
-      // turn on the following to look for leaks closing inputs,
-      // after fixing TestTransactions
-      // dir.maybeThrowDeterministicException();
-    } finally {
-      closed = true;
-      delegate.close();
+    if (closed) {
+      delegate.close(); // don't mask double-close bugs
+      return;
+    }
+    closed = true;
+    
+    try (Closeable delegate = this.delegate) {
       // Pending resolution on LUCENE-686 we may want to
       // remove the conditional check so we also track that
       // all clones get closed:
+      assert delegate != null;
       if (!isClone) {
         dir.removeIndexInput(this, name);
       }
+      dir.maybeThrowDeterministicException();
     }
   }
   
@@ -67,6 +70,9 @@ public class MockIndexInputWrapper extends IndexInput {
   @Override
   public MockIndexInputWrapper clone() {
     ensureOpen();
+    if (dir.verboseClone) {
+      new Exception("clone: " + this).printStackTrace(System.out);
+    }
     dir.inputCloneCount.incrementAndGet();
     IndexInput iiclone = delegate.clone();
     MockIndexInputWrapper clone = new MockIndexInputWrapper(dir, name, iiclone);
@@ -91,6 +97,9 @@ public class MockIndexInputWrapper extends IndexInput {
   @Override
   public IndexInput slice(String sliceDescription, long offset, long length) throws IOException {
     ensureOpen();
+    if (dir.verboseClone) {
+      new Exception("slice: " + this).printStackTrace(System.out);
+    }
     dir.inputCloneCount.incrementAndGet();
     IndexInput slice = delegate.slice(sliceDescription, offset, length);
     MockIndexInputWrapper clone = new MockIndexInputWrapper(dir, sliceDescription, slice);
@@ -175,6 +184,30 @@ public class MockIndexInputWrapper extends IndexInput {
   public long readVLong() throws IOException {
     ensureOpen();
     return delegate.readVLong();
+  }
+
+  @Override
+  public int readZInt() throws IOException {
+    ensureOpen();
+    return delegate.readZInt();
+  }
+
+  @Override
+  public long readZLong() throws IOException {
+    ensureOpen();
+    return delegate.readZLong();
+  }
+
+  @Override
+  public Set<String> readStringSet() throws IOException {
+    ensureOpen();
+    return delegate.readStringSet();
+  }
+
+  @Override
+  public void skipBytes(long numBytes) throws IOException {
+    ensureOpen();
+    super.skipBytes(numBytes);
   }
 
   @Override

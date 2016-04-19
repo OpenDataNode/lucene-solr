@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,19 +14,13 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+package org.apache.solr.cloud;
 
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.client.solrj.request.UpdateRequest;
 import org.apache.solr.common.SolrInputDocument;
@@ -39,10 +31,16 @@ import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.CollectionParams.CollectionAction;
 import org.apache.solr.common.params.ModifiableSolrParams;
-import org.junit.After;
 import org.junit.AfterClass;
-import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Test sync phase that occurs when Leader goes down and a new Leader is
@@ -51,43 +49,23 @@ import org.junit.BeforeClass;
 @Slow
 public class SyncSliceTest extends AbstractFullDistribZkTestBase {
   private boolean success = false;
-  
-  @BeforeClass
-  public static void beforeSuperClass() throws Exception {
-  }
-  
-  @AfterClass
-  public static void afterSuperClass() {
-    
-  }
-  
-  @Before
+
   @Override
-  public void setUp() throws Exception {
-    super.setUp();
-    // we expect this time of exception as shards go up and down...
-    //ignoreException(".*");
-    System.setProperty("numShards", Integer.toString(sliceCount));
-  }
-  
-  @Override
-  @After
-  public void tearDown() throws Exception {
+  public void distribTearDown() throws Exception {
     if (!success) {
       printLayoutOnTearDown = true;
     }
-    super.tearDown();
-    resetExceptionIgnores();
+    super.distribTearDown();
   }
-  
+
   public SyncSliceTest() {
     super();
     sliceCount = 1;
-    shardCount = TEST_NIGHTLY ? 7 : 4;
+    fixShardCount(TEST_NIGHTLY ? 7 : 4);
   }
-  
-  @Override
-  public void doTest() throws Exception {
+
+  @Test
+  public void test() throws Exception {
     
     handle.clear();
     handle.put("timestamp", SKIPVAL);
@@ -128,17 +106,16 @@ public class SyncSliceTest extends AbstractFullDistribZkTestBase {
     SolrRequest request = new QueryRequest(params);
     request.setPath("/admin/collections");
     
-    String baseUrl = ((HttpSolrServer) shardToJetty.get("shard1").get(2).client.solrClient)
+    String baseUrl = ((HttpSolrClient) shardToJetty.get("shard1").get(2).client.solrClient)
         .getBaseURL();
     baseUrl = baseUrl.substring(0, baseUrl.length() - "collection1".length());
     
-    HttpSolrServer baseServer = new HttpSolrServer(baseUrl);
-    // we only set the connect timeout, not so timeout
-    baseServer.setConnectionTimeout(30000);
-    baseServer.request(request);
-    baseServer.shutdown();
-    baseServer = null;
-    
+    try (HttpSolrClient baseClient = new HttpSolrClient(baseUrl)) {
+      // we only set the connect timeout, not so timeout
+      baseClient.setConnectionTimeout(30000);
+      baseClient.request(request);
+    }
+
     waitForThingsToLevelOut(15);
     
     checkShardConsistency(false, true);
@@ -160,7 +137,7 @@ public class SyncSliceTest extends AbstractFullDistribZkTestBase {
     Set<CloudJettyRunner> jetties = new HashSet<>();
     jetties.addAll(shardToJetty.get("shard1"));
     jetties.remove(leaderJetty);
-    assertEquals(shardCount - 1, jetties.size());
+    assertEquals(getShardCount() - 1, jetties.size());
     
     chaosMonkey.killJetty(leaderJetty);
     
@@ -224,7 +201,7 @@ public class SyncSliceTest extends AbstractFullDistribZkTestBase {
     jetties = new HashSet<>();
     jetties.addAll(shardToJetty.get("shard1"));
     jetties.remove(leaderJetty);
-    assertEquals(shardCount - 1, jetties.size());
+    assertEquals(getShardCount() - 1, jetties.size());
 
     
     // kill the current leader
@@ -241,16 +218,14 @@ public class SyncSliceTest extends AbstractFullDistribZkTestBase {
     for (int i = 0; i < 60; i++) { 
       Thread.sleep(3000);
       ZkStateReader zkStateReader = cloudClient.getZkStateReader();
-      zkStateReader.updateClusterState(true);
+      zkStateReader.updateClusterState();
       ClusterState clusterState = zkStateReader.getClusterState();
       DocCollection collection1 = clusterState.getCollection("collection1");
       Slice slice = collection1.getSlice("shard1");
       Collection<Replica> replicas = slice.getReplicas();
       boolean allActive = true;
       for (Replica replica : replicas) {
-        if (!clusterState.liveNodesContain(replica.getNodeName())
-            || !replica.get(ZkStateReader.STATE_PROP).equals(
-                ZkStateReader.ACTIVE)) {
+        if (!clusterState.liveNodesContain(replica.getNodeName()) || replica.getState() != Replica.State.ACTIVE) {
           allActive = false;
           break;
         }

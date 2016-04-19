@@ -1,5 +1,3 @@
-package org.apache.lucene.classification.utils;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.classification.utils;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.classification.utils;
+
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
@@ -23,13 +23,14 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.SlowCompositeReaderWrapper;
 import org.apache.lucene.store.BaseDirectoryWrapper;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.LuceneTestCase;
 import org.junit.After;
 import org.junit.Before;
@@ -43,7 +44,7 @@ import java.util.Random;
  */
 public class DataSplitterTest extends LuceneTestCase {
 
-  private AtomicReader originalIndex;
+  private LeafReader originalIndex;
   private RandomIndexWriter indexWriter;
   private Directory dir;
 
@@ -51,27 +52,26 @@ public class DataSplitterTest extends LuceneTestCase {
   private String classFieldName = "class";
   private String idFieldName = "id";
 
+  @Override
   @Before
   public void setUp() throws Exception {
     super.setUp();
     dir = newDirectory();
-    indexWriter = new RandomIndexWriter(random(), dir, new MockAnalyzer(random()));
+    indexWriter = new RandomIndexWriter(random(), dir);
 
     FieldType ft = new FieldType(TextField.TYPE_STORED);
     ft.setStoreTermVectors(true);
     ft.setStoreTermVectorOffsets(true);
     ft.setStoreTermVectorPositions(true);
 
-    Analyzer analyzer = new MockAnalyzer(random());
-
     Document doc;
+    Random rnd = random();
     for (int i = 0; i < 100; i++) {
       doc = new Document();
-      doc.add(new Field(idFieldName, random().toString(), ft));
-      doc.add(new Field(textFieldName, new StringBuilder(random().toString()).append(random().toString()).append(
-          random().toString()).toString(), ft));
-      doc.add(new Field(classFieldName, random().toString(), ft));
-      indexWriter.addDocument(doc, analyzer);
+      doc.add(new Field(idFieldName, Integer.toString(i), ft));
+      doc.add(new Field(textFieldName, TestUtil.randomUnicodeString(rnd, 1024), ft));
+      doc.add(new Field(classFieldName, TestUtil.randomUnicodeString(rnd, 10), ft));
+      indexWriter.addDocument(doc);
     }
 
     indexWriter.commit();
@@ -80,6 +80,7 @@ public class DataSplitterTest extends LuceneTestCase {
 
   }
 
+  @Override
   @After
   public void tearDown() throws Exception {
     originalIndex.close();
@@ -100,7 +101,7 @@ public class DataSplitterTest extends LuceneTestCase {
     assertSplit(originalIndex, 0.2, 0.35, idFieldName, textFieldName);
   }
 
-  public static void assertSplit(AtomicReader originalIndex, double testRatio, double crossValidationRatio, String... fieldNames) throws Exception {
+  public static void assertSplit(LeafReader originalIndex, double testRatio, double crossValidationRatio, String... fieldNames) throws Exception {
 
     BaseDirectoryWrapper trainingIndex = newDirectory();
     BaseDirectoryWrapper testIndex = newDirectory();
@@ -128,9 +129,15 @@ public class DataSplitterTest extends LuceneTestCase {
       closeQuietly(testReader);
       closeQuietly(cvReader);
     } finally {
-      trainingIndex.close();
-      testIndex.close();
-      crossValidationIndex.close();
+      if (trainingIndex != null) {
+        trainingIndex.close();
+      }
+      if (testIndex != null) {
+        testIndex.close();
+      }
+      if (crossValidationIndex != null) {
+        crossValidationIndex.close();
+      }
     }
   }
 

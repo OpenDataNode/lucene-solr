@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.core.builders;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.core.builders;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.core.builders;
 
 import junit.framework.Assert;
 
@@ -37,6 +36,7 @@ public class TestQueryTreeBuilder extends LuceneTestCase {
     Object result = qtb.build(new FieldQueryNode(new UnescapedCharSequence("field"), "foo", 0, 0));
     Assert.assertEquals("OK", result);
     
+    // LUCENE-4890
     qtb = new QueryTreeBuilder();
     qtb.setBuilder(DummyQueryNodeInterface.class, new DummyBuilder());
     result = qtb.build(new DummyQueryNode());

@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,197 +14,192 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
+
+import org.apache.lucene.util.PriorityQueue;
 
 /**
  * Base class for Scorers that score disjunctions.
  */
 abstract class DisjunctionScorer extends Scorer {
-  private final Scorer subScorers[];
-  private int numScorers;
 
-  /** The document number of the current match. */
-  protected int doc = -1;
-  /** Number of matching scorers for the current match. */
-  protected int freq = -1;
-  
-  protected DisjunctionScorer(Weight weight, Scorer subScorers[]) {
+  private final boolean needsScores;
+
+  private final DisiPriorityQueue subScorers;
+  private final DisjunctionDISIApproximation approximation;
+  private final TwoPhase twoPhase;
+
+  protected DisjunctionScorer(Weight weight, List<Scorer> subScorers, boolean needsScores) {
     super(weight);
-    this.subScorers = subScorers;
-    this.numScorers = subScorers.length;
-    if (numScorers <= 1) {
+    if (subScorers.size() <= 1) {
       throw new IllegalArgumentException("There must be at least 2 subScorers");
     }
-    heapify();
-  }
-  
-  /** 
-   * Organize subScorers into a min heap with scorers generating the earliest document on top.
-   */
-  private void heapify() {
-    for (int i = (numScorers >>> 1) - 1; i >= 0; i--) {
-      heapAdjust(i);
+    this.subScorers = new DisiPriorityQueue(subScorers.size());
+    for (Scorer scorer : subScorers) {
+      final DisiWrapper w = new DisiWrapper(scorer);
+      this.subScorers.add(w);
     }
-  }
-  
-  /** 
-   * The subtree of subScorers at root is a min heap except possibly for its root element.
-   * Bubble the root down as required to make the subtree a heap.
-   */
-  private void heapAdjust(int root) {
-    Scorer scorer = subScorers[root];
-    int doc = scorer.docID();
-    int i = root;
-    while (i <= (numScorers >>> 1) - 1) {
-      int lchild = (i << 1) + 1;
-      Scorer lscorer = subScorers[lchild];
-      int ldoc = lscorer.docID();
-      int rdoc = Integer.MAX_VALUE, rchild = (i << 1) + 2;
-      Scorer rscorer = null;
-      if (rchild < numScorers) {
-        rscorer = subScorers[rchild];
-        rdoc = rscorer.docID();
-      }
-      if (ldoc < doc) {
-        if (rdoc < ldoc) {
-          subScorers[i] = rscorer;
-          subScorers[rchild] = scorer;
-          i = rchild;
-        } else {
-          subScorers[i] = lscorer;
-          subScorers[lchild] = scorer;
-          i = lchild;
-        }
-      } else if (rdoc < doc) {
-        subScorers[i] = rscorer;
-        subScorers[rchild] = scorer;
-        i = rchild;
-      } else {
-        return;
-      }
-    }
-  }
+    this.needsScores = needsScores;
+    this.approximation = new DisjunctionDISIApproximation(this.subScorers);
 
-  /** 
-   * Remove the root Scorer from subScorers and re-establish it as a heap
-   */
-  private void heapRemoveRoot() {
-    if (numScorers == 1) {
-      subScorers[0] = null;
-      numScorers = 0;
+    boolean hasApproximation = false;
+    float sumMatchCost = 0;
+    long sumApproxCost = 0;
+    // Compute matchCost as the average over the matchCost of the subScorers.
+    // This is weighted by the cost, which is an expected number of matching documents.
+    for (DisiWrapper w : this.subScorers) {
+      long costWeight = (w.cost <= 1) ? 1 : w.cost;
+      sumApproxCost += costWeight;
+      if (w.twoPhaseView != null) {
+        hasApproximation = true;
+        sumMatchCost += w.matchCost * costWeight;
+      }
+    }
+
+    if (hasApproximation == false) { // no sub scorer supports approximations
+      twoPhase = null;
     } else {
-      subScorers[0] = subScorers[numScorers - 1];
-      subScorers[numScorers - 1] = null;
-      --numScorers;
-      heapAdjust(0);
+      final float matchCost = sumMatchCost / sumApproxCost;
+      twoPhase = new TwoPhase(approximation, matchCost);
     }
-  }
-  
-  @Override
-  public final Collection<ChildScorer> getChildren() {
-    ArrayList<ChildScorer> children = new ArrayList<>(numScorers);
-    for (int i = 0; i < numScorers; i++) {
-      children.add(new ChildScorer(subScorers[i], "SHOULD"));
-    }
-    return children;
   }
 
   @Override
-  public final long cost() {
-    long sum = 0;
-    for (int i = 0; i < numScorers; i++) {
-      sum += subScorers[i].cost();
+  public DocIdSetIterator iterator() {
+    if (twoPhase != null) {
+      return TwoPhaseIterator.asDocIdSetIterator(twoPhase);
+    } else {
+      return approximation;
     }
-    return sum;
-  } 
-  
+  }
+
+  @Override
+  public TwoPhaseIterator twoPhaseIterator() {
+    return twoPhase;
+  }
+
+  private class TwoPhase extends TwoPhaseIterator {
+
+    private final float matchCost;
+    // list of verified matches on the current doc
+    DisiWrapper verifiedMatches;
+    // priority queue of approximations on the current doc that have not been verified yet
+    final PriorityQueue<DisiWrapper> unverifiedMatches;
+
+    private TwoPhase(DocIdSetIterator approximation, float matchCost) {
+      super(approximation);
+      this.matchCost = matchCost;
+      unverifiedMatches = new PriorityQueue<DisiWrapper>(DisjunctionScorer.this.subScorers.size()) {
+        @Override
+        protected boolean lessThan(DisiWrapper a, DisiWrapper b) {
+          return a.matchCost < b.matchCost;
+        }
+      };
+    }
+
+    DisiWrapper getSubMatches() throws IOException {
+      // iteration order does not matter
+      for (DisiWrapper w : unverifiedMatches) {
+        if (w.twoPhaseView.matches()) {
+          w.next = verifiedMatches;
+          verifiedMatches = w;
+        }
+      }
+      unverifiedMatches.clear();
+      return verifiedMatches;
+    }
+    
+    @Override
+    public boolean matches() throws IOException {
+      verifiedMatches = null;
+      unverifiedMatches.clear();
+      
+      for (DisiWrapper w = subScorers.topList(); w != null; ) {
+        DisiWrapper next = w.next;
+        
+        if (w.twoPhaseView == null) {
+          // implicitly verified, move it to verifiedMatches
+          w.next = verifiedMatches;
+          verifiedMatches = w;
+          
+          if (needsScores == false) {
+            // we can stop here
+            return true;
+          }
+        } else {
+          unverifiedMatches.add(w);
+        }
+        w = next;
+      }
+      
+      if (verifiedMatches != null) {
+        return true;
+      }
+      
+      // verify subs that have an two-phase iterator
+      // least-costly ones first
+      while (unverifiedMatches.size() > 0) {
+        DisiWrapper w = unverifiedMatches.pop();
+        if (w.twoPhaseView.matches()) {
+          w.next = null;
+          verifiedMatches = w;
+          return true;
+        }
+      }
+      
+      return false;
+    }
+    
+    @Override
+    public float matchCost() {
+      return matchCost;
+    }
+  }
+
   @Override
   public final int docID() {
-   return doc;
+   return subScorers.top().doc;
   }
- 
-  @Override
-  public final int nextDoc() throws IOException {
-    assert doc != NO_MORE_DOCS;
-    while(true) {
-      if (subScorers[0].nextDoc() != NO_MORE_DOCS) {
-        heapAdjust(0);
-      } else {
-        heapRemoveRoot();
-        if (numScorers == 0) {
-          return doc = NO_MORE_DOCS;
-        }
-      }
-      int docID = subScorers[0].docID();
-      if (docID != doc) {
-        freq = -1;
-        return doc = docID;
-      }
+
+  DisiWrapper getSubMatches() throws IOException {
+    if (twoPhase == null) {
+      return subScorers.topList();
+    } else {
+      return twoPhase.getSubMatches();
     }
-  }
-  
-  @Override
-  public final int advance(int target) throws IOException {
-    assert doc != NO_MORE_DOCS;
-    while(true) {
-      if (subScorers[0].advance(target) != NO_MORE_DOCS) {
-        heapAdjust(0);
-      } else {
-        heapRemoveRoot();
-        if (numScorers == 0) {
-          return doc = NO_MORE_DOCS;
-        }
-      }
-      int docID = subScorers[0].docID();
-      if (docID >= target) {
-        freq = -1;
-        return doc = docID;
-      }
-    }
-  }
-  
-  // if we haven't already computed freq + score, do so
-  private void visitScorers() throws IOException {
-    reset();
-    freq = 1;
-    accum(subScorers[0]);
-    visit(1);
-    visit(2);
-  }
-  
-  // TODO: remove recursion.
-  private void visit(int root) throws IOException {
-    if (root < numScorers && subScorers[root].docID() == doc) {
-      freq++;
-      accum(subScorers[root]);
-      visit((root<<1)+1);
-      visit((root<<1)+2);
-    }
-  }
-  
-  @Override
-  public final float score() throws IOException {
-    visitScorers();
-    return getFinal();
   }
 
   @Override
   public final int freq() throws IOException {
-    if (freq < 0) {
-      visitScorers();
+    DisiWrapper subMatches = getSubMatches();
+    int freq = 1;
+    for (DisiWrapper w = subMatches.next; w != null; w = w.next) {
+      freq += 1;
     }
     return freq;
   }
-  
-  /** Reset score state for a new match */
-  protected abstract void reset();
-  
-  /** Factor in sub-scorer match */
-  protected abstract void accum(Scorer subScorer) throws IOException;
-  
-  /** Return final score */
-  protected abstract float getFinal();
+
+  @Override
+  public final float score() throws IOException {
+    return score(getSubMatches());
+  }
+
+  /** Compute the score for the given linked list of scorers. */
+  protected abstract float score(DisiWrapper topList) throws IOException;
+
+  @Override
+  public final Collection<ChildScorer> getChildren() {
+    ArrayList<ChildScorer> children = new ArrayList<>();
+    for (DisiWrapper scorer : subScorers) {
+      children.add(new ChildScorer(scorer.scorer, "SHOULD"));
+    }
+    return children;
+  }
+
 }

@@ -18,12 +18,14 @@ package org.apache.solr.morphlines.solr;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.List;
 
 import org.apache.solr.cloud.ZkController;
 import org.apache.solr.common.cloud.Aliases;
 import org.apache.solr.common.cloud.ClusterState;
 import org.apache.solr.common.cloud.SolrZkClient;
+import org.apache.solr.common.cloud.ZkConfigManager;
 import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.util.StrUtils;
@@ -39,7 +41,7 @@ import com.google.common.io.Files;
  */
 final class ZooKeeperDownloader {
   
-  private static final Logger LOG = LoggerFactory.getLogger(ZooKeeperDownloader.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   public SolrZkClient getZkClient(String zkHost) {
     if (zkHost == null) {
@@ -89,7 +91,7 @@ final class ZooKeeperDownloader {
       configName = props.getStr(ZkController.CONFIGNAME_PROP);
     }
     
-    if (configName != null && !zkClient.exists(ZkController.CONFIGS_ZKNODE + "/" + configName, true)) {
+    if (configName != null && !zkClient.exists(ZkConfigManager.CONFIGS_ZKNODE + "/" + configName, true)) {
       LOG.error("Specified config does not exist in ZooKeeper:" + configName);
       throw new IllegalArgumentException("Specified config does not exist in ZooKeeper:"
         + configName);
@@ -105,7 +107,8 @@ final class ZooKeeperDownloader {
   throws IOException, InterruptedException, KeeperException {
     Preconditions.checkArgument(dir.exists());
     Preconditions.checkArgument(dir.isDirectory());
-    ZkController.downloadConfigDir(zkClient, configName, dir);
+    ZkConfigManager manager = new ZkConfigManager(zkClient);
+    manager.downloadConfigDir(configName, dir.toPath());
     File confDir = new File(dir, "conf");
     if (!confDir.isDirectory()) {
       // create a temporary directory with "conf" subdir and mv the config in there.  This is

@@ -1,5 +1,3 @@
-package org.apache.lucene.benchmark.byTask.feeds;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.benchmark.byTask.feeds;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.benchmark.byTask.feeds;
+
 
 import java.util.ArrayList;
 import java.util.StringTokenizer;
@@ -50,29 +50,31 @@ public class SimpleSloppyPhraseQueryMaker extends SimpleQueryMaker {
         for (int wd=0; wd<words.length-qlen-slop; wd++) {
           // ordered
           int remainedSlop = slop;
-          PhraseQuery q = new PhraseQuery();
-          q.setSlop(slop);
           int wind = wd;
+          PhraseQuery.Builder builder = new PhraseQuery.Builder();
           for (int i=0; i<qlen; i++) {
-            q.add(new Term(DocMaker.BODY_FIELD,words[wind++]));
+            builder.add(new Term(DocMaker.BODY_FIELD, words[wind++]), i);
             if (remainedSlop>0) {
               remainedSlop--;
               wind++;
             }
           }
+          builder.setSlop(slop);
+          PhraseQuery q = builder.build();
           queries.add(q);
           // reversed
           remainedSlop = slop;
-          q = new PhraseQuery();
-          q.setSlop(slop+2*qlen);
           wind = wd+qlen+remainedSlop-1;
+          builder = new PhraseQuery.Builder();
           for (int i=0; i<qlen; i++) {
-            q.add(new Term(DocMaker.BODY_FIELD,words[wind--]));
+            builder.add(new Term(DocMaker.BODY_FIELD, words[wind--]), i);
             if (remainedSlop>0) {
               remainedSlop--;
               wind--;
             }
           }
+          builder.setSlop(slop + 2 * qlen);
+          q = builder.build();
           queries.add(q);
         }
       }

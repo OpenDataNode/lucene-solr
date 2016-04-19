@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,17 +14,20 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
-import org.apache.solr.client.solrj.SolrServer;
-import org.apache.solr.client.solrj.embedded.JettySolrRunner;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.request.UpdateRequest;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrException;
-import org.apache.solr.common.params.ShardParams;
 import org.apache.solr.common.util.StrUtils;
 import org.junit.BeforeClass;
+import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.lang.invoke.MethodHandles;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -35,6 +36,8 @@ import java.util.Set;
 
 
 public class TestDistribDocBasedVersion extends AbstractFullDistribZkTestBase {
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   String bucket1 = "shard1";      // shard1: top bits:10  80000000:ffffffff
   String bucket2 = "shard2";      // shard2: top bits:00  00000000:7fffffff
@@ -55,8 +58,6 @@ public class TestDistribDocBasedVersion extends AbstractFullDistribZkTestBase {
   public TestDistribDocBasedVersion() {
     schemaString = "schema15.xml";      // we need a string id
     super.sliceCount = 2;
-    super.shardCount = 4;
-    super.fixShardCount = true;  // we only want to test with exactly 2 slices.
 
 
     /***
@@ -89,8 +90,9 @@ public class TestDistribDocBasedVersion extends AbstractFullDistribZkTestBase {
      ***/
   }
 
-  @Override
-  public void doTest() throws Exception {
+  @Test
+  @ShardsFixed(num = 4)
+  public void test() throws Exception {
     boolean testFinished = false;
     try {
       handle.clear();
@@ -116,9 +118,9 @@ public class TestDistribDocBasedVersion extends AbstractFullDistribZkTestBase {
     log.info("### STARTING doTestHardFail");
 
     // use a leader so we test both forwarding and non-forwarding logic
-    ss = shardToLeaderJetty.get(bucket1).client.solrClient;
+    solrClient = shardToLeaderJetty.get(bucket1).client.solrClient;
 
-    // ss = cloudClient;   CloudSolrServer doesn't currently support propagating error codes
+    // solrClient = cloudClient;   CloudSolrServer doesn't currently support propagating error codes
 
     doTestHardFail("p!doc1");
     doTestHardFail("q!doc1");
@@ -139,7 +141,7 @@ public class TestDistribDocBasedVersion extends AbstractFullDistribZkTestBase {
     log.info("### STARTING doTestDocVersions");
     assertEquals(2, cloudClient.getZkStateReader().getClusterState().getCollection(DEFAULT_COLLECTION).getSlices().size());
 
-    ss = cloudClient;
+    solrClient = cloudClient;
 
     vadd("b!doc1", 10);
     vadd("c!doc2", 11);
@@ -183,7 +185,7 @@ public class TestDistribDocBasedVersion extends AbstractFullDistribZkTestBase {
     // now test with a non-smart client
     //
     // use a leader so we test both forwarding and non-forwarding logic
-    ss = shardToLeaderJetty.get(bucket1).client.solrClient;
+    solrClient = shardToLeaderJetty.get(bucket1).client.solrClient;
 
     vadd("b!doc5", 10);
     vadd("c!doc6", 11);
@@ -237,7 +239,7 @@ public class TestDistribDocBasedVersion extends AbstractFullDistribZkTestBase {
 
   }
 
-  SolrServer ss;
+  SolrClient solrClient;
 
   void vdelete(String id, long version, String... params) throws Exception {
     UpdateRequest req = new UpdateRequest();
@@ -246,7 +248,7 @@ public class TestDistribDocBasedVersion extends AbstractFullDistribZkTestBase {
     for (int i=0; i<params.length; i+=2) {
       req.setParam( params[i], params[i+1]);
     }
-    ss.request(req);
+    solrClient.request(req);
     // req.process(cloudClient);
   }
 
@@ -256,7 +258,7 @@ public class TestDistribDocBasedVersion extends AbstractFullDistribZkTestBase {
     for (int i=0; i<params.length; i+=2) {
       req.setParam( params[i], params[i+1]);
     }
-    ss.request(req);
+    solrClient.request(req);
   }
 
   void vaddFail(String id, long version, int errCode, String... params) throws Exception {
@@ -315,7 +317,7 @@ public class TestDistribDocBasedVersion extends AbstractFullDistribZkTestBase {
       expectedIds.put(strs.get(i), Long.valueOf(verS.get(i)));
     }
 
-    ss.query(params("qt","/get", "ids",ids));
+    solrClient.query(params("qt", "/get", "ids", ids));
 
     QueryResponse rsp = cloudClient.query(params("qt","/get", "ids",ids));
     Map<String, Object> obtainedIds = new HashMap<>();
@@ -327,7 +329,7 @@ public class TestDistribDocBasedVersion extends AbstractFullDistribZkTestBase {
   }
 
   void doRTG(String ids) throws Exception {
-    ss.query(params("qt","/get", "ids",ids));
+    solrClient.query(params("qt", "/get", "ids", ids));
 
     Set<String> expectedIds = new HashSet<>( StrUtils.splitSmart(ids, ",", true) );
 
@@ -348,10 +350,4 @@ public class TestDistribDocBasedVersion extends AbstractFullDistribZkTestBase {
     req.setParams(params(reqParams));
     req.process(cloudClient);
   }
-
-  @Override
-  public void tearDown() throws Exception {
-    super.tearDown();
-  }
-
 }

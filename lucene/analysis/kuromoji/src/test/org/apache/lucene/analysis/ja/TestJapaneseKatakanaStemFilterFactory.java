@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.ja;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,12 @@ package org.apache.lucene.analysis.ja;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.ja;
+
 
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
 
 import java.io.IOException;
 import java.io.StringReader;
@@ -31,9 +32,8 @@ public class TestJapaneseKatakanaStemFilterFactory extends BaseTokenStreamTestCa
   public void testKatakanaStemming() throws IOException {
     JapaneseTokenizerFactory tokenizerFactory = new JapaneseTokenizerFactory(new HashMap<String,String>());
     tokenizerFactory.inform(new StringMockResourceLoader(""));
-    TokenStream tokenStream = tokenizerFactory.create(newAttributeFactory(), 
-        new StringReader("明後日パーティーに行く予定がある。図書館で資料をコピーしました。")
-    );
+    TokenStream tokenStream = tokenizerFactory.create(newAttributeFactory());
+    ((Tokenizer)tokenStream).setReader(new StringReader("明後日パーティーに行く予定がある。図書館で資料をコピーしました。"));
     JapaneseKatakanaStemFilterFactory filterFactory = new JapaneseKatakanaStemFilterFactory(new HashMap<String,String>());;
     assertTokenStreamContents(filterFactory.create(tokenStream),
         new String[]{ "明後日", "パーティ", "に", "行く", "予定", "が", "ある",   // パーティー should be stemmed

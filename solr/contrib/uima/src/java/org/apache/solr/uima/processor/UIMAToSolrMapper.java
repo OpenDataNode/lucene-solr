@@ -1,5 +1,3 @@
-package org.apache.solr.uima.processor;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.uima.processor;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.uima.processor;
 
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.uima.processor.SolrUIMAConfiguration.MapField;
@@ -27,6 +26,7 @@ import org.apache.uima.jcas.tcas.Annotation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.invoke.MethodHandles;
 import java.util.Map;
 
 /**
@@ -36,11 +36,11 @@ import java.util.Map;
  */
 public class UIMAToSolrMapper {
 
-  private final Logger log = LoggerFactory.getLogger(UIMAToSolrMapper.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-  private SolrInputDocument document;
+  private final SolrInputDocument document;
 
-  private JCas cas;
+  private final JCas cas;
 
   public UIMAToSolrMapper(SolrInputDocument document, JCas cas) {
     this.document = document;
@@ -67,7 +67,7 @@ public class UIMAToSolrMapper {
           if (log.isInfoEnabled()) {
             log.info("mapping {}@{} to {}", new Object[]{typeName, featureName, fieldName});
           }
-          String featureValue = null;
+          String featureValue;
           if (fs instanceof Annotation && "coveredText".equals(featureName)) {
             featureValue = ((Annotation) fs).getCoveredText();
           } else {

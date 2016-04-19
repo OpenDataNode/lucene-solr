@@ -1,23 +1,3 @@
-package org.apache.lucene.search;
-
-import org.apache.lucene.document.Field;
-import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.DocIdBitSet;
-import org.apache.lucene.util.LuceneTestCase;
-
-import java.util.BitSet;
-import java.io.IOException;
-
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.Term;
-import org.apache.lucene.index.IndexWriterConfig.OpenMode;
-import org.apache.lucene.store.Directory;
-import org.apache.lucene.analysis.MockAnalyzer;
-import org.apache.lucene.document.Document;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -34,26 +14,50 @@ import org.apache.lucene.document.Document;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
+import java.io.IOException;
+import java.util.BitSet;
+
+import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig.OpenMode;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.BitDocIdSet;
+import org.apache.lucene.util.BitSetIterator;
+import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.FixedBitSet;
+import org.apache.lucene.util.LuceneTestCase;
+
 
 public class TestScorerPerf extends LuceneTestCase {
   boolean validate = true;  // set to false when doing performance testing
 
-  BitSet[] sets;
+  FixedBitSet[] sets;
   Term[] terms;
   IndexSearcher s;
   IndexReader r;
   Directory d;
 
   // TODO: this should be setUp()....
-  public void createDummySearcher() throws Exception {
+  public void createDummySearcher(int maxDoc) throws Exception {
       // Create a dummy index with nothing in it.
     // This could possibly fail if Lucene starts checking for docid ranges...
     d = newDirectory();
     IndexWriter iw = new IndexWriter(d, newIndexWriterConfig(new MockAnalyzer(random())));
-    iw.addDocument(new Document());
-    iw.close();
-    r = DirectoryReader.open(d);
+    for (int i = 0; i < maxDoc; ++i) {
+      iw.addDocument(new Document());
+    }
+    iw.forceMerge(1);
+    r = DirectoryReader.open(iw, false);
     s = newSearcher(r);
+    iw.close();
   }
 
   public void createRandomTerms(int nDocs, int nTerms, double power, Directory dir) throws Exception {
@@ -81,29 +85,26 @@ public class TestScorerPerf extends LuceneTestCase {
   }
 
 
-  public BitSet randBitSet(int sz, int numBitsToSet) {
-    BitSet set = new BitSet(sz);
+  public FixedBitSet randBitSet(int sz, int numBitsToSet) {
+    FixedBitSet set = new FixedBitSet(sz);
     for (int i=0; i<numBitsToSet; i++) {
       set.set(random().nextInt(sz));
     }
     return set;
   }
 
-  public BitSet[] randBitSets(int numSets, int setSize) {
-    BitSet[] sets = new BitSet[numSets];
+  public FixedBitSet[] randBitSets(int numSets, int setSize) {
+    FixedBitSet[] sets = new FixedBitSet[numSets];
     for (int i=0; i<sets.length; i++) {
       sets[i] = randBitSet(setSize, random().nextInt(setSize));
     }
     return sets;
   }
 
-  public static class CountingHitCollector extends Collector {
+  public static class CountingHitCollector extends SimpleCollector {
     int count=0;
     int sum=0;
     protected int docBase = 0;
-
-    @Override
-    public void setScorer(Scorer scorer) throws IOException {}
     
     @Override
     public void collect(int doc) {
@@ -115,20 +116,21 @@ public class TestScorerPerf extends LuceneTestCase {
     public int getSum() { return sum; }
 
     @Override
-    public void setNextReader(AtomicReaderContext context) {
+    protected void doSetNextReader(LeafReaderContext context) throws IOException {
       docBase = context.docBase;
     }
+    
     @Override
-    public boolean acceptsDocsOutOfOrder() {
-      return true;
+    public boolean needsScores() {
+      return false;
     }
   }
 
 
   public static class MatchingHitCollector extends CountingHitCollector {
-    BitSet answer;
+    FixedBitSet answer;
     int pos=-1;
-    public MatchingHitCollector(BitSet answer) {
+    public MatchingHitCollector(FixedBitSet answer) {
       this.answer = answer;
     }
 
@@ -142,19 +144,49 @@ public class TestScorerPerf extends LuceneTestCase {
     }
   }
 
+  private static class BitSetQuery extends Query {
 
-  BitSet addClause(BooleanQuery bq, BitSet result) {
-    final BitSet rnd = sets[random().nextInt(sets.length)];
-    Query q = new ConstantScoreQuery(new Filter() {
-      @Override
-      public DocIdSet getDocIdSet (AtomicReaderContext context, Bits acceptDocs) {
-        assertNull("acceptDocs should be null, as we have an index without deletions", acceptDocs);
-        return new DocIdBitSet(rnd);
+    private final FixedBitSet docs;
+
+    BitSetQuery(FixedBitSet docs) {
+      this.docs = docs;
+    }
+
+    @Override
+    public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+      return new ConstantScoreWeight(this) {
+        @Override
+        public Scorer scorer(LeafReaderContext context) throws IOException {
+          return new ConstantScoreScorer(this, score(), new BitSetIterator(docs, docs.approximateCardinality()));
+        }
+      };
+    }
+    
+    @Override
+    public String toString(String field) {
+      return "randomBitSetFilter";
+    }
+    
+    @Override
+    public boolean equals(Object obj) {
+      if (super.equals(obj) == false) {
+        return false;
       }
-    });
+      return docs == ((BitSetQuery) obj).docs;
+    }
+
+    @Override
+    public int hashCode() {
+      return 31 * super.hashCode() + System.identityHashCode(docs);
+    }
+  }
+
+  FixedBitSet addClause(BooleanQuery.Builder bq, FixedBitSet result) {
+    final FixedBitSet rnd = sets[random().nextInt(sets.length)];
+    Query q = new BitSetQuery(rnd);
     bq.add(q, BooleanClause.Occur.MUST);
     if (validate) {
-      if (result==null) result = (BitSet)rnd.clone();
+      if (result==null) result = rnd.clone();
       else result.and(rnd);
     }
     return result;
@@ -166,15 +198,15 @@ public class TestScorerPerf extends LuceneTestCase {
 
     for (int i=0; i<iter; i++) {
       int nClauses = random().nextInt(maxClauses-1)+2; // min 2 clauses
-      BooleanQuery bq = new BooleanQuery();
-      BitSet result=null;
+      BooleanQuery.Builder bq = new BooleanQuery.Builder();
+      FixedBitSet result=null;
       for (int j=0; j<nClauses; j++) {
         result = addClause(bq,result);
       }
 
       CountingHitCollector hc = validate ? new MatchingHitCollector(result)
                                          : new CountingHitCollector();
-      s.search(bq, hc);
+      s.search(bq.build(), hc);
       ret += hc.getSum();
 
       if (validate) assertEquals(result.cardinality(), hc.getCount());
@@ -190,23 +222,23 @@ public class TestScorerPerf extends LuceneTestCase {
 
     for (int i=0; i<iter; i++) {
       int oClauses = random().nextInt(maxOuterClauses-1)+2;
-      BooleanQuery oq = new BooleanQuery();
-      BitSet result=null;
+      BooleanQuery.Builder oq = new BooleanQuery.Builder();
+      FixedBitSet result=null;
 
       for (int o=0; o<oClauses; o++) {
 
       int nClauses = random().nextInt(maxClauses-1)+2; // min 2 clauses
-      BooleanQuery bq = new BooleanQuery();
+      BooleanQuery.Builder bq = new BooleanQuery.Builder();
       for (int j=0; j<nClauses; j++) {
         result = addClause(bq,result);
       }
 
-      oq.add(bq, BooleanClause.Occur.MUST);
+      oq.add(bq.build(), BooleanClause.Occur.MUST);
       } // outer
 
       CountingHitCollector hc = validate ? new MatchingHitCollector(result)
                                          : new CountingHitCollector();
-      s.search(oq, hc);
+      s.search(oq.build(), hc);
       nMatches += hc.getCount();
       ret += hc.getSum();
       if (validate) assertEquals(result.cardinality(), hc.getCount());
@@ -227,7 +259,7 @@ public class TestScorerPerf extends LuceneTestCase {
     long nMatches=0;
     for (int i=0; i<iter; i++) {
       int nClauses = random().nextInt(maxClauses-1)+2; // min 2 clauses
-      BooleanQuery bq = new BooleanQuery();
+      BooleanQuery.Builder bq = new BooleanQuery.Builder();
       BitSet termflag = new BitSet(termsInIndex);
       for (int j=0; j<nClauses; j++) {
         int tnum;
@@ -241,7 +273,7 @@ public class TestScorerPerf extends LuceneTestCase {
       }
 
       CountingHitCollector hc = new CountingHitCollector();
-      s.search(bq, hc);
+      s.search(bq.build(), hc);
       nMatches += hc.getCount();
       ret += hc.getSum();
     }
@@ -261,11 +293,11 @@ public class TestScorerPerf extends LuceneTestCase {
     long nMatches=0;
     for (int i=0; i<iter; i++) {
       int oClauses = random().nextInt(maxOuterClauses-1)+2;
-      BooleanQuery oq = new BooleanQuery();
+      BooleanQuery.Builder oq = new BooleanQuery.Builder();
       for (int o=0; o<oClauses; o++) {
 
       int nClauses = random().nextInt(maxClauses-1)+2; // min 2 clauses
-      BooleanQuery bq = new BooleanQuery();
+      BooleanQuery.Builder bq = new BooleanQuery.Builder();
       BitSet termflag = new BitSet(termsInIndex);
       for (int j=0; j<nClauses; j++) {
         int tnum;
@@ -278,12 +310,12 @@ public class TestScorerPerf extends LuceneTestCase {
         bq.add(tq, BooleanClause.Occur.MUST);
       } // inner
 
-      oq.add(bq, BooleanClause.Occur.MUST);
+      oq.add(bq.build(), BooleanClause.Occur.MUST);
       } // outer
 
 
       CountingHitCollector hc = new CountingHitCollector();
-      s.search(oq, hc);
+      s.search(oq.build(), hc);
       nMatches += hc.getCount();     
       ret += hc.getSum();
     }
@@ -301,12 +333,14 @@ public class TestScorerPerf extends LuceneTestCase {
 
     for (int i=0; i<iter; i++) {
       int nClauses = random().nextInt(maxClauses-1)+2; // min 2 clauses
-      PhraseQuery q = new PhraseQuery();
+      PhraseQuery.Builder builder = new PhraseQuery.Builder();
       for (int j=0; j<nClauses; j++) {
         int tnum = random().nextInt(termsInIndex);
-        q.add(new Term("f",Character.toString((char)(tnum+'A'))), j);
+        builder.add(new Term("f", Character.toString((char)(tnum+'A'))));
       }
-      q.setSlop(termsInIndex);  // this could be random too
+      // slop could be random too
+      builder.setSlop(termsInIndex);
+      PhraseQuery q = builder.build();
 
       CountingHitCollector hc = new CountingHitCollector();
       s.search(q, hc);
@@ -319,9 +353,10 @@ public class TestScorerPerf extends LuceneTestCase {
 
   public void testConjunctions() throws Exception {
     // test many small sets... the bugs will be found on boundary conditions
-    createDummySearcher();
     validate=true;
-    sets=randBitSets(atLeast(1000), atLeast(10));
+    final int maxDoc = atLeast(10);
+    createDummySearcher(maxDoc);
+    sets=randBitSets(atLeast(1000), maxDoc);
     doConjunctions(atLeast(10000), atLeast(5));
     doNestedConjunctions(atLeast(10000), atLeast(3), atLeast(3));
     r.close();

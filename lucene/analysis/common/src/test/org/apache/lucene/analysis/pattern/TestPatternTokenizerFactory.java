@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.pattern;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,13 @@ package org.apache.lucene.analysis.pattern;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.pattern;
+
 
 import java.io.Reader;
 import java.io.StringReader;
 
-import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.util.BaseTokenStreamFactoryTestCase;
 
 /** Simple Tests to ensure this factory is working */
@@ -28,7 +28,8 @@ public class TestPatternTokenizerFactory extends BaseTokenStreamFactoryTestCase 
   public void testFactory() throws Exception {
     final Reader reader = new StringReader("Günther Günther is here");
     // create PatternTokenizer
-    TokenStream stream = tokenizerFactory("Pattern", "pattern", "[,;/\\s]+").create(newAttributeFactory(), reader);
+    Tokenizer stream = tokenizerFactory("Pattern", "pattern", "[,;/\\s]+").create(newAttributeFactory());
+    stream.setReader(reader);
     assertTokenStreamContents(stream,
         new String[] { "Günther", "Günther", "is", "here" });
   }

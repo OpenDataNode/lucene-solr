@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.classic;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.classic;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.classic;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,10 +23,10 @@ import java.util.Map;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.MultiPhraseQuery;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.util.Version;
 
 /**
  * A QueryParser which constructs queries to search multiple fields.
@@ -56,7 +55,7 @@ public class MultiFieldQueryParser extends QueryParser
    * +(title:term1 body:term1) +(title:term2 body:term2)
    * </code>
    * 
-   * <p>When you pass a boost (title=>5 body=>10) you can get </p>
+   * <p>When you pass a boost (title=&gt;5 body=&gt;10) you can get </p>
    * 
    * <code>
    * +(title:term1^5.0 body:term1^10.0) +(title:term2^5.0 body:term2^10.0)
@@ -66,15 +65,7 @@ public class MultiFieldQueryParser extends QueryParser
    * what fields they appear.</p>
    */
   public MultiFieldQueryParser(String[] fields, Analyzer analyzer, Map<String,Float> boosts) {
-    this(Version.LATEST, fields, analyzer, boosts);
-  }
-
-  /**
-   * @deprecated Use {@link #MultiFieldQueryParser(String[], Analyzer, Map)}
-   */
-  @Deprecated
-  public MultiFieldQueryParser(Version matchVersion, String[] fields, Analyzer analyzer, Map<String,Float> boosts) {
-    this(matchVersion, fields, analyzer);
+    this(fields, analyzer);
     this.boosts = boosts;
   }
   
@@ -99,15 +90,7 @@ public class MultiFieldQueryParser extends QueryParser
    * what fields they appear.</p>
    */
   public MultiFieldQueryParser(String[] fields, Analyzer analyzer) {
-    this(Version.LATEST, fields, analyzer);
-  }
-
-  /**
-   * @deprecated Use {@link #MultiFieldQueryParser(String[], Analyzer)}
-   */
-  @Deprecated
-  public MultiFieldQueryParser(Version matchVersion, String[] fields, Analyzer analyzer) {
-    super(matchVersion, null, analyzer);
+    super(null, analyzer);
     this.fields = fields;
   }
   
@@ -123,10 +106,10 @@ public class MultiFieldQueryParser extends QueryParser
             //Get the boost from the map and apply them
             Float boost = boosts.get(fields[i]);
             if (boost != null) {
-              q.setBoost(boost.floatValue());
+              q = new BoostQuery(q, boost.floatValue());
             }
           }
-          applySlop(q,slop);
+          q = applySlop(q,slop);
           clauses.add(new BooleanClause(q, BooleanClause.Occur.SHOULD));
         }
       }
@@ -135,16 +118,25 @@ public class MultiFieldQueryParser extends QueryParser
       return getBooleanQuery(clauses, true);
     }
     Query q = super.getFieldQuery(field, queryText, true);
-    applySlop(q,slop);
+    q = applySlop(q,slop);
     return q;
   }
 
-  private void applySlop(Query q, int slop) {
+  private Query applySlop(Query q, int slop) {
     if (q instanceof PhraseQuery) {
-      ((PhraseQuery) q).setSlop(slop);
+      PhraseQuery.Builder builder = new PhraseQuery.Builder();
+      builder.setSlop(slop);
+      PhraseQuery pq = (PhraseQuery) q;
+      org.apache.lucene.index.Term[] terms = pq.getTerms();
+      int[] positions = pq.getPositions();
+      for (int i = 0; i < terms.length; ++i) {
+        builder.add(terms[i], positions[i]);
+      }
+      q = builder.build();
     } else if (q instanceof MultiPhraseQuery) {
       ((MultiPhraseQuery) q).setSlop(slop);
     }
+    return q;
   }
   
 
@@ -160,7 +152,7 @@ public class MultiFieldQueryParser extends QueryParser
             //Get the boost from the map and apply them
             Float boost = boosts.get(fields[i]);
             if (boost != null) {
-              q.setBoost(boost.floatValue());
+              q = new BoostQuery(q, boost.floatValue());
             }
           }
           clauses.add(new BooleanClause(q, BooleanClause.Occur.SHOULD));
@@ -262,32 +254,20 @@ public class MultiFieldQueryParser extends QueryParser
    * @throws IllegalArgumentException if the length of the queries array differs
    *  from the length of the fields array
    */
-  public static Query parse(String[] queries, String[] fields,
-                            Analyzer analyzer) throws ParseException
-  {
-    return parse(Version.LATEST, queries, fields, analyzer);
-  }
-
-  /**
-   * @deprecated Use {@link #parse(String[], String[], org.apache.lucene.analysis.Analyzer)}
-   */
-  @Deprecated
-  public static Query parse(Version matchVersion, String[] queries, String[] fields,
-      Analyzer analyzer) throws ParseException
-  {
+  public static Query parse(String[] queries, String[] fields, Analyzer analyzer) throws ParseException {
     if (queries.length != fields.length)
       throw new IllegalArgumentException("queries.length != fields.length");
-    BooleanQuery bQuery = new BooleanQuery();
+    BooleanQuery.Builder bQuery = new BooleanQuery.Builder();
     for (int i = 0; i < fields.length; i++)
     {
-      QueryParser qp = new QueryParser(matchVersion, fields[i], analyzer);
+      QueryParser qp = new QueryParser(fields[i], analyzer);
       Query q = qp.parse(queries[i]);
       if (q!=null && // q never null, just being defensive
-          (!(q instanceof BooleanQuery) || ((BooleanQuery)q).getClauses().length>0)) {
+          (!(q instanceof BooleanQuery) || ((BooleanQuery)q).clauses().size()>0)) {
         bQuery.add(q, BooleanClause.Occur.SHOULD);
       }
     }
-    return bQuery;
+    return bQuery.build();
   }
 
   /**
@@ -323,27 +303,18 @@ public class MultiFieldQueryParser extends QueryParser
    */
   public static Query parse(String query, String[] fields,
       BooleanClause.Occur[] flags, Analyzer analyzer) throws ParseException {
-    return parse(Version.LATEST, query, fields, flags, analyzer);
-  }
-
-  /**
-   * @deprecated Use {@link #parse(String, String[], BooleanClause.Occur[], Analyzer)}
-   */
-  @Deprecated
-  public static Query parse(Version matchVersion, String query, String[] fields,
-        BooleanClause.Occur[] flags, Analyzer analyzer) throws ParseException {
     if (fields.length != flags.length)
       throw new IllegalArgumentException("fields.length != flags.length");
-    BooleanQuery bQuery = new BooleanQuery();
+    BooleanQuery.Builder bQuery = new BooleanQuery.Builder();
     for (int i = 0; i < fields.length; i++) {
-      QueryParser qp = new QueryParser(matchVersion, fields[i], analyzer);
+      QueryParser qp = new QueryParser(fields[i], analyzer);
       Query q = qp.parse(query);
       if (q!=null && // q never null, just being defensive 
-          (!(q instanceof BooleanQuery) || ((BooleanQuery)q).getClauses().length>0)) {
+          (!(q instanceof BooleanQuery) || ((BooleanQuery)q).clauses().size()>0)) {
         bQuery.add(q, flags[i]);
       }
     }
-    return bQuery;
+    return bQuery.build();
   }
 
   /**
@@ -379,30 +350,21 @@ public class MultiFieldQueryParser extends QueryParser
    *  and flags array differ
    */
   public static Query parse(String[] queries, String[] fields, BooleanClause.Occur[] flags,
-                            Analyzer analyzer) throws ParseException {
-    return parse(Version.LATEST, queries, fields, flags, analyzer);
-  }
-
-  /**
-   * @deprecated Use {@link #parse(String[], String[], BooleanClause.Occur[], Analyzer)}
-   */
-  @Deprecated
-  public static Query parse(Version matchVersion, String[] queries, String[] fields, BooleanClause.Occur[] flags,
       Analyzer analyzer) throws ParseException
   {
     if (!(queries.length == fields.length && queries.length == flags.length))
       throw new IllegalArgumentException("queries, fields, and flags array have have different length");
-    BooleanQuery bQuery = new BooleanQuery();
+    BooleanQuery.Builder bQuery = new BooleanQuery.Builder();
     for (int i = 0; i < fields.length; i++)
     {
-      QueryParser qp = new QueryParser(matchVersion, fields[i], analyzer);
+      QueryParser qp = new QueryParser(fields[i], analyzer);
       Query q = qp.parse(queries[i]);
       if (q!=null && // q never null, just being defensive
-          (!(q instanceof BooleanQuery) || ((BooleanQuery)q).getClauses().length>0)) {
+          (!(q instanceof BooleanQuery) || ((BooleanQuery)q).clauses().size()>0)) {
         bQuery.add(q, flags[i]);
       }
     }
-    return bQuery;
+    return bQuery.build();
   }
 
 }

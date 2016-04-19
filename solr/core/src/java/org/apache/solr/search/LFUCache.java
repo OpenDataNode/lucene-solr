@@ -1,4 +1,3 @@
-package org.apache.solr.search;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,14 +14,9 @@ package org.apache.solr.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import org.apache.solr.common.SolrException;
-import org.apache.solr.common.util.NamedList;
-import org.apache.solr.common.util.SimpleOrderedMap;
-import org.apache.solr.core.SolrCore;
-import org.apache.solr.util.ConcurrentLFUCache;
-
+package org.apache.solr.search;
 import java.io.Serializable;
+import java.lang.invoke.MethodHandles;
 import java.net.URL;
 import java.util.List;
 import java.util.Map;
@@ -30,14 +24,24 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.solr.common.SolrException;
+import org.apache.solr.common.util.NamedList;
+import org.apache.solr.common.util.SimpleOrderedMap;
+import org.apache.solr.core.SolrCore;
+import org.apache.solr.util.ConcurrentLFUCache;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import static org.apache.solr.common.params.CommonParams.NAME;
+
 /**
  * SolrCache based on ConcurrentLFUCache implementation.
- * <p/>
+ * <p>
  * This implementation does not use a separate cleanup thread. Instead it uses the calling thread
  * itself to do the cleanup when the size of the cache exceeds certain limits.
- * <p/>
+ * <p>
  * Also see <a href="http://wiki.apache.org/solr/SolrCaching">SolrCaching</a>
- * <p/>
+ * <p>
  * <b>This API is experimental and subject to change</b>
  *
  * @see org.apache.solr.util.ConcurrentLFUCache
@@ -45,6 +49,7 @@ import java.util.concurrent.TimeUnit;
  * @since solr 3.6
  */
 public class LFUCache<K, V> implements SolrCache<K, V> {
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   // contains the statistics objects for all open caches of the same type
   private List<ConcurrentLFUCache.Stats> statsList;
@@ -64,7 +69,7 @@ public class LFUCache<K, V> implements SolrCache<K, V> {
   public Object init(Map args, Object persistence, CacheRegenerator regenerator) {
     state = State.CREATED;
     this.regenerator = regenerator;
-    name = (String) args.get("name");
+    name = (String) args.get(NAME);
     String str = (String) args.get("size");
     int limit = str == null ? 1024 : Integer.parseInt(str);
     int minLimit;

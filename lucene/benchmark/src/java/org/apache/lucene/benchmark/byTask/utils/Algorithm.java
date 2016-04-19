@@ -1,5 +1,3 @@
-package org.apache.lucene.benchmark.byTask.utils;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.benchmark.byTask.utils;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.benchmark.byTask.utils;
+
 
 import java.io.StreamTokenizer;
 import java.io.StringReader;
@@ -32,7 +32,8 @@ import org.apache.lucene.benchmark.byTask.tasks.TaskSequence;
 /**
  * Test algorithm, as read from file
  */
-public class Algorithm {
+@SuppressWarnings("try")
+public class Algorithm implements AutoCloseable {
   
   private TaskSequence sequence;
   private final String[] taskPackages;
@@ -357,6 +358,11 @@ public class Algorithm {
         extrct.add(p);
       }
     }
+  }
+
+  @Override
+  public void close() throws Exception {
+    sequence.close();
   }
   
 }

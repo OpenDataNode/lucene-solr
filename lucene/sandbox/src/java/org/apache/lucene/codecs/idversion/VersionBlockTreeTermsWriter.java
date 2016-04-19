@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.idversion;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,25 +14,22 @@ package org.apache.lucene.codecs.idversion;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.idversion;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 import org.apache.lucene.codecs.BlockTermState;
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.FieldsConsumer;
-import org.apache.lucene.codecs.PostingsConsumer;
 import org.apache.lucene.codecs.PostingsWriterBase;
-import org.apache.lucene.codecs.TermStats;
-import org.apache.lucene.codecs.TermsConsumer;
 import org.apache.lucene.codecs.blocktree.BlockTreeTermsWriter;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexFileNames;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
@@ -89,7 +84,7 @@ import org.apache.lucene.util.packed.PackedInts;
 
 /**
  * This is just like {@link BlockTreeTermsWriter}, except it also stores a version per term, and adds a method to its TermsEnum
- * implementation to seekExact only if the version is >= the specified version.  The version is added to the terms index to avoid seeking if
+ * implementation to seekExact only if the version is &gt;= the specified version.  The version is added to the terms index to avoid seeking if
  * no term in the block has a high enough version.  The term blocks file is .tiv and the terms index extension is .tipv.
  *
  * @lucene.experimental
@@ -122,17 +117,17 @@ public final class VersionBlockTreeTermsWriter extends FieldsConsumer {
 
   /** Extension of terms file */
   static final String TERMS_EXTENSION = "tiv";
-  final static String TERMS_CODEC_NAME = "VERSION_BLOCK_TREE_TERMS_DICT";
+  final static String TERMS_CODEC_NAME = "VersionBlockTreeTermsDict";
 
   /** Initial terms format. */
-  public static final int VERSION_START = 0;
+  public static final int VERSION_START = 1;
 
   /** Current terms format. */
   public static final int VERSION_CURRENT = VERSION_START;
 
   /** Extension of terms index file */
   static final String TERMS_INDEX_EXTENSION = "tipv";
-  final static String TERMS_INDEX_CODEC_NAME = "VERSION_BLOCK_TREE_TERMS_INDEX";
+  final static String TERMS_INDEX_CODEC_NAME = "VersionBlockTreeTermsIndex";
 
   private final IndexOutput out;
   private final IndexOutput indexOut;
@@ -142,7 +137,6 @@ public final class VersionBlockTreeTermsWriter extends FieldsConsumer {
 
   final PostingsWriterBase postingsWriter;
   final FieldInfos fieldInfos;
-  FieldInfo currentField;
 
   private static class FieldMetaData {
     public final FieldInfo fieldInfo;
@@ -181,20 +175,9 @@ public final class VersionBlockTreeTermsWriter extends FieldsConsumer {
                                      int maxItemsInBlock)
     throws IOException
   {
-    if (minItemsInBlock <= 1) {
-      throw new IllegalArgumentException("minItemsInBlock must be >= 2; got " + minItemsInBlock);
-    }
-    if (maxItemsInBlock <= 0) {
-      throw new IllegalArgumentException("maxItemsInBlock must be >= 1; got " + maxItemsInBlock);
-    }
-    if (minItemsInBlock > maxItemsInBlock) {
-      throw new IllegalArgumentException("maxItemsInBlock must be >= minItemsInBlock; got maxItemsInBlock=" + maxItemsInBlock + " minItemsInBlock=" + minItemsInBlock);
-    }
-    if (2*(minItemsInBlock-1) > maxItemsInBlock) {
-      throw new IllegalArgumentException("maxItemsInBlock must be at least 2*(minItemsInBlock-1); got maxItemsInBlock=" + maxItemsInBlock + " minItemsInBlock=" + minItemsInBlock);
-    }
+    BlockTreeTermsWriter.validateSettings(minItemsInBlock, maxItemsInBlock);
 
-    maxDoc = state.segmentInfo.getDocCount();
+    maxDoc = state.segmentInfo.maxDoc();
 
     final String termsFileName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, TERMS_EXTENSION);
     out = state.directory.createOutput(termsFileName, state.context);
@@ -204,21 +187,20 @@ public final class VersionBlockTreeTermsWriter extends FieldsConsumer {
       fieldInfos = state.fieldInfos;
       this.minItemsInBlock = minItemsInBlock;
       this.maxItemsInBlock = maxItemsInBlock;
-      CodecUtil.writeHeader(out, TERMS_CODEC_NAME, VERSION_CURRENT);   
+      CodecUtil.writeIndexHeader(out, TERMS_CODEC_NAME, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);   
 
       //DEBUG = state.segmentName.equals("_4a");
 
       final String termsIndexFileName = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, TERMS_INDEX_EXTENSION);
       indexOut = state.directory.createOutput(termsIndexFileName, state.context);
-      CodecUtil.writeHeader(indexOut, TERMS_INDEX_CODEC_NAME, VERSION_CURRENT); 
+      CodecUtil.writeIndexHeader(indexOut, TERMS_INDEX_CODEC_NAME, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix); 
 
-      currentField = null;
       this.postingsWriter = postingsWriter;
       // segment = state.segmentInfo.name;
 
       // System.out.println("BTW.init seg=" + state.segmentName);
 
-      postingsWriter.init(out);                          // have consumer write its format/header
+      postingsWriter.init(out, state);                          // have consumer write its format/header
       success = true;
     } finally {
       if (!success) {
@@ -239,14 +221,33 @@ public final class VersionBlockTreeTermsWriter extends FieldsConsumer {
   }
 
   @Override
-  public TermsConsumer addField(FieldInfo field) throws IOException {
-    //DEBUG = field.name.equals("id");
-    //if (DEBUG) System.out.println("\nBTTW.addField seg=" + segment + " field=" + field.name);
-    assert currentField == null || currentField.name.compareTo(field.name) < 0;
-    currentField = field;
-    return new TermsWriter(field);
-  }
+  public void write(Fields fields) throws IOException {
 
+    String lastField = null;
+    for(String field : fields) {
+      assert lastField == null || lastField.compareTo(field) < 0;
+      lastField = field;
+
+      Terms terms = fields.terms(field);
+      if (terms == null) {
+        continue;
+      }
+
+      TermsEnum termsEnum = terms.iterator();
+
+      TermsWriter termsWriter = new TermsWriter(fieldInfos.fieldInfo(field));
+      while (true) {
+        BytesRef term = termsEnum.next();
+        if (term == null) {
+          break;
+        }
+        termsWriter.write(term, termsEnum);
+      }
+
+      termsWriter.finish();
+    }
+  }
+  
   static long encodeOutput(long fp, boolean hasTerms, boolean isFloor) {
     assert fp < (1L << 62);
     return (fp << 2) | (hasTerms ? OUTPUT_FLAG_HAS_TERMS : 0) | (isFloor ? OUTPUT_FLAG_IS_FLOOR : 0);
@@ -405,7 +406,7 @@ public final class VersionBlockTreeTermsWriter extends FieldsConsumer {
   private final RAMOutputStream scratchBytes = new RAMOutputStream();
   private final IntsRefBuilder scratchIntsRef = new IntsRefBuilder();
 
-  class TermsWriter extends TermsConsumer {
+  class TermsWriter {
     private final FieldInfo fieldInfo;
     private final int longsSize;
     private long numTerms;
@@ -728,36 +729,15 @@ public final class VersionBlockTreeTermsWriter extends FieldsConsumer {
       this.longs = new long[longsSize];
     }
     
-    @Override
-    public Comparator<BytesRef> getComparator() {
-      return BytesRef.getUTF8SortedAsUnicodeComparator();
-    }
+    /** Writes one term's worth of postings. */
+    public void write(BytesRef text, TermsEnum termsEnum) throws IOException {
 
-    @Override
-    public PostingsConsumer startTerm(BytesRef text) throws IOException {
-      //if (DEBUG) System.out.println("\nBTTW.startTerm term=" + fieldInfo.name + ":" + toString(text) + " seg=" + segment);
-      postingsWriter.startTerm();
-      /*
-      if (fieldInfo.name.equals("id")) {
-        postingsWriter.termID = Integer.parseInt(text.utf8ToString());
-      } else {
-        postingsWriter.termID = -1;
-      }
-      */
-      return postingsWriter;
-    }
-
-    @Override
-    public void finishTerm(BytesRef text, TermStats stats) throws IOException {
-
-      assert stats.docFreq > 0;
-      //if (DEBUG) System.out.println("BTTW.finishTerm term=" + fieldInfo.name + ":" + toString(text) + " seg=" + segment + " df=" + stats.docFreq);
-      if (((IDVersionPostingsWriter) postingsWriter).lastDocID != -1) {
+      BlockTermState state = postingsWriter.writeTerm(text, termsEnum, docsSeen);
+      // TODO: LUCENE-5693: we don't need this check if we fix IW to not send deleted docs to us on flush:
+      if (state != null && ((IDVersionPostingsWriter) postingsWriter).lastDocID != -1) {
+        assert state.docFreq != 0;
+        assert fieldInfo.getIndexOptions() == IndexOptions.DOCS || state.totalTermFreq >= state.docFreq: "postingsWriter=" + postingsWriter;
         pushTerm(text);
-        BlockTermState state = postingsWriter.newTermState();
-        state.docFreq = stats.docFreq;
-        state.totalTermFreq = stats.totalTermFreq;
-        postingsWriter.finishTerm(state);
 
         PendingTerm term = new PendingTerm(BytesRef.deepCopyOf(text), state);
         pending.add(term);
@@ -807,8 +787,7 @@ public final class VersionBlockTreeTermsWriter extends FieldsConsumer {
     }
 
     // Finishes all terms in this field
-    @Override
-    public void finish(long sumTotalTermFreq, long sumDocFreq, int docCount) throws IOException {
+    public void finish() throws IOException {
       if (numTerms > 0) {
 
         // TODO: if pending.size() is already 1 with a non-zero prefix length
@@ -858,8 +837,14 @@ public final class VersionBlockTreeTermsWriter extends FieldsConsumer {
     private final RAMOutputStream bytesWriter = new RAMOutputStream();
   }
 
+  private boolean closed;
+  
   @Override
   public void close() throws IOException {
+    if (closed) {
+      return;
+    }
+    closed = true;
 
     boolean success = false;
     try {

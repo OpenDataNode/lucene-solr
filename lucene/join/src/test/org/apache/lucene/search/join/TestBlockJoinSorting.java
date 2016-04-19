@@ -1,5 +1,3 @@
-package org.apache.lucene.search.join;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,23 +14,20 @@ package org.apache.lucene.search.join;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.join;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.NoMergePolicy;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.CachingWrapperFilter;
 import org.apache.lucene.search.FieldDoc;
-import org.apache.lucene.search.Filter;
-import org.apache.lucene.search.FilteredQuery;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.PrefixQuery;
-import org.apache.lucene.search.QueryWrapperFilter;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermQuery;
@@ -58,14 +53,17 @@ public class TestBlockJoinSorting extends LuceneTestCase {
     List<Document> docs = new ArrayList<>();
     Document document = new Document();
     document.add(new StringField("field2", "a", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("a")));
     document.add(new StringField("filter_1", "T", Field.Store.NO));
     docs.add(document);
     document = new Document();
     document.add(new StringField("field2", "b", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("b")));
     document.add(new StringField("filter_1", "T", Field.Store.NO));
     docs.add(document);
     document = new Document();
     document.add(new StringField("field2", "c", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("c")));
     document.add(new StringField("filter_1", "T", Field.Store.NO));
     docs.add(document);
     document = new Document();
@@ -78,14 +76,17 @@ public class TestBlockJoinSorting extends LuceneTestCase {
     docs.clear();
     document = new Document();
     document.add(new StringField("field2", "c", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("c")));
     document.add(new StringField("filter_1", "T", Field.Store.NO));
     docs.add(document);
     document = new Document();
     document.add(new StringField("field2", "d", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("d")));
     document.add(new StringField("filter_1", "T", Field.Store.NO));
     docs.add(document);
     document = new Document();
     document.add(new StringField("field2", "e", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("e")));
     document.add(new StringField("filter_1", "T", Field.Store.NO));
     docs.add(document);
     document = new Document();
@@ -97,14 +98,17 @@ public class TestBlockJoinSorting extends LuceneTestCase {
     docs.clear();
     document = new Document();
     document.add(new StringField("field2", "e", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("e")));
     document.add(new StringField("filter_1", "T", Field.Store.NO));
     docs.add(document);
     document = new Document();
     document.add(new StringField("field2", "f", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("f")));
     document.add(new StringField("filter_1", "T", Field.Store.NO));
     docs.add(document);
     document = new Document();
     document.add(new StringField("field2", "g", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("g")));
     document.add(new StringField("filter_1", "T", Field.Store.NO));
     docs.add(document);
     document = new Document();
@@ -116,14 +120,17 @@ public class TestBlockJoinSorting extends LuceneTestCase {
     docs.clear();
     document = new Document();
     document.add(new StringField("field2", "g", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("g")));
     document.add(new StringField("filter_1", "T", Field.Store.NO));
     docs.add(document);
     document = new Document();
     document.add(new StringField("field2", "h", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("h")));
     document.add(new StringField("filter_1", "F", Field.Store.NO));
     docs.add(document);
     document = new Document();
     document.add(new StringField("field2", "i", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("i")));
     document.add(new StringField("filter_1", "F", Field.Store.NO));
     docs.add(document);
     document = new Document();
@@ -136,14 +143,17 @@ public class TestBlockJoinSorting extends LuceneTestCase {
     docs.clear();
     document = new Document();
     document.add(new StringField("field2", "i", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("i")));
     document.add(new StringField("filter_1", "F", Field.Store.NO));
     docs.add(document);
     document = new Document();
     document.add(new StringField("field2", "j", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("j")));
     document.add(new StringField("filter_1", "F", Field.Store.NO));
     docs.add(document);
     document = new Document();
     document.add(new StringField("field2", "k", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("k")));
     document.add(new StringField("filter_1", "F", Field.Store.NO));
     docs.add(document);
     document = new Document();
@@ -155,14 +165,17 @@ public class TestBlockJoinSorting extends LuceneTestCase {
     docs.clear();
     document = new Document();
     document.add(new StringField("field2", "k", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("k")));
     document.add(new StringField("filter_1", "T", Field.Store.NO));
     docs.add(document);
     document = new Document();
     document.add(new StringField("field2", "l", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("l")));
     document.add(new StringField("filter_1", "T", Field.Store.NO));
     docs.add(document);
     document = new Document();
     document.add(new StringField("field2", "m", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("m")));
     document.add(new StringField("filter_1", "T", Field.Store.NO));
     docs.add(document);
     document = new Document();
@@ -171,23 +184,20 @@ public class TestBlockJoinSorting extends LuceneTestCase {
     docs.add(document);
     w.addDocuments(docs);
 
-    // This doc will not be included, because it doesn't have nested docs
-    document = new Document();
-    document.add(new StringField("__type", "parent", Field.Store.NO));
-    document.add(new StringField("field1", "h", Field.Store.NO));
-    w.addDocument(document);
-
     docs.clear();
     document = new Document();
     document.add(new StringField("field2", "m", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("m")));
     document.add(new StringField("filter_1", "T", Field.Store.NO));
     docs.add(document);
     document = new Document();
     document.add(new StringField("field2", "n", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("n")));
     document.add(new StringField("filter_1", "F", Field.Store.NO));
     docs.add(document);
     document = new Document();
     document.add(new StringField("field2", "o", Field.Store.NO));
+    document.add(new SortedDocValuesField("field2", new BytesRef("o")));
     document.add(new StringField("filter_1", "F", Field.Store.NO));
     docs.add(document);
     document = new Document();
@@ -197,30 +207,20 @@ public class TestBlockJoinSorting extends LuceneTestCase {
     w.addDocuments(docs);
     w.commit();
 
-    // Some garbage docs, just to check if the NestedFieldComparator can deal with this.
-    document = new Document();
-    document.add(new StringField("fieldXXX", "x", Field.Store.NO));
-    w.addDocument(document);
-    document = new Document();
-    document.add(new StringField("fieldXXX", "x", Field.Store.NO));
-    w.addDocument(document);
-    document = new Document();
-    document.add(new StringField("fieldXXX", "x", Field.Store.NO));
-    w.addDocument(document);
-
-    IndexSearcher searcher = new IndexSearcher(DirectoryReader.open(w.w, false));
+    IndexSearcher searcher = new IndexSearcher(DirectoryReader.open(w.w));
     w.close();
-    Filter parentFilter = new QueryWrapperFilter(new TermQuery(new Term("__type", "parent")));
-    Filter childFilter = new QueryWrapperFilter(new PrefixQuery(new Term("field2")));
+    BitSetProducer parentFilter = new QueryBitSetProducer(new TermQuery(new Term("__type", "parent")));
+    CheckJoinIndex.check(searcher.getIndexReader(), parentFilter);
+    BitSetProducer childFilter = new QueryBitSetProducer(new PrefixQuery(new Term("field2")));
     ToParentBlockJoinQuery query = new ToParentBlockJoinQuery(
-        new FilteredQuery(new MatchAllDocsQuery(), childFilter),
-        new FixedBitSetCachingWrapperFilter(parentFilter),
+        new PrefixQuery(new Term("field2")),
+        parentFilter,
         ScoreMode.None
     );
 
     // Sort by field ascending, order first
     ToParentBlockJoinSortField sortField = new ToParentBlockJoinSortField(
-        "field2", SortField.Type.STRING, false, wrap(parentFilter), wrap(childFilter)
+        "field2", SortField.Type.STRING, false, parentFilter, childFilter
     );
     Sort sort = new Sort(sortField);
     TopFieldDocs topDocs = searcher.search(query, 5, sort);
@@ -239,7 +239,7 @@ public class TestBlockJoinSorting extends LuceneTestCase {
 
     // Sort by field ascending, order last
     sortField = new ToParentBlockJoinSortField(
-        "field2", SortField.Type.STRING, false, true, wrap(parentFilter), wrap(childFilter)
+        "field2", SortField.Type.STRING, false, true, parentFilter, childFilter
     );
     sort = new Sort(sortField);
     topDocs = searcher.search(query, 5, sort);
@@ -258,13 +258,13 @@ public class TestBlockJoinSorting extends LuceneTestCase {
 
     // Sort by field descending, order last
     sortField = new ToParentBlockJoinSortField(
-        "field2", SortField.Type.STRING, true, wrap(parentFilter), wrap(childFilter)
+        "field2", SortField.Type.STRING, true, parentFilter, childFilter
     );
     sort = new Sort(sortField);
     topDocs = searcher.search(query, 5, sort);
     assertEquals(topDocs.totalHits, 7);
     assertEquals(5, topDocs.scoreDocs.length);
-    assertEquals(28, topDocs.scoreDocs[0].doc);
+    assertEquals(27, topDocs.scoreDocs[0].doc);
     assertEquals("o", ((BytesRef) ((FieldDoc) topDocs.scoreDocs[0]).fields[0]).utf8ToString());
     assertEquals(23, topDocs.scoreDocs[1].doc);
     assertEquals("m", ((BytesRef) ((FieldDoc) topDocs.scoreDocs[1]).fields[0]).utf8ToString());
@@ -276,14 +276,14 @@ public class TestBlockJoinSorting extends LuceneTestCase {
     assertEquals("g", ((BytesRef) ((FieldDoc) topDocs.scoreDocs[4]).fields[0]).utf8ToString());
 
     // Sort by field descending, order last, sort filter (filter_1:T)
-    childFilter = new QueryWrapperFilter(new TermQuery((new Term("filter_1", "T"))));
+    childFilter = new QueryBitSetProducer(new TermQuery((new Term("filter_1", "T"))));
     query = new ToParentBlockJoinQuery(
-        new FilteredQuery(new MatchAllDocsQuery(), childFilter),
-        new FixedBitSetCachingWrapperFilter(parentFilter),
+        new TermQuery((new Term("filter_1", "T"))),
+        parentFilter,
         ScoreMode.None
     );
     sortField = new ToParentBlockJoinSortField(
-        "field2", SortField.Type.STRING, true, wrap(parentFilter), wrap(childFilter)
+        "field2", SortField.Type.STRING, true, parentFilter, childFilter
     );
     sort = new Sort(sortField);
     topDocs = searcher.search(query, 5, sort);
@@ -291,7 +291,7 @@ public class TestBlockJoinSorting extends LuceneTestCase {
     assertEquals(5, topDocs.scoreDocs.length);
     assertEquals(23, topDocs.scoreDocs[0].doc);
     assertEquals("m", ((BytesRef) ((FieldDoc) topDocs.scoreDocs[0]).fields[0]).utf8ToString());
-    assertEquals(28, topDocs.scoreDocs[1].doc);
+    assertEquals(27, topDocs.scoreDocs[1].doc);
     assertEquals("m", ((BytesRef) ((FieldDoc) topDocs.scoreDocs[1]).fields[0]).utf8ToString());
     assertEquals(11, topDocs.scoreDocs[2].doc);
     assertEquals("g", ((BytesRef) ((FieldDoc) topDocs.scoreDocs[2]).fields[0]).utf8ToString());
@@ -302,10 +302,6 @@ public class TestBlockJoinSorting extends LuceneTestCase {
 
     searcher.getIndexReader().close();
     dir.close();
-  }
-
-  private Filter wrap(Filter filter) {
-    return random().nextBoolean() ? new FixedBitSetCachingWrapperFilter(filter) : filter;
   }
 
 }

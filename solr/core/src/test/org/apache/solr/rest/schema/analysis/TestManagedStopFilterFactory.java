@@ -1,4 +1,3 @@
-package org.apache.solr.rest.schema.analysis;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.rest.schema.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.rest.schema.analysis;
 import java.io.File;
 import java.util.Arrays;
 import java.util.SortedMap;
@@ -44,7 +43,7 @@ public class TestManagedStopFilterFactory extends RestTestBase {
 
   @Before
   public void before() throws Exception {
-    tmpSolrHome = createTempDir();
+    tmpSolrHome = createTempDir().toFile();
     tmpConfDir = new File(tmpSolrHome, confDir);
     FileUtils.copyDirectory(new File(TEST_HOME()), tmpSolrHome.getAbsoluteFile());
 
@@ -66,6 +65,11 @@ public class TestManagedStopFilterFactory extends RestTestBase {
     jetty = null;
     System.clearProperty("managed.schema.mutable");
     System.clearProperty("enable.update.log");
+    
+    if (restTestHarness != null) {
+      restTestHarness.close();
+    }
+    restTestHarness = null;
   }
 
 

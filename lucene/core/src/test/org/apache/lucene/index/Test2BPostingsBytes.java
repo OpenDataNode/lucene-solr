@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,51 +14,66 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.util.Arrays;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.compressing.CompressingCodec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.store.BaseDirectoryWrapper;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
-import org.apache.lucene.util.TimeUnits;
 import org.apache.lucene.util.LuceneTestCase.Monster;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 
-import com.carrotsearch.randomizedtesting.annotations.TimeoutSuite;
-
 /**
  * Test indexes 2B docs with 65k freqs each, 
- * so you get > Integer.MAX_VALUE postings data for the term
+ * so you get &gt; Integer.MAX_VALUE postings data for the term
  * @lucene.experimental
  */
-@SuppressCodecs({ "SimpleText", "Memory", "Direct", "Lucene3x" })
-// disable Lucene3x: older lucene formats always had this issue.
-@TimeoutSuite(millis = 4 * TimeUnits.HOUR)
-@Monster("takes ~20GB-30GB of space and 10 minutes, and more heap space sometimes")
+@SuppressCodecs({ "SimpleText", "Memory", "Direct" })
+@Monster("takes ~20GB-30GB of space and 10 minutes")
 public class Test2BPostingsBytes extends LuceneTestCase {
 
   public void test() throws Exception {
+    IndexWriterConfig defaultConfig = new IndexWriterConfig(null);
+    Codec defaultCodec = defaultConfig.getCodec();
+    if ((new IndexWriterConfig(null)).getCodec() instanceof CompressingCodec) {
+      Pattern regex = Pattern.compile("maxDocsPerChunk=(\\d+), blockSize=(\\d+)");
+      Matcher matcher = regex.matcher(defaultCodec.toString());
+      assertTrue("Unexpected CompressingCodec toString() output: " + defaultCodec.toString(), matcher.find());
+      int maxDocsPerChunk = Integer.parseInt(matcher.group(1));
+      int blockSize = Integer.parseInt(matcher.group(2));
+      int product = maxDocsPerChunk * blockSize;
+      assumeTrue(defaultCodec.getName() + " maxDocsPerChunk (" + maxDocsPerChunk
+          + ") * blockSize (" + blockSize + ") < 16 - this can trigger OOM with -Dtests.heapsize=30g",
+          product >= 16);
+    }
+
     BaseDirectoryWrapper dir = newFSDirectory(createTempDir("2BPostingsBytes1"));
     if (dir instanceof MockDirectoryWrapper) {
       ((MockDirectoryWrapper)dir).setThrottling(MockDirectoryWrapper.Throttling.NEVER);
     }
     
     IndexWriter w = new IndexWriter(dir,
-        new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))
+        new IndexWriterConfig(new MockAnalyzer(random()))
         .setMaxBufferedDocs(IndexWriterConfig.DISABLE_AUTO_FLUSH)
         .setRAMBufferSizeMB(256.0)
         .setMergeScheduler(new ConcurrentMergeScheduler())
         .setMergePolicy(newLogMergePolicy(false, 10))
-        .setOpenMode(IndexWriterConfig.OpenMode.CREATE));
+        .setOpenMode(IndexWriterConfig.OpenMode.CREATE)
+        .setCodec(TestUtil.getDefaultCodec()));
 
     MergePolicy mp = w.getConfig().getMergePolicy();
     if (mp instanceof LogByteSizeMergePolicy) {
@@ -89,31 +102,29 @@ public class Test2BPostingsBytes extends LuceneTestCase {
     w.close();
     
     DirectoryReader oneThousand = DirectoryReader.open(dir);
-    IndexReader subReaders[] = new IndexReader[1000];
+    DirectoryReader subReaders[] = new DirectoryReader[1000];
     Arrays.fill(subReaders, oneThousand);
-    MultiReader mr = new MultiReader(subReaders);
     BaseDirectoryWrapper dir2 = newFSDirectory(createTempDir("2BPostingsBytes2"));
     if (dir2 instanceof MockDirectoryWrapper) {
       ((MockDirectoryWrapper)dir2).setThrottling(MockDirectoryWrapper.Throttling.NEVER);
     }
     IndexWriter w2 = new IndexWriter(dir2,
-        new IndexWriterConfig(TEST_VERSION_CURRENT, null));
-    w2.addIndexes(mr);
+        new IndexWriterConfig(null));
+    TestUtil.addIndexesSlowly(w2, subReaders);
     w2.forceMerge(1);
     w2.close();
     oneThousand.close();
     
     DirectoryReader oneMillion = DirectoryReader.open(dir2);
-    subReaders = new IndexReader[2000];
+    subReaders = new DirectoryReader[2000];
     Arrays.fill(subReaders, oneMillion);
-    mr = new MultiReader(subReaders);
     BaseDirectoryWrapper dir3 = newFSDirectory(createTempDir("2BPostingsBytes3"));
     if (dir3 instanceof MockDirectoryWrapper) {
       ((MockDirectoryWrapper)dir3).setThrottling(MockDirectoryWrapper.Throttling.NEVER);
     }
     IndexWriter w3 = new IndexWriter(dir3,
-        new IndexWriterConfig(TEST_VERSION_CURRENT, null));
-    w3.addIndexes(mr);
+        new IndexWriterConfig(null));
+    TestUtil.addIndexesSlowly(w3, subReaders);
     w3.forceMerge(1);
     w3.close();
     oneMillion.close();

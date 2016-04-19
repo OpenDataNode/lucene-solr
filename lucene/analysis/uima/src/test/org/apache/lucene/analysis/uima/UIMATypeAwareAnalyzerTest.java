@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.uima;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,13 @@ package org.apache.lucene.analysis.uima;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.uima;
 
+
+import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.util.LuceneTestCase.SuppressSysoutChecks;
+import org.apache.lucene.util.LuceneTestCase.AwaitsFix;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -59,10 +60,12 @@ public class UIMATypeAwareAnalyzerTest extends BaseTokenStreamTestCase {
 
   }
 
-  @Test
+  @Test @AwaitsFix(bugUrl = "https://issues.apache.org/jira/browse/LUCENE-3869")
   public void testRandomStrings() throws Exception {
-    checkRandomData(random(), new UIMATypeAwareAnalyzer("/uima/TestAggregateSentenceAE.xml",
-        "org.apache.lucene.uima.ts.TokenAnnotation", "pos", null), 100 * RANDOM_MULTIPLIER);
+    Analyzer analyzer = new UIMATypeAwareAnalyzer("/uima/TestAggregateSentenceAE.xml",
+        "org.apache.lucene.uima.ts.TokenAnnotation", "pos", null);
+    checkRandomData(random(), analyzer, 100 * RANDOM_MULTIPLIER);
+    analyzer.close();
   }
 
 }

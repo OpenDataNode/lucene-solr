@@ -1,5 +1,3 @@
-package org.apache.solr.update.processor;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.update.processor;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.update.processor;
 
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
@@ -31,6 +30,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -51,8 +51,7 @@ import java.util.regex.Pattern;
  */
 public abstract class LanguageIdentifierUpdateProcessor extends UpdateRequestProcessor implements LangIdParams {
 
-  protected final static Logger log = LoggerFactory
-          .getLogger(LanguageIdentifierUpdateProcessor.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   protected boolean enabled;
 
@@ -78,6 +77,8 @@ public abstract class LanguageIdentifierUpdateProcessor extends UpdateRequestPro
   protected HashMap<String,String> lcMap;
   protected HashMap<String,String> mapLcMap;
   protected IndexSchema schema;
+  protected int maxFieldValueChars;
+  protected int maxTotalChars;
 
   // Regex patterns
   protected final Pattern tikaSimilarityPattern = Pattern.compile(".*\\((.*?)\\)");
@@ -169,8 +170,21 @@ public abstract class LanguageIdentifierUpdateProcessor extends UpdateRequestPro
 
       mapPattern = Pattern.compile(params.get(MAP_PATTERN, MAP_PATTERN_DEFAULT));
       mapReplaceStr = params.get(MAP_REPLACE, MAP_REPLACE_DEFAULT);
-
-
+      maxFieldValueChars = params.getInt(MAX_FIELD_VALUE_CHARS, MAX_FIELD_VALUE_CHARS_DEFAULT);
+      maxTotalChars = params.getInt(MAX_TOTAL_CHARS, MAX_TOTAL_CHARS_DEFAULT);
+      if (maxFieldValueChars > maxTotalChars) {
+        if (maxTotalChars == MAX_TOTAL_CHARS_DEFAULT) {
+          // If the user specified only maxFieldValueChars, make maxTotalChars the same as it
+          log.warn(MAX_FIELD_VALUE_CHARS + " (" + maxFieldValueChars + ") is less than " + MAX_TOTAL_CHARS + " ("
+              + maxTotalChars + ").  Setting " + MAX_TOTAL_CHARS + " to " + maxFieldValueChars + ".");
+          maxTotalChars = maxFieldValueChars;
+        } else {
+          // If the user specified maxTotalChars, make maxFieldValueChars the same as it
+          log.warn(MAX_FIELD_VALUE_CHARS + " (" + maxFieldValueChars + ") is less than " + MAX_TOTAL_CHARS + " ("
+              + maxTotalChars + ").  Setting " + MAX_FIELD_VALUE_CHARS + " to " + maxTotalChars + ".");
+          maxFieldValueChars = maxTotalChars;
+        }
+      }
     }
     log.debug("LangId configured");
 
@@ -203,11 +217,10 @@ public abstract class LanguageIdentifierUpdateProcessor extends UpdateRequestPro
     String fallbackLang = getFallbackLang(doc, fallbackFields, fallbackValue);
 
     if(langField == null || !doc.containsKey(langField) || (doc.containsKey(langField) && overwrite)) {
-      String allText = concatFields(doc, inputFields);
-      List<DetectedLanguage> languagelist = detectLanguage(allText);
+      List<DetectedLanguage> languagelist = detectLanguage(doc);
       docLang = resolveLanguage(languagelist, fallbackLang);
       docLangs.add(docLang);
-      log.debug("Detected main document language from fields "+inputFields+": "+docLang);
+      log.debug("Detected main document language from fields "+ Arrays.toString(inputFields) +": "+docLang);
 
       if(doc.containsKey(langField) && overwrite) {
         log.debug("Overwritten old value "+doc.getFieldValue(langField));
@@ -227,8 +240,7 @@ public abstract class LanguageIdentifierUpdateProcessor extends UpdateRequestPro
         if(doc.containsKey(fieldName)) {
           String fieldLang;
           if(mapIndividual && mapIndividualFieldsSet.contains(fieldName)) {
-            String text = (String) doc.getFieldValue(fieldName);
-            List<DetectedLanguage> languagelist = detectLanguage(text);
+            List<DetectedLanguage> languagelist = detectLanguage(doc);
             fieldLang = resolveLanguage(languagelist, docLang);
             docLangs.add(fieldLang);
             log.debug("Mapping field "+fieldName+" using individually detected language "+fieldLang);
@@ -284,37 +296,13 @@ public abstract class LanguageIdentifierUpdateProcessor extends UpdateRequestPro
     return lang;
   }
 
-  /*
-   * Concatenates content from multiple fields
-   */
-  protected String concatFields(SolrInputDocument doc, String[] fields) {
-    StringBuilder sb = new StringBuilder();
-    for (String fieldName : inputFields) {
-      log.debug("Appending field "+fieldName);
-      if (doc.containsKey(fieldName)) {
-        Collection<Object> fieldValues = doc.getFieldValues(fieldName);
-        if (fieldValues != null) {
-          for (Object content : fieldValues) {
-            if (content instanceof String) {
-              sb.append((String) content);
-              sb.append(" ");
-            } else {
-              log.warn("Field " + fieldName + " not a String value, not including in detection");
-            }
-          }
-        }
-      }
-    }
-    return sb.toString();
-  }
-
   /**
    * Detects language(s) from a string.
    * Classes wishing to implement their own language detection module should override this method.
    * @param content The content to identify
    * @return List of detected language(s) according to RFC-3066
    */
-  protected abstract List<DetectedLanguage> detectLanguage(String content);
+  protected abstract List<DetectedLanguage> detectLanguage(SolrInputDocument content);
 
   /**
    * Chooses a language based on the list of candidates detected

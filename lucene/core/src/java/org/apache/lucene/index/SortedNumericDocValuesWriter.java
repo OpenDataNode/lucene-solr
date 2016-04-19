@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -103,7 +103,7 @@ class SortedNumericDocValuesWriter extends DocValuesWriter {
 
   @Override
   public void flush(SegmentWriteState state, DocValuesConsumer dvConsumer) throws IOException {
-    final int maxDoc = state.segmentInfo.getDocCount();
+    final int maxDoc = state.segmentInfo.maxDoc();
     assert pendingCounts.size() == maxDoc;
     final PackedLongValues values = pending.build();
     final PackedLongValues valueCounts = pendingCounts.build();

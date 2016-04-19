@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.uima;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,7 +14,10 @@ package org.apache.lucene.analysis.uima;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.uima;
 
+
+import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.document.Document;
@@ -67,14 +68,14 @@ public class UIMABaseAnalyzerTest extends BaseTokenStreamTestCase {
   @Test
   public void baseUIMAAnalyzerIntegrationTest() throws Exception {
     Directory dir = new RAMDirectory();
-    IndexWriter writer = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, analyzer));
+    IndexWriter writer = new IndexWriter(dir, new IndexWriterConfig(analyzer));
     // add the first doc
     Document doc = new Document();
     String dummyTitle = "this is a dummy title ";
     doc.add(new TextField("title", dummyTitle, Field.Store.YES));
     String dummyContent = "there is some content written here";
     doc.add(new TextField("contents", dummyContent, Field.Store.YES));
-    writer.addDocument(doc, analyzer);
+    writer.addDocument(doc);
     writer.commit();
 
     // try the search over the first doc
@@ -95,7 +96,7 @@ public class UIMABaseAnalyzerTest extends BaseTokenStreamTestCase {
     doc.add(new TextField("title", dogmasTitle, Field.Store.YES));
     String dogmasContents = "white men can't jump";
     doc.add(new TextField("contents", dogmasContents, Field.Store.YES));
-    writer.addDocument(doc, analyzer);
+    writer.addDocument(doc);
     writer.commit();
 
     directoryReader.close();
@@ -110,7 +111,6 @@ public class UIMABaseAnalyzerTest extends BaseTokenStreamTestCase {
     assertEquals(dogmasContents, d1.getField("contents").stringValue());
 
     // do a matchalldocs query to retrieve both docs
-    indexSearcher = newSearcher(directoryReader);
     result = indexSearcher.search(new MatchAllDocsQuery(), 2);
     assertEquals(2, result.totalHits);
     writer.close();
@@ -118,18 +118,20 @@ public class UIMABaseAnalyzerTest extends BaseTokenStreamTestCase {
     dir.close();
   }
 
-  @Test
+  @Test @AwaitsFix(bugUrl = "https://issues.apache.org/jira/browse/LUCENE-3869")
   public void testRandomStrings() throws Exception {
-    checkRandomData(random(), new UIMABaseAnalyzer("/uima/TestAggregateSentenceAE.xml", "org.apache.lucene.uima.ts.TokenAnnotation", null),
-        100 * RANDOM_MULTIPLIER);
+    Analyzer analyzer = new UIMABaseAnalyzer("/uima/TestAggregateSentenceAE.xml", "org.apache.lucene.uima.ts.TokenAnnotation", null);
+    checkRandomData(random(), analyzer, 100 * RANDOM_MULTIPLIER);
+    analyzer.close();
   }
 
-  @Test
+  @Test @AwaitsFix(bugUrl = "https://issues.apache.org/jira/browse/LUCENE-3869")
   public void testRandomStringsWithConfigurationParameters() throws Exception {
     Map<String, Object> cp = new HashMap<>();
     cp.put("line-end", "\r");
-    checkRandomData(random(), new UIMABaseAnalyzer("/uima/TestWSTokenizerAE.xml", "org.apache.lucene.uima.ts.TokenAnnotation", cp),
-        100 * RANDOM_MULTIPLIER);
+    Analyzer analyzer = new UIMABaseAnalyzer("/uima/TestWSTokenizerAE.xml", "org.apache.lucene.uima.ts.TokenAnnotation", cp);
+    checkRandomData(random(), analyzer, 100 * RANDOM_MULTIPLIER);
+    analyzer.close();
   }
 
 }

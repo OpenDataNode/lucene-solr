@@ -14,21 +14,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.queries.function.valuesource;
 
-import org.apache.lucene.index.AtomicReaderContext;
+import java.io.IOException;
+import java.util.Map;
+
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.ReaderUtil;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.docvalues.FloatDocValues;
-import org.apache.lucene.search.*;
-import org.apache.lucene.util.Bits;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.Weight;
 import org.apache.lucene.util.mutable.MutableValue;
 import org.apache.lucene.util.mutable.MutableValueFloat;
-
-import java.io.IOException;
-import java.util.Map;
 
 /**
  * <code>QueryValueSource</code> returns the relevance score of the query
@@ -51,7 +53,7 @@ public class QueryValueSource extends ValueSource {
   }
 
   @Override
-  public FunctionValues getValues(Map fcontext, AtomicReaderContext readerContext) throws IOException {
+  public FunctionValues getValues(Map fcontext, LeafReaderContext readerContext) throws IOException {
     return new QueryDocValues(this, readerContext, fcontext);
   }
 
@@ -69,21 +71,21 @@ public class QueryValueSource extends ValueSource {
 
   @Override
   public void createWeight(Map context, IndexSearcher searcher) throws IOException {
-    Weight w = searcher.createNormalizedWeight(q);
+    Weight w = searcher.createNormalizedWeight(q, true);
     context.put(this, w);
   }
 }
 
 
 class QueryDocValues extends FloatDocValues {
-  final AtomicReaderContext readerContext;
-  final Bits acceptDocs;
+  final LeafReaderContext readerContext;
   final Weight weight;
   final float defVal;
   final Map fcontext;
   final Query q;
 
   Scorer scorer;
+  DocIdSetIterator it;
   int scorerDoc; // the document the scorer is on
   boolean noMatches=false;
 
@@ -92,11 +94,10 @@ class QueryDocValues extends FloatDocValues {
   int lastDocRequested=Integer.MAX_VALUE;
   
 
-  public QueryDocValues(QueryValueSource vs, AtomicReaderContext readerContext, Map fcontext) throws IOException {
+  public QueryDocValues(QueryValueSource vs, LeafReaderContext readerContext, Map fcontext) throws IOException {
     super(vs);
 
     this.readerContext = readerContext;
-    this.acceptDocs = readerContext.reader().getLiveDocs();
     this.defVal = vs.defVal;
     this.q = vs.q;
     this.fcontext = fcontext;
@@ -123,17 +124,18 @@ class QueryDocValues extends FloatDocValues {
     try {
       if (doc < lastDocRequested) {
         if (noMatches) return defVal;
-        scorer = weight.scorer(readerContext, acceptDocs);
+        scorer = weight.scorer(readerContext);
         if (scorer==null) {
           noMatches = true;
           return defVal;
         }
+        it = scorer.iterator();
         scorerDoc = -1;
       }
       lastDocRequested = doc;
 
       if (scorerDoc < doc) {
-        scorerDoc = scorer.advance(doc);
+        scorerDoc = it.advance(doc);
       }
 
       if (scorerDoc > doc) {
@@ -154,17 +156,18 @@ class QueryDocValues extends FloatDocValues {
     try {
       if (doc < lastDocRequested) {
         if (noMatches) return false;
-        scorer = weight.scorer(readerContext, acceptDocs);
+        scorer = weight.scorer(readerContext);
         scorerDoc = -1;
         if (scorer==null) {
           noMatches = true;
           return false;
         }
+        it = scorer.iterator();
       }
       lastDocRequested = doc;
 
       if (scorerDoc < doc) {
-        scorerDoc = scorer.advance(doc);
+        scorerDoc = it.advance(doc);
       }
 
       if (scorerDoc > doc) {
@@ -212,7 +215,7 @@ class QueryDocValues extends FloatDocValues {
             mval.exists = false;
             return;
           }
-          scorer = weight.scorer(readerContext, acceptDocs);
+          scorer = weight.scorer(readerContext);
           scorerDoc = -1;
           if (scorer==null) {
             noMatches = true;
@@ -220,10 +223,11 @@ class QueryDocValues extends FloatDocValues {
             mval.exists = false;
             return;
           }
+          it = scorer.iterator();
           lastDocRequested = doc;
 
           if (scorerDoc < doc) {
-            scorerDoc = scorer.advance(doc);
+            scorerDoc = it.advance(doc);
           }
 
           if (scorerDoc > doc) {

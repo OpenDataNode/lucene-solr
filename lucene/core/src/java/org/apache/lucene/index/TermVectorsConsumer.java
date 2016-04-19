@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -56,7 +56,7 @@ final class TermVectorsConsumer extends TermsHash {
   @Override
   void flush(Map<String, TermsHashPerField> fieldsToFlush, final SegmentWriteState state) throws IOException {
     if (writer != null) {
-      int numDocs = state.segmentInfo.getDocCount();
+      int numDocs = state.segmentInfo.maxDoc();
       assert numDocs > 0;
       // At least one doc in this run had term vectors enabled
       try {
@@ -126,7 +126,7 @@ final class TermVectorsConsumer extends TermsHash {
       super.abort();
     } finally {
       if (writer != null) {
-        writer.abort();
+        IOUtils.closeWhileHandlingException(writer);
         writer = null;
       }
 

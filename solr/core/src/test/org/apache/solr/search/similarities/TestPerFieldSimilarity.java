@@ -1,5 +1,3 @@
-package org.apache.solr.search.similarities;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,10 @@ package org.apache.solr.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search.similarities;
 
 import org.apache.lucene.misc.SweetSpotSimilarity;
-import org.apache.lucene.search.similarities.DefaultSimilarity;
+import org.apache.lucene.search.similarities.ClassicSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
 import org.junit.BeforeClass;
 
@@ -59,18 +58,18 @@ public class TestPerFieldSimilarity extends BaseSimilarityTestCase {
   /** test a field where no similarity is specified */
   public void testDefaults() throws Exception {
     Similarity sim = getSimilarity("sim3text");
-    assertEquals(DefaultSimilarity.class, sim.getClass());;
+    assertEquals(ClassicSimilarity.class, sim.getClass());;
   }
   
   /** ... and for a dynamic field */
   public void testDefaultsDynamic() throws Exception {
     Similarity sim = getSimilarity("text_sim3");
-    assertEquals(DefaultSimilarity.class, sim.getClass());
+    assertEquals(ClassicSimilarity.class, sim.getClass());
   }
   
   /** test a field that does not exist */
   public void testNonexistent() throws Exception {
     Similarity sim = getSimilarity("sdfdsfdsfdswr5fsdfdsfdsfs");
-    assertEquals(DefaultSimilarity.class, sim.getClass());
+    assertEquals(ClassicSimilarity.class, sim.getClass());
   }
 }

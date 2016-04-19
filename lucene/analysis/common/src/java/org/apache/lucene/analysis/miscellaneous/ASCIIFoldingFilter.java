@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.miscellaneous;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.miscellaneous;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.miscellaneous;
+
 
 import java.io.IOException;
 
@@ -153,7 +153,7 @@ public final class ASCIIFoldingFilter extends TokenFilter {
    * accents are removed from accented characters.
    * @param input     The characters to fold
    * @param inputPos  Index of the first character to fold
-   * @param output    The result of the folding. Should be of size >= {@code length * 4}.
+   * @param output    The result of the folding. Should be of size &gt;= {@code length * 4}.
    * @param outputPos Index of output where to put the result of the folding
    * @param length    The number of characters to fold
    * @return length of output

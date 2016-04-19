@@ -1,5 +1,3 @@
-package org.apache.lucene.search.suggest.analyzing;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,14 @@ package org.apache.lucene.search.suggest.analyzing;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.suggest.analyzing;
 
 import java.io.StringReader;
 
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.core.StopFilter;
 import org.apache.lucene.analysis.util.CharArraySet;
 
@@ -29,7 +29,8 @@ public class TestSuggestStopFilter extends BaseTokenStreamTestCase {
 
   public void testEndNotStopWord() throws Exception {
     CharArraySet stopWords = StopFilter.makeStopSet("to");
-    TokenStream stream = new MockTokenizer(new StringReader("go to"));
+    Tokenizer stream = new MockTokenizer();
+    stream.setReader(new StringReader("go to"));
     TokenStream filter = new SuggestStopFilter(stream, stopWords);
     assertTokenStreamContents(filter,
                               new String[] {"go", "to"},
@@ -46,9 +47,9 @@ public class TestSuggestStopFilter extends BaseTokenStreamTestCase {
   public void testEndIsStopWord() throws Exception {
                               
     CharArraySet stopWords = StopFilter.makeStopSet("to");
-    TokenStream stream = new MockTokenizer(new StringReader("go to "));
+    Tokenizer stream = new MockTokenizer();
+    stream.setReader(new StringReader("go to "));
     TokenStream filter = new SuggestStopFilter(stream, stopWords);
-
     filter = new SuggestStopFilter(stream, stopWords);
     assertTokenStreamContents(filter,
                               new String[] {"go"},
@@ -65,7 +66,8 @@ public class TestSuggestStopFilter extends BaseTokenStreamTestCase {
   public void testMidStopWord() throws Exception {
                               
     CharArraySet stopWords = StopFilter.makeStopSet("to");
-    TokenStream stream = new MockTokenizer(new StringReader("go to school"));
+    Tokenizer stream = new MockTokenizer();
+    stream.setReader(new StringReader("go to school"));
     TokenStream filter = new SuggestStopFilter(stream, stopWords);
 
     filter = new SuggestStopFilter(stream, stopWords);
@@ -84,7 +86,8 @@ public class TestSuggestStopFilter extends BaseTokenStreamTestCase {
   public void testMultipleStopWords() throws Exception {
                               
     CharArraySet stopWords = StopFilter.makeStopSet("to", "the", "a");
-    TokenStream stream = new MockTokenizer(new StringReader("go to a the school"));
+    Tokenizer stream = new MockTokenizer();
+    stream.setReader(new StringReader("go to a the school"));
     TokenStream filter = new SuggestStopFilter(stream, stopWords);
 
     filter = new SuggestStopFilter(stream, stopWords);
@@ -103,7 +106,8 @@ public class TestSuggestStopFilter extends BaseTokenStreamTestCase {
   public void testMultipleStopWordsEnd() throws Exception {
                               
     CharArraySet stopWords = StopFilter.makeStopSet("to", "the", "a");
-    TokenStream stream = new MockTokenizer(new StringReader("go to a the"));
+    Tokenizer stream = new MockTokenizer();
+    stream.setReader(new StringReader("go to a the"));
     TokenStream filter = new SuggestStopFilter(stream, stopWords);
 
     filter = new SuggestStopFilter(stream, stopWords);
@@ -122,7 +126,8 @@ public class TestSuggestStopFilter extends BaseTokenStreamTestCase {
   public void testMultipleStopWordsEnd2() throws Exception {
                               
     CharArraySet stopWords = StopFilter.makeStopSet("to", "the", "a");
-    TokenStream stream = new MockTokenizer(new StringReader("go to a the "));
+    Tokenizer stream = new MockTokenizer();
+    stream.setReader(new StringReader("go to a the "));
     TokenStream filter = new SuggestStopFilter(stream, stopWords);
 
     filter = new SuggestStopFilter(stream, stopWords);

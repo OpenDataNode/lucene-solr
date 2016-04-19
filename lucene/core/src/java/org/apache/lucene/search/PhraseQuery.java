@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,99 +14,256 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.DocsAndPositionsEnum;
-import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.codecs.lucene50.Lucene50PostingsFormat;
+import org.apache.lucene.codecs.lucene50.Lucene50PostingsReader;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.IndexReaderContext;
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermContext;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.search.similarities.Similarity.SimScorer;
 import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.search.similarities.Similarity.SimScorer;
 import org.apache.lucene.util.ArrayUtil;
-import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.ToStringUtils;
 
 /** A Query that matches documents containing a particular sequence of terms.
  * A PhraseQuery is built by QueryParser for input like <code>"new york"</code>.
  * 
  * <p>This query may be combined with other terms or queries with a {@link BooleanQuery}.
+ *
+ * <p><b>NOTE</b>:
+ * All terms in the phrase must match, even those at the same position. If you
+ * have terms at the same position, perhaps synonyms, you probably want {@link MultiPhraseQuery}
+ * instead which only requires one term at a position to match.
+ * <br >Also, Leading holes don't have any particular meaning for this query
+ * and will be ignored. For instance this query:
+ * <pre class="prettyprint">
+ * PhraseQuery.Builder builder = new PhraseQuery.Builder();
+ * builder.add(new Term("body", "one"), 4);
+ * builder.add(new Term("body", "two"), 5);
+ * PhraseQuery pq = builder.build();
+ * </pre>
+ * is equivalent to the below query:
+ * <pre class="prettyprint">
+ * PhraseQuery.Builder builder = new PhraseQuery.Builder();
+ * builder.add(new Term("body", "one"), 0);
+ * builder.add(new Term("body", "two"), 1);
+ * PhraseQuery pq = builder.build();
+ * </pre>
  */
 public class PhraseQuery extends Query {
-  private String field;
-  private ArrayList<Term> terms = new ArrayList<>(4);
-  private ArrayList<Integer> positions = new ArrayList<>(4);
-  private int maxPosition = 0;
-  private int slop = 0;
 
-  /** Constructs an empty phrase query. */
-  public PhraseQuery() {}
+  /** A builder for phrase queries. */
+  public static class Builder {
 
-  /** Sets the number of other words permitted between words in query phrase.
-    If zero, then this is an exact phrase search.  For larger values this works
-    like a <code>WITHIN</code> or <code>NEAR</code> operator.
+    private int slop;
+    private final List<Term> terms;
+    private final List<Integer> positions;
 
-    <p>The slop is in fact an edit-distance, where the units correspond to
-    moves of terms in the query phrase out of position.  For example, to switch
-    the order of two words requires two moves (the first move places the words
-    atop one another), so to permit re-orderings of phrases, the slop must be
-    at least two.
-
-    <p>More exact matches are scored higher than sloppier matches, thus search
-    results are sorted by exactness.
-
-    <p>The slop is zero by default, requiring exact matches.*/
-  public void setSlop(int s) {
-    if (s < 0) {
-      throw new IllegalArgumentException("slop value cannot be negative");
+    /** Sole constructor. */
+    public Builder() {
+      slop = 0;
+      terms = new ArrayList<>();
+      positions = new ArrayList<>();
     }
-    slop = s; 
+
+    /**
+     * Set the slop.
+     * @see PhraseQuery#getSlop()
+     */
+    public Builder setSlop(int slop) {
+      this.slop = slop;
+      return this;
+    }
+
+    /**
+     * Adds a term to the end of the query phrase.
+     * The relative position of the term is the one immediately after the last term added.
+     */
+    public Builder add(Term term) {
+      return add(term, positions.isEmpty() ? 0 : 1 + positions.get(positions.size() - 1));
+    }
+
+    /**
+     * Adds a term to the end of the query phrase.
+     * The relative position of the term within the phrase is specified explicitly, but must be greater than
+     * or equal to that of the previously added term.
+     * A greater position allows phrases with gaps (e.g. in connection with stopwords).
+     * If the position is equal, you most likely should be using
+     * {@link MultiPhraseQuery} instead which only requires one term at each position to match; this class requires
+     * all of them.
+     */
+    public Builder add(Term term, int position) {
+      if (position < 0) {
+        throw new IllegalArgumentException("Positions must be >= 0, got " + position);
+      }
+      if (positions.isEmpty() == false) {
+        final int lastPosition = positions.get(positions.size() - 1);
+        if (position < lastPosition) {
+          throw new IllegalArgumentException("Positions must be added in order, got " + position + " after " + lastPosition);
+        }
+      }
+      if (terms.isEmpty() == false && term.field().equals(terms.get(0).field()) == false) {
+        throw new IllegalArgumentException("All terms must be on the same field, got " + term.field() + " and " + terms.get(0).field());
+      }
+      terms.add(term);
+      positions.add(position);
+      return this;
+    }
+
+    /**
+     * Build a phrase query based on the terms that have been added.
+     */
+    public PhraseQuery build() {
+      Term[] terms = this.terms.toArray(new Term[this.terms.size()]);
+      int[] positions = new int[this.positions.size()];
+      for (int i = 0; i < positions.length; ++i) {
+        positions[i] = this.positions.get(i);
+      }
+      return new PhraseQuery(slop, terms, positions);
+    }
+
   }
-  /** Returns the slop.  See setSlop(). */
+
+  private final boolean mutable;
+  private int slop;
+  private String field;
+  private final List<Term> terms;
+  private final List<Integer> positions;
+
+  private PhraseQuery(int slop, Term[] terms, int[] positions) {
+    if (terms.length != positions.length) {
+      throw new IllegalArgumentException("Must have as many terms as positions");
+    }
+    if (slop < 0) {
+      throw new IllegalArgumentException("Slop must be >= 0, got " + slop);
+    }
+    for (int i = 1; i < terms.length; ++i) {
+      if (terms[i-1].field().equals(terms[i].field()) == false) {
+        throw new IllegalArgumentException("All terms should have the same field");
+      }
+    }
+    for (int position : positions) {
+      if (position < 0) {
+        throw new IllegalArgumentException("Positions must be >= 0, got " + position);
+      }
+    }
+    for (int i = 1; i < positions.length; ++i) {
+      if (positions[i] < positions[i - 1]) {
+        throw new IllegalArgumentException("Positions should not go backwards, got "
+            + positions[i-1] + " before " + positions[i]);
+      }
+    }
+    this.slop = slop;
+    this.terms = Arrays.asList(terms);
+    this.positions = new ArrayList<>(positions.length);
+    for (int pos : positions) {
+      this.positions.add(pos);
+    }
+    this.field = terms.length == 0 ? null : terms[0].field();
+    this.mutable = false;
+  }
+
+  private static int[] incrementalPositions(int length) {
+    int[] positions = new int[length];
+    for (int i = 0; i < length; ++i) {
+      positions[i] = i;
+    }
+    return positions;
+  }
+
+  private static Term[] toTerms(String field, String... termStrings) {
+    Term[] terms = new Term[termStrings.length];
+    for (int i = 0; i < terms.length; ++i) {
+      terms[i] = new Term(field, termStrings[i]);
+    }
+    return terms;
+  }
+
+  private static Term[] toTerms(String field, BytesRef... termBytes) {
+    Term[] terms = new Term[termBytes.length];
+    for (int i = 0; i < terms.length; ++i) {
+      terms[i] = new Term(field, termBytes[i]);
+    }
+    return terms;
+  }
+
+  /**
+   * Create a phrase query which will match documents that contain the given
+   * list of terms at consecutive positions in {@code field}, and at a
+   * maximum edit distance of {@code slop}. For more complicated use-cases,
+   * use {@link PhraseQuery.Builder}.
+   * @see #getSlop()
+   */
+  public PhraseQuery(int slop, String field, String... terms) {
+    this(slop, toTerms(field, terms), incrementalPositions(terms.length));
+  }
+
+  /**
+   * Create a phrase query which will match documents that contain the given
+   * list of terms at consecutive positions in {@code field}.
+   */
+  public PhraseQuery(String field, String... terms) {
+    this(0, field, terms);
+  }
+
+  /**
+   * Create a phrase query which will match documents that contain the given
+   * list of terms at consecutive positions in {@code field}, and at a
+   * maximum edit distance of {@code slop}. For more complicated use-cases,
+   * use {@link PhraseQuery.Builder}.
+   * @see #getSlop()
+   */
+  public PhraseQuery(int slop, String field, BytesRef... terms) {
+    this(slop, toTerms(field, terms), incrementalPositions(terms.length));
+  }
+
+  /**
+   * Create a phrase query which will match documents that contain the given
+   * list of terms at consecutive positions in {@code field}.
+   */
+  public PhraseQuery(String field, BytesRef... terms) {
+    this(0, field, terms);
+  }
+
+  /**
+   * Return the slop for this {@link PhraseQuery}.
+   *
+   * <p>The slop is an edit distance between respective positions of terms as
+   * defined in this {@link PhraseQuery} and the positions of terms in a
+   * document.
+   *
+   * <p>For instance, when searching for {@code "quick fox"}, it is expected that
+   * the difference between the positions of {@code fox} and {@code quick} is 1.
+   * So {@code "a quick brown fox"} would be at an edit distance of 1 since the
+   * difference of the positions of {@code fox} and {@code quick} is 2.
+   * Similarly, {@code "the fox is quick"} would be at an edit distance of 3
+   * since the difference of the positions of {@code fox} and {@code quick} is -2.
+   * The slop defines the maximum edit distance for a document to match.
+   *
+   * <p>More exact matches are scored higher than sloppier matches, thus search
+   * results are sorted by exactness.
+   */
   public int getSlop() { return slop; }
 
-  /**
-   * Adds a term to the end of the query phrase.
-   * The relative position of the term is the one immediately after the last term added.
-   */
-  public void add(Term term) {
-    int position = 0;
-    if(positions.size() > 0)
-        position = positions.get(positions.size()-1).intValue() + 1;
-
-    add(term, position);
-  }
-
-  /**
-   * Adds a term to the end of the query phrase.
-   * The relative position of the term within the phrase is specified explicitly.
-   * This allows e.g. phrases with more than one term at the same position
-   * or phrases with gaps (e.g. in connection with stopwords).
-   * 
-   */
-  public void add(Term term, int position) {
-    if (terms.size() == 0) {
-      field = term.field();
-    } else if (!term.field().equals(field)) {
-      throw new IllegalArgumentException("All phrase terms must be in the same field: " + term);
-    }
-
-    terms.add(term);
-    positions.add(Integer.valueOf(position));
-    if (position > maxPosition) maxPosition = position;
-  }
-
-  /** Returns the set of terms in this phrase. */
+  /** Returns the list of terms in this phrase. */
   public Term[] getTerms() {
     return terms.toArray(new Term[0]);
   }
@@ -117,36 +272,44 @@ public class PhraseQuery extends Query {
    * Returns the relative positions of terms in this phrase.
    */
   public int[] getPositions() {
-      int[] result = new int[positions.size()];
-      for(int i = 0; i < positions.size(); i++)
-          result[i] = positions.get(i).intValue();
-      return result;
+    int[] result = new int[positions.size()];
+    for(int i = 0; i < positions.size(); i++)
+        result[i] = positions.get(i).intValue();
+    return result;
   }
 
   @Override
   public Query rewrite(IndexReader reader) throws IOException {
     if (terms.isEmpty()) {
-      BooleanQuery bq = new BooleanQuery();
-      bq.setBoost(getBoost());
-      return bq;
+      Query rewritten = new MatchNoDocsQuery();
+      rewritten.setBoost(getBoost());
+      return rewritten;
     } else if (terms.size() == 1) {
       TermQuery tq = new TermQuery(terms.get(0));
       tq.setBoost(getBoost());
       return tq;
-    } else
+    } else if (positions.get(0).intValue() != 0) {
+      final int[] oldPositions = getPositions();
+      int[] newPositions = new int[oldPositions.length];
+      for (int i = 0; i < oldPositions.length; ++i) {
+        newPositions[i] = oldPositions[i] - oldPositions[0];
+      }
+      PhraseQuery rewritten = new PhraseQuery(slop, getTerms(), newPositions);
+      rewritten.setBoost(getBoost());
+      return rewritten;
+    } else {
       return super.rewrite(reader);
+    }
   }
 
   static class PostingsAndFreq implements Comparable<PostingsAndFreq> {
-    final DocsAndPositionsEnum postings;
-    final int docFreq;
+    final PostingsEnum postings;
     final int position;
     final Term[] terms;
     final int nTerms; // for faster comparisons
 
-    public PostingsAndFreq(DocsAndPositionsEnum postings, int docFreq, int position, Term... terms) {
+    public PostingsAndFreq(PostingsEnum postings, int position, Term... terms) {
       this.postings = postings;
-      this.docFreq = docFreq;
       this.position = position;
       nTerms = terms==null ? 0 : terms.length;
       if (nTerms>0) {
@@ -165,9 +328,6 @@ public class PhraseQuery extends Query {
 
     @Override
     public int compareTo(PostingsAndFreq other) {
-      if (docFreq != other.docFreq) {
-        return docFreq - other.docFreq;
-      }
       if (position != other.position) {
         return position - other.position;
       }
@@ -188,7 +348,6 @@ public class PhraseQuery extends Query {
     public int hashCode() {
       final int prime = 31;
       int result = 1;
-      result = prime * result + docFreq;
       result = prime * result + position;
       for (int i=0; i<nTerms; i++) {
         result = prime * result + terms[i].hashCode(); 
@@ -202,7 +361,6 @@ public class PhraseQuery extends Query {
       if (obj == null) return false;
       if (getClass() != obj.getClass()) return false;
       PostingsAndFreq other = (PostingsAndFreq) obj;
-      if (docFreq != other.docFreq) return false;
       if (position != other.position) return false;
       if (terms == null) return other.terms == null;
       return Arrays.equals(terms, other.terms);
@@ -212,27 +370,40 @@ public class PhraseQuery extends Query {
   private class PhraseWeight extends Weight {
     private final Similarity similarity;
     private final Similarity.SimWeight stats;
+    private final boolean needsScores;
     private transient TermContext states[];
+    private final Term[] terms = getTerms();
+    private final int[] positions = getPositions();
 
-    public PhraseWeight(IndexSearcher searcher)
-      throws IOException {
-      this.similarity = searcher.getSimilarity();
+    public PhraseWeight(IndexSearcher searcher, boolean needsScores)
+        throws IOException {
+      super(PhraseQuery.this);
+      final int[] positions = PhraseQuery.this.getPositions();
+      if (positions.length < 2) {
+        throw new IllegalStateException("PhraseWeight does not support less than 2 terms, call rewrite first");
+      } else if (positions[0] != 0) {
+        throw new IllegalStateException("PhraseWeight requires that the first position is 0, call rewrite first");
+      }
+      this.needsScores = needsScores;
+      this.similarity = searcher.getSimilarity(needsScores);
       final IndexReaderContext context = searcher.getTopReaderContext();
-      states = new TermContext[terms.size()];
-      TermStatistics termStats[] = new TermStatistics[terms.size()];
-      for (int i = 0; i < terms.size(); i++) {
-        final Term term = terms.get(i);
+      states = new TermContext[terms.length];
+      TermStatistics termStats[] = new TermStatistics[terms.length];
+      for (int i = 0; i < terms.length; i++) {
+        final Term term = terms[i];
         states[i] = TermContext.build(context, term);
         termStats[i] = searcher.termStatistics(term, states[i]);
       }
-      stats = similarity.computeWeight(getBoost(), searcher.collectionStatistics(field), termStats);
+      stats = similarity.computeWeight(searcher.collectionStatistics(field), termStats);
+    }
+
+    @Override
+    public void extractTerms(Set<Term> queryTerms) {
+      Collections.addAll(queryTerms, terms);
     }
 
     @Override
     public String toString() { return "weight(" + PhraseQuery.this + ")"; }
-
-    @Override
-    public Query getQuery() { return PhraseQuery.this; }
 
     @Override
     public float getValueForNormalization() {
@@ -240,43 +411,40 @@ public class PhraseQuery extends Query {
     }
 
     @Override
-    public void normalize(float queryNorm, float topLevelBoost) {
-      stats.normalize(queryNorm, topLevelBoost);
+    public void normalize(float queryNorm, float boost) {
+      stats.normalize(queryNorm, boost);
     }
 
     @Override
-    public Scorer scorer(AtomicReaderContext context, Bits acceptDocs) throws IOException {
-      assert !terms.isEmpty();
-      final AtomicReader reader = context.reader();
-      final Bits liveDocs = acceptDocs;
-      PostingsAndFreq[] postingsFreqs = new PostingsAndFreq[terms.size()];
+    public Scorer scorer(LeafReaderContext context) throws IOException {
+      assert terms.length > 0;
+      final LeafReader reader = context.reader();
+      PostingsAndFreq[] postingsFreqs = new PostingsAndFreq[terms.length];
 
       final Terms fieldTerms = reader.terms(field);
       if (fieldTerms == null) {
         return null;
       }
 
+      if (fieldTerms.hasPositions() == false) {
+        throw new IllegalStateException("field \"" + field + "\" was indexed without position data; cannot run PhraseQuery (phrase=" + getQuery() + ")");
+      }
+
       // Reuse single TermsEnum below:
-      final TermsEnum te = fieldTerms.iterator(null);
+      final TermsEnum te = fieldTerms.iterator();
+      float totalMatchCost = 0;
       
-      for (int i = 0; i < terms.size(); i++) {
-        final Term t = terms.get(i);
+      for (int i = 0; i < terms.length; i++) {
+        final Term t = terms[i];
         final TermState state = states[i].get(context.ord);
         if (state == null) { /* term doesnt exist in this segment */
           assert termNotInReader(reader, t): "no termstate found but term exists in reader";
           return null;
         }
         te.seekExact(t.bytes(), state);
-        DocsAndPositionsEnum postingsEnum = te.docsAndPositions(liveDocs, null, DocsEnum.FLAG_NONE);
-
-        // PhraseQuery on a field that did not index
-        // positions.
-        if (postingsEnum == null) {
-          assert te.seekExact(t.bytes()) : "termstate found but no term exists in reader";
-          // term does exist, but has no positions
-          throw new IllegalStateException("field \"" + t.field() + "\" was indexed without position data; cannot run PhraseQuery (term=" + t.text() + ")");
-        }
-        postingsFreqs[i] = new PostingsAndFreq(postingsEnum, te.docFreq(), positions.get(i).intValue(), t);
+        PostingsEnum postingsEnum = te.postings(null, PostingsEnum.POSITIONS);
+        postingsFreqs[i] = new PostingsAndFreq(postingsEnum, positions[i], t);
+        totalMatchCost += termPositionsCost(te);
       }
 
       // sort by increasing docFreq order
@@ -285,55 +453,89 @@ public class PhraseQuery extends Query {
       }
 
       if (slop == 0) {  // optimize exact case
-        return new ExactPhraseScorer(this, postingsFreqs, similarity.simScorer(stats, context));
+        return new ExactPhraseScorer(this, postingsFreqs,
+                                      similarity.simScorer(stats, context),
+                                      needsScores, totalMatchCost);
       } else {
-        return new SloppyPhraseScorer(this, postingsFreqs, slop, similarity.simScorer(stats, context));
+        return new SloppyPhraseScorer(this, postingsFreqs, slop,
+                                        similarity.simScorer(stats, context),
+                                        needsScores, totalMatchCost);
       }
     }
     
     // only called from assert
-    private boolean termNotInReader(AtomicReader reader, Term term) throws IOException {
+    private boolean termNotInReader(LeafReader reader, Term term) throws IOException {
       return reader.docFreq(term) == 0;
     }
 
     @Override
-    public Explanation explain(AtomicReaderContext context, int doc) throws IOException {
-      Scorer scorer = scorer(context, context.reader().getLiveDocs());
+    public Explanation explain(LeafReaderContext context, int doc) throws IOException {
+      Scorer scorer = scorer(context);
       if (scorer != null) {
-        int newDoc = scorer.advance(doc);
+        int newDoc = scorer.iterator().advance(doc);
         if (newDoc == doc) {
           float freq = slop == 0 ? scorer.freq() : ((SloppyPhraseScorer)scorer).sloppyFreq();
           SimScorer docScorer = similarity.simScorer(stats, context);
-          ComplexExplanation result = new ComplexExplanation();
-          result.setDescription("weight("+getQuery()+" in "+doc+") [" + similarity.getClass().getSimpleName() + "], result of:");
-          Explanation scoreExplanation = docScorer.explain(doc, new Explanation(freq, "phraseFreq=" + freq));
-          result.addDetail(scoreExplanation);
-          result.setValue(scoreExplanation.getValue());
-          result.setMatch(true);
-          return result;
+          Explanation freqExplanation = Explanation.match(freq, "phraseFreq=" + freq);
+          Explanation scoreExplanation = docScorer.explain(doc, freqExplanation);
+          return Explanation.match(
+              scoreExplanation.getValue(),
+              "weight("+getQuery()+" in "+doc+") [" + similarity.getClass().getSimpleName() + "], result of:",
+              scoreExplanation);
         }
       }
       
-      return new ComplexExplanation(false, 0.0f, "no matching term");
+      return Explanation.noMatch("no matching term");
     }
   }
 
-  @Override
-  public Weight createWeight(IndexSearcher searcher) throws IOException {
-    return new PhraseWeight(searcher);
+  /** A guess of
+   * the average number of simple operations for the initial seek and buffer refill
+   * per document for the positions of a term.
+   * See also {@link Lucene50PostingsReader.BlockPostingsEnum#nextPosition()}.
+   * <p>
+   * Aside: Instead of being constant this could depend among others on
+   * {@link Lucene50PostingsFormat#BLOCK_SIZE},
+   * {@link TermsEnum#docFreq()},
+   * {@link TermsEnum#totalTermFreq()},
+   * {@link DocIdSetIterator#cost()} (expected number of matching docs),
+   * {@link LeafReader#maxDoc()} (total number of docs in the segment),
+   * and the seek time and block size of the device storing the index.
+   */
+  private static final int TERM_POSNS_SEEK_OPS_PER_DOC = 128;
+
+  /** Number of simple operations in {@link Lucene50PostingsReader.BlockPostingsEnum#nextPosition()}
+   *  when no seek or buffer refill is done.
+   */
+  private static final int TERM_OPS_PER_POS = 7;
+
+  /** Returns an expected cost in simple operations
+   *  of processing the occurrences of a term
+   *  in a document that contains the term.
+   *  This is for use by {@link TwoPhaseIterator#matchCost} implementations.
+   *  <br>This may be inaccurate when {@link TermsEnum#totalTermFreq()} is not available.
+   *  @param termsEnum The term is the term at which this TermsEnum is positioned.
+   */
+  static float termPositionsCost(TermsEnum termsEnum) throws IOException {
+    int docFreq = termsEnum.docFreq();
+    assert docFreq > 0;
+    long totalTermFreq = termsEnum.totalTermFreq(); // -1 when not available
+    float expOccurrencesInMatchingDoc = (totalTermFreq < docFreq) ? 1 : (totalTermFreq / (float) docFreq);
+    return TERM_POSNS_SEEK_OPS_PER_DOC + expOccurrencesInMatchingDoc * TERM_OPS_PER_POS;
   }
 
-  /**
-   * @see org.apache.lucene.search.Query#extractTerms(Set)
-   */
+
   @Override
-  public void extractTerms(Set<Term> queryTerms) {
-    queryTerms.addAll(terms);
+  public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+    return new PhraseWeight(searcher, needsScores);
   }
 
   /** Prints a user-readable version of this query. */
   @Override
   public String toString(String f) {
+    final Term[] terms = getTerms();
+    final int[] positions = getPositions();
+
     StringBuilder buffer = new StringBuilder();
     if (field != null && !field.equals(f)) {
       buffer.append(field);
@@ -341,14 +543,20 @@ public class PhraseQuery extends Query {
     }
 
     buffer.append("\"");
+    final int maxPosition;
+    if (positions.length == 0) {
+      maxPosition = -1;
+    } else {
+      maxPosition = positions[positions.length - 1];
+    }
     String[] pieces = new String[maxPosition + 1];
-    for (int i = 0; i < terms.size(); i++) {
-      int pos = positions.get(i).intValue();
+    for (int i = 0; i < terms.length; i++) {
+      int pos = positions[i];
       String s = pieces[pos];
       if (s == null) {
-        s = (terms.get(i)).text();
+        s = (terms[i]).text();
       } else {
-        s = s + "|" + (terms.get(i)).text();
+        s = s + "|" + (terms[i]).text();
       }
       pieces[pos] = s;
     }
@@ -369,7 +577,6 @@ public class PhraseQuery extends Query {
       buffer.append("~");
       buffer.append(slop);
     }
-
     buffer.append(ToStringUtils.boost(getBoost()));
 
     return buffer.toString();
@@ -378,22 +585,105 @@ public class PhraseQuery extends Query {
   /** Returns true iff <code>o</code> is equal to this. */
   @Override
   public boolean equals(Object o) {
-    if (!(o instanceof PhraseQuery))
+    if (super.equals(o) == false) {
       return false;
-    PhraseQuery other = (PhraseQuery)o;
-    return (this.getBoost() == other.getBoost())
-      && (this.slop == other.slop)
-      &&  this.terms.equals(other.terms)
-      && this.positions.equals(other.positions);
+    }
+    PhraseQuery that = (PhraseQuery) o;
+    return slop == that.slop
+        && terms.equals(that.terms)
+        && positions.equals(that.positions);
   }
 
   /** Returns a hash code value for this object.*/
   @Override
   public int hashCode() {
-    return Float.floatToIntBits(getBoost())
-      ^ slop
-      ^ terms.hashCode()
-      ^ positions.hashCode();
+    int h = super.hashCode();
+    h = 31 * h + slop;
+    h = 31 * h + terms.hashCode();
+    h = 31 * h + positions.hashCode();
+    return h;
   }
 
+  // Backward compatibility for pre-5.3 PhraseQuery APIs
+
+  /** Constructs an empty phrase query.
+   * @deprecated Use the {@link Builder} class to build phrase queries.
+   */
+  @Deprecated
+  public PhraseQuery() {
+    this.terms = new ArrayList<>();
+    this.positions = new ArrayList<>();
+    this.mutable = true;
+  }
+
+  private void ensureMutable(String method) {
+    if (mutable == false) {
+      throw new IllegalStateException("This PhraseQuery has been created with the new "
+          + "PhraseQuery.Builder API. It must not be modified afterwards. The "
+          + method + " method only exists for backward compatibility");
+    }
+  }
+
+  /**
+   * Set the slop.
+   * @see #getSlop()
+   * @deprecated Phrase queries should be created once with {@link Builder}
+   *             and then considered immutable. See {@link Builder#setSlop(int)}.
+   */
+  @Deprecated
+  public void setSlop(int s) {
+    ensureMutable("setSlop");
+    if (s < 0) {
+      throw new IllegalArgumentException("slop value cannot be negative");
+    }
+    slop = s; 
+  }
+
+  /**
+   * Adds a term to the end of the query phrase.
+   * The relative position of the term is the one immediately after the last term added.
+   * @deprecated Phrase queries should be created once with {@link Builder}
+   *             and then considered immutable. See {@link Builder#add(Term)}.
+   */
+  @Deprecated
+  public void add(Term term) {
+    int position = 0;
+    if (positions.size() > 0) {
+      position = positions.get(positions.size()-1) + 1;
+    }
+
+    add(term, position);
+  }
+
+  /**
+   * Adds a term to the end of the query phrase.
+   * The relative position of the term within the phrase is specified explicitly.
+   * This allows e.g. phrases with more than one term at the same position
+   * or phrases with gaps (e.g. in connection with stopwords).
+   * @deprecated Phrase queries should be created once with {@link Builder}
+   *             and then considered immutable. See {@link Builder#add(Term, int)}.
+   */
+  @Deprecated
+  public void add(Term term, int position) {
+    ensureMutable("add");
+    Objects.requireNonNull(term, "Term must not be null");
+    if (positions.size() > 0) {
+      final int previousPosition = positions.get(positions.size()-1);
+      if (position < previousPosition) {
+        throw new IllegalArgumentException("Positions must be added in order. Got position="
+            + position + " while previous position was " + previousPosition);
+      }
+    } else if (position < 0) {
+      throw new IllegalArgumentException("Positions must be positive, got " + position);
+    }
+
+    if (terms.size() == 0) {
+      field = term.field();
+    } else if (!term.field().equals(field)) {
+      throw new IllegalArgumentException("All phrase terms must be in the same field: " + term);
+    }
+
+    terms.add(term);
+    positions.add(Integer.valueOf(position));
+  }
 }

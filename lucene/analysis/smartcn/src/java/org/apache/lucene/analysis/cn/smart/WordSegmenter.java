@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.analysis.cn.smart;
 
 import java.util.Collections;
@@ -47,7 +46,7 @@ class WordSegmenter {
     // tokens from sentence, excluding WordType.SENTENCE_BEGIN and WordType.SENTENCE_END
     List<SegToken> result = Collections.emptyList();
     
-    if (segTokenList.size() > 2) // if its not an empty sentence
+    if (segTokenList.size() > 2) // if it's not an empty sentence
       result = segTokenList.subList(1, segTokenList.size() - 1);
     
     for (SegToken st : result)

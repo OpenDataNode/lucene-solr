@@ -1,5 +1,3 @@
-package org.apache.solr.search.function.distance;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,9 @@ package org.apache.solr.search.function.distance;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search.function.distance;
 
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.docvalues.FloatDocValues;
@@ -44,14 +43,25 @@ public class StringDistanceFunction extends ValueSource {
   }
 
   @Override
-  public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+  public FunctionValues getValues(Map context, LeafReaderContext readerContext) throws IOException {
     final FunctionValues str1DV = str1.getValues(context, readerContext);
     final FunctionValues str2DV = str2.getValues(context, readerContext);
     return new FloatDocValues(this) {
 
       @Override
       public float floatVal(int doc) {
-        return dist.getDistance(str1DV.strVal(doc), str2DV.strVal(doc));
+        String s1 = str1DV.strVal(doc);
+        String s2 = str2DV.strVal(doc);
+        if (null == s1 || null == s2) {
+          // the only thing a missing value scores 1.0 with is another missing value
+          return (s1 == s2) ? 1.0F : 0.0F;
+        }
+        return dist.getDistance(s1, s2);
+      }
+
+      @Override
+      public boolean exists(int doc) {
+        return str1DV.exists(doc) && str2DV.exists(doc);
       }
 
       @Override

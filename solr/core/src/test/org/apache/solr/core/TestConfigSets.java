@@ -1,5 +1,3 @@
-package org.apache.solr.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,17 +14,21 @@ package org.apache.solr.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.core;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 import com.carrotsearch.randomizedtesting.rules.SystemPropertiesRestoreRule;
+import com.google.common.collect.ImmutableMap;
 import org.apache.commons.io.FileUtils;
 import org.apache.solr.SolrTestCaseJ4;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.RuleChain;
 import org.junit.rules.TestRule;
-
-import java.io.File;
-import java.io.IOException;
 
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.CoreMatchers.nullValue;
@@ -41,12 +43,12 @@ public class TestConfigSets extends SolrTestCaseJ4 {
   public static String solrxml = "<solr><str name=\"configSetBaseDir\">${configsets:configsets}</str></solr>";
 
   public CoreContainer setupContainer(String configSetsBaseDir) {
-    File testDirectory = createTempDir();
+    Path testDirectory = createTempDir();
 
     System.setProperty("configsets", configSetsBaseDir);
 
-    SolrResourceLoader loader = new SolrResourceLoader(testDirectory.getAbsolutePath());
-    CoreContainer container = new CoreContainer(loader, ConfigSolr.fromString(loader, solrxml));
+    SolrResourceLoader loader = new SolrResourceLoader(testDirectory);
+    CoreContainer container = new CoreContainer(SolrXmlConfig.fromString(loader, solrxml));
     container.load();
 
     return container;
@@ -54,15 +56,16 @@ public class TestConfigSets extends SolrTestCaseJ4 {
 
   @Test
   public void testDefaultConfigSetBasePathResolution() throws IOException {
-    try (SolrResourceLoader loader = new SolrResourceLoader(new File("/path/to/solr/home").getAbsolutePath())) {
+    try (SolrResourceLoader loader = new SolrResourceLoader(Paths.get("/path/to/solr/home"))) {
 
-      ConfigSetService.Default relativeCSS = new ConfigSetService.Default(loader, "configsets");
-      assertThat(relativeCSS.getConfigSetBase().getAbsoluteFile(),
-                is(new File("/path/to/solr/home/configsets").getAbsoluteFile()));
+      NodeConfig config
+          = SolrXmlConfig.fromString(loader, "<solr><str name=\"configSetBaseDir\">configsets</str></solr>");
+      assertThat(config.getConfigSetBaseDirectory().toAbsolutePath(),
+                  is(Paths.get("/path/to/solr/home/configsets").toAbsolutePath()));
 
-      ConfigSetService.Default absoluteCSS = new ConfigSetService.Default(loader, new File("/path/to/configsets").getAbsolutePath());
-      assertThat(absoluteCSS.getConfigSetBase().getAbsoluteFile(),
-                is(new File("/path/to/configsets").getAbsoluteFile()));
+      NodeConfig absConfig
+          = SolrXmlConfig.fromString(loader, "<solr><str name=\"configSetBaseDir\">/path/to/configsets</str></solr>");
+      assertThat(absConfig.getConfigSetBaseDirectory().toAbsolutePath(), is(Paths.get("/path/to/configsets").toAbsolutePath()));
     }
   }
 
@@ -70,13 +73,12 @@ public class TestConfigSets extends SolrTestCaseJ4 {
   public void testConfigSetServiceFindsConfigSets() {
     CoreContainer container = null;
     try {
-      container = setupContainer(getFile("solr/configsets").getAbsolutePath());
-      String testDirectory = container.getResourceLoader().getInstanceDir();
+      container = setupContainer(TEST_PATH().resolve("configsets").toString());
+      Path testDirectory = container.getResourceLoader().getInstancePath();
 
-      SolrCore core1 = container.create(new CoreDescriptor(container, "core1", testDirectory + "/core1", "configSet", "configset-2"));
+      SolrCore core1 = container.create("core1", ImmutableMap.of("configSet", "configset-2"));
       assertThat(core1.getCoreDescriptor().getName(), is("core1"));
-      assertThat(core1.getDataDir(), is(testDirectory + "/core1" + File.separator + "data" + File.separator));
-
+      assertThat(Paths.get(core1.getDataDir()).toString(), is(testDirectory.resolve("core1").resolve("data").toString()));
     }
     finally {
       if (container != null)
@@ -89,9 +91,9 @@ public class TestConfigSets extends SolrTestCaseJ4 {
     CoreContainer container = null;
     try {
       container = setupContainer(getFile("solr/configsets").getAbsolutePath());
-      String testDirectory = container.getResourceLoader().getInstanceDir();
+      Path testDirectory = container.getResourceLoader().getInstancePath();
 
-      container.create(new CoreDescriptor(container, "core1", testDirectory + "/core1", "configSet", "nonexistent"));
+      container.create("core1", ImmutableMap.of("configSet", "nonexistent"));
       fail("Expected core creation to fail");
     }
     catch (Exception e) {
@@ -115,23 +117,23 @@ public class TestConfigSets extends SolrTestCaseJ4 {
     String csd = configSetsDir.getAbsolutePath();
     System.setProperty("configsets", csd);
 
-    SolrResourceLoader loader = new SolrResourceLoader(testDirectory.getAbsolutePath());
-    CoreContainer container = new CoreContainer(loader, ConfigSolr.fromString(loader, solrxml));
+    SolrResourceLoader loader = new SolrResourceLoader(testDirectory.toPath());
+    CoreContainer container = new CoreContainer(SolrXmlConfig.fromString(loader, solrxml));
     container.load();
 
-    // We initially don't have a /get handler defined
-    SolrCore core = container.create(new CoreDescriptor(container, "core1", testDirectory + "/core", "configSet", "configset-2"));
-    assertThat("No /get handler should be defined in the initial configuration",
-        core.getRequestHandler("/get"), is(nullValue()));
+    // We initially don't have a /dump handler defined
+    SolrCore core = container.create("core1", ImmutableMap.of("configSet", "configset-2"));
+    assertThat("No /dump handler should be defined in the initial configuration",
+        core.getRequestHandler("/dump"), is(nullValue()));
 
-    // Now copy in a config with a /get handler and reload
+    // Now copy in a config with a /dump handler and reload
     FileUtils.copyFile(getFile("solr/collection1/conf/solrconfig-withgethandler.xml"),
         new File(new File(configSetsDir, "configset-2/conf"), "solrconfig.xml"));
     container.reload("core1");
 
     core = container.getCore("core1");
-    assertThat("A /get handler should be defined in the reloaded configuration",
-        core.getRequestHandler("/get"), is(notNullValue()));
+    assertThat("A /dump handler should be defined in the reloaded configuration",
+        core.getRequestHandler("/dump"), is(notNullValue()));
     core.close();
 
     container.shutdown();

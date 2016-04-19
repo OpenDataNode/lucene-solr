@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.search;
 
 import org.apache.lucene.search.TermQuery;
@@ -26,6 +25,7 @@ import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.util.AbstractSolrTestCase;
 import org.junit.BeforeClass;
 
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -51,7 +51,7 @@ public class TestQueryUtils extends AbstractSolrTestCase {
   public void positive(Query q) {
     assertFalse(QueryUtils.isNegative(q));
     assertTrue(QueryUtils.getAbs(q)==q);
-    List<BooleanClause> clauses = (q instanceof BooleanQuery) ? ((BooleanQuery)q).clauses() : null;
+    Collection<BooleanClause> clauses = (q instanceof BooleanQuery) ? ((BooleanQuery)q).clauses() : null;
     if (clauses != null) {
       if (clauses.size() != 0) {
         assertTrue(QueryUtils.makeQueryable(q)==q);
@@ -74,21 +74,21 @@ public class TestQueryUtils extends AbstractSolrTestCase {
   public void testNegativeQueries() {
     TermQuery tq = new TermQuery(new Term("hi","there"));
     TermQuery tq2 = new TermQuery(new Term("wow","dude"));
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
 
     positive(tq);
     // positive(bq);
     bq.add(tq, BooleanClause.Occur.SHOULD);
-    positive(bq);
+    positive(bq.build());
     bq.add(tq2, BooleanClause.Occur.MUST_NOT);
-    positive(bq);
+    positive(bq.build());
 
-    bq = new BooleanQuery();
+    bq = new BooleanQuery.Builder();
     bq.add(tq,BooleanClause.Occur.MUST_NOT);
-    negative(bq);
+    negative(bq.build());
 
     bq.add(tq2,BooleanClause.Occur.MUST_NOT);
-    negative(bq);
+    negative(bq.build());
 
 
     String f = "name";  // name is whitespace tokenized

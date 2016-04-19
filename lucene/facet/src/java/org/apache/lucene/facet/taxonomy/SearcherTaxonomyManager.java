@@ -1,5 +1,3 @@
-package org.apache.lucene.facet.taxonomy;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.facet.taxonomy;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet.taxonomy;
 
 import java.io.IOException;
 
@@ -63,6 +62,12 @@ public class SearcherTaxonomyManager extends ReferenceManager<SearcherTaxonomyMa
 
   /** Creates near-real-time searcher and taxonomy reader
    *  from the corresponding writers. */
+  public SearcherTaxonomyManager(IndexWriter writer, SearcherFactory searcherFactory, DirectoryTaxonomyWriter taxoWriter) throws IOException {
+    this(writer, true, searcherFactory, taxoWriter);
+  }
+
+  /** Expert: creates near-real-time searcher and taxonomy reader
+   *  from the corresponding writers, controlling whether deletes should be applied. */
   public SearcherTaxonomyManager(IndexWriter writer, boolean applyAllDeletes, SearcherFactory searcherFactory, DirectoryTaxonomyWriter taxoWriter) throws IOException {
     if (searcherFactory == null) {
       searcherFactory = new SearcherFactory();
@@ -70,7 +75,7 @@ public class SearcherTaxonomyManager extends ReferenceManager<SearcherTaxonomyMa
     this.searcherFactory = searcherFactory;
     this.taxoWriter = taxoWriter;
     DirectoryTaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoWriter);
-    current = new SearcherAndTaxonomy(SearcherManager.getSearcher(searcherFactory, DirectoryReader.open(writer, applyAllDeletes)), taxoReader);
+    current = new SearcherAndTaxonomy(SearcherManager.getSearcher(searcherFactory, DirectoryReader.open(writer, applyAllDeletes), null), taxoReader);
     this.taxoEpoch = taxoWriter.getTaxonomyEpoch();
   }
 
@@ -88,7 +93,7 @@ public class SearcherTaxonomyManager extends ReferenceManager<SearcherTaxonomyMa
     }
     this.searcherFactory = searcherFactory;
     DirectoryTaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoDir);
-    current = new SearcherAndTaxonomy(SearcherManager.getSearcher(searcherFactory, DirectoryReader.open(indexDir)), taxoReader);
+    current = new SearcherAndTaxonomy(SearcherManager.getSearcher(searcherFactory, DirectoryReader.open(indexDir), null), taxoReader);
     this.taxoWriter = null;
     taxoEpoch = -1;
   }
@@ -138,7 +143,7 @@ public class SearcherTaxonomyManager extends ReferenceManager<SearcherTaxonomyMa
         throw new IllegalStateException("DirectoryTaxonomyWriter.replaceTaxonomy was called, which is not allowed when using SearcherTaxonomyManager");
       }
 
-      return new SearcherAndTaxonomy(SearcherManager.getSearcher(searcherFactory, newReader), tr);
+      return new SearcherAndTaxonomy(SearcherManager.getSearcher(searcherFactory, newReader, r), tr);
     }
   }
 

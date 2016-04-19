@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -23,7 +23,7 @@ import org.apache.lucene.document.DoubleField;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.LongField;
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.MultiFields;
@@ -37,7 +37,6 @@ import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.NumericUtils;
 import org.apache.lucene.util.TestNumericUtils; // NaN arrays
-import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.TestUtil;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -159,24 +158,19 @@ public class TestNumericRangeQuery64 extends LuceneTestCase {
     int count=3000;
     long lower=(distance*3/2)+startOffset, upper=lower + count*distance + (distance/3);
     NumericRangeQuery<Long> q = NumericRangeQuery.newLongRange(field, precisionStep, lower, upper, true, true);
-    NumericRangeFilter<Long> f = NumericRangeFilter.newLongRange(field, precisionStep, lower, upper, true, true);
-    for (byte i=0; i<3; i++) {
+    for (byte i=0; i<2; i++) {
       TopDocs topDocs;
       String type;
       switch (i) {
         case 0:
           type = " (constant score filter rewrite)";
-          q.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_FILTER_REWRITE);
-          topDocs = searcher.search(q, null, noDocs, Sort.INDEXORDER);
+          q.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_REWRITE);
+          topDocs = searcher.search(q, noDocs, Sort.INDEXORDER);
           break;
         case 1:
           type = " (constant score boolean rewrite)";
-          q.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_BOOLEAN_QUERY_REWRITE);
-          topDocs = searcher.search(q, null, noDocs, Sort.INDEXORDER);
-          break;
-        case 2:
-          type = " (filter)";
-          topDocs = searcher.search(new MatchAllDocsQuery(), f, noDocs, Sort.INDEXORDER);
+          q.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_BOOLEAN_REWRITE);
+          topDocs = searcher.search(q, noDocs, Sort.INDEXORDER);
           break;
         default:
           return;
@@ -212,20 +206,6 @@ public class TestNumericRangeQuery64 extends LuceneTestCase {
   }
   
   @Test
-  public void testInverseRange() throws Exception {
-    AtomicReaderContext context = SlowCompositeReaderWrapper.wrap(searcher.getIndexReader()).getContext();
-    NumericRangeFilter<Long> f = NumericRangeFilter.newLongRange("field8", 8, 1000L, -1000L, true, true);
-    assertNull("A inverse range should return the null instance", 
-        f.getDocIdSet(context, context.reader().getLiveDocs()));
-    f = NumericRangeFilter.newLongRange("field8", 8, Long.MAX_VALUE, null, false, false);
-    assertNull("A exclusive range starting with Long.MAX_VALUE should return the null instance",
-               f.getDocIdSet(context, context.reader().getLiveDocs()));
-    f = NumericRangeFilter.newLongRange("field8", 8, null, Long.MIN_VALUE, false, false);
-    assertNull("A exclusive range ending with Long.MIN_VALUE should return the null instance",
-               f.getDocIdSet(context, context.reader().getLiveDocs()));
-  }
-  
-  @Test
   public void testOneMatchQuery() throws Exception {
     NumericRangeQuery<Long> q = NumericRangeQuery.newLongRange("ascfield8", 8, 1000L, 1000L, true, true);
     TopDocs topDocs = searcher.search(q, noDocs);
@@ -239,7 +219,7 @@ public class TestNumericRangeQuery64 extends LuceneTestCase {
     int count=3000;
     long upper=(count-1)*distance + (distance/3) + startOffset;
     NumericRangeQuery<Long> q=NumericRangeQuery.newLongRange(field, precisionStep, null, upper, true, true);
-    TopDocs topDocs = searcher.search(q, null, noDocs, Sort.INDEXORDER);
+    TopDocs topDocs = searcher.search(q, noDocs, Sort.INDEXORDER);
     ScoreDoc[] sd = topDocs.scoreDocs;
     assertNotNull(sd);
     assertEquals("Score doc count", count, sd.length );
@@ -249,7 +229,7 @@ public class TestNumericRangeQuery64 extends LuceneTestCase {
     assertEquals("Last doc", (count-1)*distance+startOffset, doc.getField(field).numericValue().longValue() );
 
     q=NumericRangeQuery.newLongRange(field, precisionStep, null, upper, false, true);
-    topDocs = searcher.search(q, null, noDocs, Sort.INDEXORDER);
+    topDocs = searcher.search(q, noDocs, Sort.INDEXORDER);
     sd = topDocs.scoreDocs;
     assertNotNull(sd);
     assertEquals("Score doc count", count, sd.length );
@@ -284,7 +264,7 @@ public class TestNumericRangeQuery64 extends LuceneTestCase {
     int count=3000;
     long lower=(count-1)*distance + (distance/3) +startOffset;
     NumericRangeQuery<Long> q=NumericRangeQuery.newLongRange(field, precisionStep, lower, null, true, true);
-    TopDocs topDocs = searcher.search(q, null, noDocs, Sort.INDEXORDER);
+    TopDocs topDocs = searcher.search(q, noDocs, Sort.INDEXORDER);
     ScoreDoc[] sd = topDocs.scoreDocs;
     assertNotNull(sd);
     assertEquals("Score doc count", noDocs-count, sd.length );
@@ -294,7 +274,7 @@ public class TestNumericRangeQuery64 extends LuceneTestCase {
     assertEquals("Last doc", (noDocs-1)*distance+startOffset, doc.getField(field).numericValue().longValue() );
 
     q=NumericRangeQuery.newLongRange(field, precisionStep, lower, null, true, false);
-    topDocs = searcher.search(q, null, noDocs, Sort.INDEXORDER);
+    topDocs = searcher.search(q, noDocs, Sort.INDEXORDER);
     sd = topDocs.scoreDocs;
     assertNotNull(sd);
     assertEquals("Score doc count", noDocs-count, sd.length );
@@ -584,11 +564,6 @@ public class TestNumericRangeQuery64 extends LuceneTestCase {
       NumericUtils.sortableLongToDouble(lower), NumericUtils.sortableLongToDouble(upper), true, true);
     TopDocs tTopDocs = searcher.search(tq, 1);
     assertEquals("Returned count of range query must be equal to inclusive range length", upper-lower+1, tTopDocs.totalHits );
-    
-    Filter tf=NumericRangeFilter.newDoubleRange(field, precisionStep,
-      NumericUtils.sortableLongToDouble(lower), NumericUtils.sortableLongToDouble(upper), true, true);
-    tTopDocs = searcher.search(new MatchAllDocsQuery(), tf, 1);
-    assertEquals("Returned count of range filter must be equal to inclusive range length", upper-lower+1, tTopDocs.totalHits );
   }
 
   @Test
@@ -609,51 +584,6 @@ public class TestNumericRangeQuery64 extends LuceneTestCase {
   @Test
   public void testDoubleRange_2bit() throws Exception {
     testDoubleRange(2);
-  }
-  
-  private void testSorting(int precisionStep) throws Exception {
-    String field="field"+precisionStep;
-    // 10 random tests, the index order is ascending,
-    // so using a reverse sort field should retun descending documents
-    int num = TestUtil.nextInt(random(), 10, 20);
-    for (int i = 0; i < num; i++) {
-      long lower=(long)(random().nextDouble()*noDocs*distance)+startOffset;
-      long upper=(long)(random().nextDouble()*noDocs*distance)+startOffset;
-      if (lower>upper) {
-        long a=lower; lower=upper; upper=a;
-      }
-      Query tq=NumericRangeQuery.newLongRange(field, precisionStep, lower, upper, true, true);
-      TopDocs topDocs = searcher.search(tq, null, noDocs, new Sort(new SortField(field, SortField.Type.LONG, true)));
-      if (topDocs.totalHits==0) continue;
-      ScoreDoc[] sd = topDocs.scoreDocs;
-      assertNotNull(sd);
-      long last=searcher.doc(sd[0].doc).getField(field).numericValue().longValue();
-      for (int j=1; j<sd.length; j++) {
-        long act=searcher.doc(sd[j].doc).getField(field).numericValue().longValue();
-        assertTrue("Docs should be sorted backwards", last>act );
-        last=act;
-      }
-    }
-  }
-
-  @Test
-  public void testSorting_8bit() throws Exception {
-    testSorting(8);
-  }
-  
-  @Test
-  public void testSorting_6bit() throws Exception {
-    testSorting(6);
-  }
-  
-  @Test
-  public void testSorting_4bit() throws Exception {
-    testSorting(4);
-  }
-  
-  @Test
-  public void testSorting_2bit() throws Exception {
-    testSorting(2);
   }
   
   @Test

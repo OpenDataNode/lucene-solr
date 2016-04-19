@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.standard;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.analysis.standard;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.standard;
 
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 
@@ -23,7 +22,7 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
  * This class implements Word Break rules from the Unicode Text Segmentation 
  * algorithm, as specified in 
  * <a href="http://unicode.org/reports/tr29/">Unicode Standard Annex #29</a>. 
- * <p/>
+ * <p>
  * Tokens produced are of the following types:
  * <ul>
  *   <li>&lt;ALPHANUM&gt;: A sequence of alphabetic and numeric characters</li>
@@ -36,6 +35,7 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
  *   <li>&lt;HANGUL&gt;: A sequence of Hangul characters</li>
  * </ul>
  */
+@SuppressWarnings("fallthrough")
 %%
 
 %unicode 6.3
@@ -43,7 +43,6 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 %final
 %public
 %class StandardTokenizerImpl
-%implements StandardTokenizerInterface
 %function getNextToken
 %char
 %buffer 255
@@ -118,7 +117,7 @@ ComplexContextEx    = \p{LB:Complex_Context}                                    
 // UAX#29 WB1.   sot   ÷
 //        WB2.     ÷   eot
 //
-<<EOF>> { return StandardTokenizerInterface.YYEOF; }
+<<EOF>> { return YYEOF; }
 
 // UAX#29 WB8.   Numeric × Numeric
 //        WB11.  Numeric (MidNum | MidNumLet | Single_Quote) × Numeric

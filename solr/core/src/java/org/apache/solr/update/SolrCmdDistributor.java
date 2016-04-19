@@ -1,5 +1,3 @@
-package org.apache.solr.update;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,26 +14,13 @@ package org.apache.solr.update;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.ConnectException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CompletionService;
-import java.util.concurrent.ExecutorCompletionService;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
+package org.apache.solr.update;
 
 import org.apache.http.HttpResponse;
-import org.apache.solr.client.solrj.SolrServer;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.BinaryResponseParser;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.request.AbstractUpdateRequest;
 import org.apache.solr.client.solrj.request.UpdateRequest;
 import org.apache.solr.common.SolrException;
@@ -49,12 +34,27 @@ import org.apache.solr.update.processor.DistributedUpdateProcessor.RequestReplic
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.invoke.MethodHandles;
+import java.net.ConnectException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletionService;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+
 
 public class SolrCmdDistributor {
   private static final int MAX_RETRIES_ON_FORWARD = 25;
-  public static Logger log = LoggerFactory.getLogger(SolrCmdDistributor.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
-  private StreamingSolrServers servers;
+  private StreamingSolrClients clients;
   
   private int retryPause = 500;
   private int maxRetriesOnForward = MAX_RETRIES_ON_FORWARD;
@@ -71,16 +71,16 @@ public class SolrCmdDistributor {
   }
   
   public SolrCmdDistributor(UpdateShardHandler updateShardHandler) {
-    this.servers = new StreamingSolrServers(updateShardHandler);
+    this.clients = new StreamingSolrClients(updateShardHandler);
     this.updateExecutor = updateShardHandler.getUpdateExecutor();
     this.completionService = new ExecutorCompletionService<>(updateExecutor);
   }
   
-  public SolrCmdDistributor(StreamingSolrServers servers, int maxRetriesOnForward, int retryPause) {
-    this.servers = servers;
+  public SolrCmdDistributor(StreamingSolrClients clients, int maxRetriesOnForward, int retryPause) {
+    this.clients = clients;
     this.maxRetriesOnForward = maxRetriesOnForward;
     this.retryPause = retryPause;
-    this.updateExecutor = servers.getUpdateExecutor();
+    this.updateExecutor = clients.getUpdateExecutor();
     completionService = new ExecutorCompletionService<>(updateExecutor);
   }
   
@@ -88,7 +88,7 @@ public class SolrCmdDistributor {
     try {
       blockAndDoRetries();
     } finally {
-      servers.shutdown();
+      clients.shutdown();
     }
   }
 
@@ -96,7 +96,7 @@ public class SolrCmdDistributor {
     // NOTE: retries will be forwards to a single url
     
     List<Error> errors = new ArrayList<>(this.errors);
-    errors.addAll(servers.getErrors());
+    errors.addAll(clients.getErrors());
     List<Error> resubmitList = new ArrayList<>();
 
     for (Error err : errors) {
@@ -112,13 +112,13 @@ public class SolrCmdDistributor {
         if (testing_errorHook != null) Diagnostics.call(testing_errorHook,
             err.e);
         
-        // this can happen in certain situations such as shutdown
+        // this can happen in certain situations such as close
         if (isRetry) {
           if (rspCode == 404 || rspCode == 403 || rspCode == 503) {
             doRetry = true;
           }
           
-          // if its a connect exception, lets try again
+          // if it's a connect exception, lets try again
           if (err.e instanceof SolrServerException) {
             if (((SolrServerException) err.e).getRootCause() instanceof ConnectException) {
               doRetry = true;
@@ -156,7 +156,7 @@ public class SolrCmdDistributor {
       }
     }
     
-    servers.clearErrors();
+    clients.clearErrors();
     this.errors.clear();
     for (Error err : resubmitList) {
       submit(err.req, false);
@@ -176,8 +176,9 @@ public class SolrCmdDistributor {
     for (Node node : nodes) {
       UpdateRequest uReq = new UpdateRequest();
       uReq.setParams(params);
+      uReq.setCommitWithin(cmd.commitWithin);
       if (cmd.isDeleteById()) {
-        uReq.deleteById(cmd.getId(), cmd.getVersion());
+        uReq.deleteById(cmd.getId(), cmd.getRoute(), cmd.getVersion());
       } else {
         uReq.deleteByQuery(cmd.query);
       }
@@ -195,12 +196,14 @@ public class SolrCmdDistributor {
   }
   
   public void distribAdd(AddUpdateCommand cmd, List<Node> nodes, ModifiableSolrParams params, boolean synchronous, RequestReplicationTracker rrt) throws IOException {  
-
+    String cmdStr = cmd.toString();
     for (Node node : nodes) {
       UpdateRequest uReq = new UpdateRequest();
+      if (cmd.isLastDocInBatch)
+        uReq.lastDocInBatch();
       uReq.setParams(params);
       uReq.add(cmd.solrDoc, cmd.commitWithin, cmd.overwrite);
-      submit(new Req(cmd.toString(), node, uReq, synchronous, rrt), false);
+      submit(new Req(cmdStr, node, uReq, synchronous, rrt, cmd.pollQueueTime), false);
     }
     
   }
@@ -225,7 +228,7 @@ public class SolrCmdDistributor {
   }
 
   private void blockAndDoRetries() {
-    servers.blockUntilFinished();
+    clients.blockUntilFinished();
     
     // wait for any async commits to complete
     while (pending != null && pending.size() > 0) {
@@ -252,15 +255,11 @@ public class SolrCmdDistributor {
   private void submit(final Req req, boolean isCommit) {
     if (req.synchronous) {
       blockAndDoRetries();
-      
-      HttpSolrServer server = new HttpSolrServer(req.node.getUrl(),
-          servers.getHttpClient());
-      try {
-        server.request(req.uReq);
+
+      try (HttpSolrClient client = new HttpSolrClient(req.node.getUrl(), clients.getHttpClient())) {
+        client.request(req.uReq);
       } catch (Exception e) {
         throw new SolrException(ErrorCode.SERVER_ERROR, "Failed synchronous update on shard " + req.node + " update: " + req.uReq , e);
-      } finally {
-        server.shutdown();
       }
       
       return;
@@ -292,8 +291,8 @@ public class SolrCmdDistributor {
   
   private void doRequest(final Req req) {
     try {
-      SolrServer solrServer = servers.getSolrServer(req);
-      solrServer.request(req.uReq);
+      SolrClient solrClient = clients.getSolrClient(req);
+      solrClient.request(req.uReq);
     } catch (Exception e) {
       SolrException.log(log, e);
       Error error = new Error();
@@ -313,17 +312,19 @@ public class SolrCmdDistributor {
     public boolean synchronous;
     public String cmdString;
     public RequestReplicationTracker rfTracker;
+    public int pollQueueTime;
 
     public Req(String cmdString, Node node, UpdateRequest uReq, boolean synchronous) {
-      this(cmdString, node, uReq, synchronous, null);
+      this(cmdString, node, uReq, synchronous, null, 0);
     }
     
-    public Req(String cmdString, Node node, UpdateRequest uReq, boolean synchronous, RequestReplicationTracker rfTracker) {
+    public Req(String cmdString, Node node, UpdateRequest uReq, boolean synchronous, RequestReplicationTracker rfTracker, int pollQueueTime) {
       this.node = node;
       this.uReq = uReq;
       this.synchronous = synchronous;
       this.cmdString = cmdString;
       this.rfTracker = rfTracker;
+      this.pollQueueTime = pollQueueTime;
     }
     
     public String toString() {

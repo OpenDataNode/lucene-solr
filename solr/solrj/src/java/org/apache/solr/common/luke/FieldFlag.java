@@ -1,4 +1,3 @@
-package org.apache.solr.common.luke;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,8 +14,7 @@ package org.apache.solr.common.luke;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
+package org.apache.solr.common.luke;
 /**
  *
  * @since solr 1.3
@@ -30,6 +28,7 @@ public enum FieldFlag {
   TERM_VECTOR_STORED('V', "TermVector Stored"), 
   TERM_VECTOR_OFFSET('o', "Store Offset With TermVector"),
   TERM_VECTOR_POSITION('p', "Store Position With TermVector"),
+  TERM_VECTOR_PAYLOADS('y', "Store Payloads With TermVector"),
   OMIT_NORMS('O', "Omit Norms"), 
   OMIT_TF('F', "Omit Term Frequencies & Positions"), 
   OMIT_POSITIONS('P', "Omit Positions"),

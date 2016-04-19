@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 /**
  * MergeTrigger is passed to
@@ -27,11 +27,13 @@ public enum MergeTrigger {
    * Merge was triggered by a segment flush.
    */
   SEGMENT_FLUSH,
+
   /**
    * Merge was triggered by a full flush. Full flushes
    * can be caused by a commit, NRT reader reopen or a close call on the index writer.
    */
   FULL_FLUSH,
+
   /**
    * Merge has been triggered explicitly by the user.
    */

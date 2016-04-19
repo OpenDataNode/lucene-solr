@@ -1,4 +1,3 @@
-package org.apache.lucene.codecs;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,15 +14,18 @@ package org.apache.lucene.codecs;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs;
 
-import org.apache.lucene.index.DocsEnum; // javadocs
+import org.apache.lucene.codecs.blocktree.BlockTreeTermsReader; // javadocs
 import org.apache.lucene.index.OrdTermState;
 import org.apache.lucene.index.TermState;
 
 /**
  * Holds all state required for {@link PostingsReaderBase}
- * to produce a {@link DocsEnum} without re-seeking the
+ * to produce a {@link org.apache.lucene.index.PostingsEnum} without re-seeking the
  * terms dict.
+ *
+ * @lucene.internal
  */
 public class BlockTermState extends OrdTermState {
   /** how many docs have this term */
@@ -36,6 +38,11 @@ public class BlockTermState extends OrdTermState {
   /** fp into the terms dict primary file (_X.tim) that holds this term */
   // TODO: update BTR to nuke this
   public long blockFilePointer;
+
+  /** True if this term is "real" (e.g., not an auto-prefix term or
+   *  some other "secret" term; currently only {@link BlockTreeTermsReader}
+   *  sets this). */
+  public boolean isRealTerm = true;
 
   /** Sole constructor. (For invocation by subclass 
    *  constructors, typically implicit.) */
@@ -51,10 +58,16 @@ public class BlockTermState extends OrdTermState {
     totalTermFreq = other.totalTermFreq;
     termBlockOrd = other.termBlockOrd;
     blockFilePointer = other.blockFilePointer;
+    isRealTerm = other.isRealTerm;
+  }
+
+  @Override
+  public boolean isRealTerm() {
+    return isRealTerm;
   }
 
   @Override
   public String toString() {
-    return "docFreq=" + docFreq + " totalTermFreq=" + totalTermFreq + " termBlockOrd=" + termBlockOrd + " blockFP=" + blockFilePointer;
+    return "docFreq=" + docFreq + " totalTermFreq=" + totalTermFreq + " termBlockOrd=" + termBlockOrd + " blockFP=" + blockFilePointer + " isRealTerm=" + isRealTerm;
   }
 }

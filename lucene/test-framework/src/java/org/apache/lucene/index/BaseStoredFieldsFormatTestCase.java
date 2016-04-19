@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -32,7 +31,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.StoredFieldsFormat;
-import org.apache.lucene.codecs.lucene410.Lucene410Codec;
 import org.apache.lucene.codecs.simpletext.SimpleTextCodec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.DoubleField;
@@ -43,10 +41,10 @@ import org.apache.lucene.document.FieldType.NumericType;
 import org.apache.lucene.document.FloatField;
 import org.apache.lucene.document.IntField;
 import org.apache.lucene.document.LongField;
+import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.NumericRangeQuery;
 import org.apache.lucene.search.Query;
@@ -57,10 +55,12 @@ import org.apache.lucene.store.MMapDirectory;
 import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.store.MockDirectoryWrapper.Throttling;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.TestUtil;
 
 import com.carrotsearch.randomizedtesting.generators.RandomInts;
 import com.carrotsearch.randomizedtesting.generators.RandomPicks;
+import com.carrotsearch.randomizedtesting.generators.RandomStrings;
 
 /**
  * Base class aiming at testing {@link StoredFieldsFormat stored fields formats}.
@@ -126,7 +126,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends BaseIndexFileFormat
       w.addDocument(doc);
       if (rand.nextInt(50) == 17) {
         // mixup binding of field name -> Number every so often
-        Collections.shuffle(fieldIDs);
+        Collections.shuffle(fieldIDs, random());
       }
       if (rand.nextInt(5) == 3 && i > 0) {
         final String delID = ""+rand.nextInt(i);
@@ -289,6 +289,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends BaseIndexFileFormat
       FieldType ft = new FieldType(IntField.TYPE_STORED);
       ft.setNumericPrecisionStep(Integer.MAX_VALUE);
       doc.add(new IntField("id", id, ft));
+      doc.add(new NumericDocValuesField("id", id));
       w.addDocument(doc);
     }
     final DirectoryReader r = w.getReader();
@@ -296,14 +297,14 @@ public abstract class BaseStoredFieldsFormatTestCase extends BaseIndexFileFormat
     
     assertEquals(numDocs, r.numDocs());
 
-    for(AtomicReaderContext ctx : r.leaves()) {
-      final AtomicReader sub = ctx.reader();
-      final FieldCache.Ints ids = FieldCache.DEFAULT.getInts(sub, "id", false);
+    for(LeafReaderContext ctx : r.leaves()) {
+      final LeafReader sub = ctx.reader();
+      final NumericDocValues ids = DocValues.getNumeric(sub, "id");
       for(int docID=0;docID<sub.numDocs();docID++) {
         final Document doc = sub.document(docID);
         final Field f = (Field) doc.getField("nf");
         assertTrue("got f=" + f, f instanceof StoredField);
-        assertEquals(answers[ids.get(docID)], f.numericValue());
+        assertEquals(answers[(int) ids.get(docID)], f.numericValue());
       }
     }
     r.close();
@@ -321,8 +322,8 @@ public abstract class BaseStoredFieldsFormatTestCase extends BaseIndexFileFormat
     w.addDocument(doc);
     IndexReader r = w.getReader();
     w.close();
-    assertFalse(r.document(0).getField("field").fieldType().indexed());
-    assertTrue(r.document(0).getField("field2").fieldType().indexed());
+    assertEquals(IndexOptions.NONE, r.document(0).getField("field").fieldType().indexOptions());
+    assertNotNull(r.document(0).getField("field2").fieldType().indexOptions());
     r.close();
     dir.close();
   }
@@ -490,7 +491,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends BaseIndexFileFormat
     // get another codec, other than the default: so we are merging segments across different codecs
     final Codec otherCodec;
     if ("SimpleText".equals(Codec.getDefault().getName())) {
-      otherCodec = new Lucene410Codec();
+      otherCodec = TestUtil.getDefaultCodec();
     } else {
       otherCodec = new SimpleTextCodec();
     }
@@ -516,7 +517,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends BaseIndexFileFormat
     }
 
     final FieldType type = new FieldType(StringField.TYPE_STORED);
-    type.setIndexed(false);
+    type.setIndexOptions(IndexOptions.NONE);
     type.freeze();
     IntField id = new IntField("id", 0, Store.YES);
     for (int i = 0; i < data.length; ++i) {
@@ -580,7 +581,94 @@ public abstract class BaseStoredFieldsFormatTestCase extends BaseIndexFileFormat
     iw.close();
     dir.close();
   }
-  
+
+  /** A dummy filter reader that reverse the order of documents in stored fields. */
+  private static class DummyFilterLeafReader extends FilterLeafReader {
+
+    public DummyFilterLeafReader(LeafReader in) {
+      super(in);
+    }
+
+    @Override
+    public void document(int docID, StoredFieldVisitor visitor) throws IOException {
+      super.document(maxDoc() - 1 - docID, visitor);
+    }
+
+  }
+
+  private static class DummyFilterDirectoryReader extends FilterDirectoryReader {
+
+    public DummyFilterDirectoryReader(DirectoryReader in) throws IOException {
+      super(in, new SubReaderWrapper() {
+        @Override
+        public LeafReader wrap(LeafReader reader) {
+          return new DummyFilterLeafReader(reader);
+        }
+      });
+    }
+
+    @Override
+    protected DirectoryReader doWrapDirectoryReader(DirectoryReader in) throws IOException {
+      return new DummyFilterDirectoryReader(in);
+    }
+    
+  }
+
+  public void testMergeFilterReader() throws IOException {
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    final int numDocs = atLeast(200);
+    final String[] stringValues = new String[10];
+    for (int i = 0; i < stringValues.length; ++i) {
+      stringValues[i] = RandomStrings.randomRealisticUnicodeOfLength(random(), 10);
+    }
+    Document[] docs = new Document[numDocs];
+    for (int i = 0; i < numDocs; ++i) {
+      Document doc = new Document();
+      doc.add(new StringField("to_delete", random().nextBoolean() ? "yes" : "no", Store.NO));
+      doc.add(new StoredField("id", i));
+      doc.add(new StoredField("i", random().nextInt(50)));
+      doc.add(new StoredField("l", random().nextLong()));
+      doc.add(new StoredField("d", random().nextDouble()));
+      doc.add(new StoredField("f", random().nextFloat()));
+      doc.add(new StoredField("s", RandomPicks.randomFrom(random(), stringValues)));
+      doc.add(new StoredField("b", new BytesRef(RandomPicks.randomFrom(random(), stringValues))));
+      docs[i] = doc;
+      w.addDocument(doc);
+    }
+    if (random().nextBoolean()) {
+      w.deleteDocuments(new Term("to_delete", "yes"));
+    }
+    w.commit();
+    w.close();
+    
+    DirectoryReader reader = new DummyFilterDirectoryReader(DirectoryReader.open(dir));
+    
+    Directory dir2 = newDirectory();
+    w = new RandomIndexWriter(random(), dir2);
+    TestUtil.addIndexesSlowly(w.w, reader);
+    reader.close();
+    dir.close();
+
+    reader = w.getReader();
+    for (int i = 0; i < reader.maxDoc(); ++i) {
+      final Document doc = reader.document(i);
+      final int id = doc.getField("id").numericValue().intValue();
+      final Document expected = docs[id];
+      assertEquals(expected.get("s"), doc.get("s"));
+      assertEquals(expected.getField("i").numericValue(), doc.getField("i").numericValue());
+      assertEquals(expected.getField("l").numericValue(), doc.getField("l").numericValue());
+      assertEquals(expected.getField("d").numericValue(), doc.getField("d").numericValue());
+      assertEquals(expected.getField("f").numericValue(), doc.getField("f").numericValue());
+      assertEquals(expected.getField("b").binaryValue(), doc.getField("b").binaryValue());
+    }
+
+    reader.close();
+    w.close();
+    TestUtil.checkIndex(dir2);
+    dir2.close();
+  }
+
   @Nightly
   public void testBigDocuments() throws IOException {
     // "big" as "much bigger than the chunk size"
@@ -606,7 +694,7 @@ public abstract class BaseStoredFieldsFormatTestCase extends BaseIndexFileFormat
     bigDoc2.add(idField);
 
     final FieldType onlyStored = new FieldType(StringField.TYPE_STORED);
-    onlyStored.setIndexed(false);
+    onlyStored.setIndexOptions(IndexOptions.NONE);
 
     final Field smallField = new Field("fld", randomByteArray(random().nextInt(10), 256), onlyStored);
     final int numFields = RandomInts.randomIntBetween(random(), 500000, 1000000);
@@ -675,4 +763,51 @@ public abstract class BaseStoredFieldsFormatTestCase extends BaseIndexFileFormat
     dir.close();
   }
 
+  /** mix up field numbers, merge, and check that data is correct */
+  public void testMismatchedFields() throws Exception {
+    Directory dirs[] = new Directory[10];
+    for (int i = 0; i < dirs.length; i++) {
+      Directory dir = newDirectory();
+      IndexWriterConfig iwc = new IndexWriterConfig(null);
+      IndexWriter iw = new IndexWriter(dir, iwc);
+      Document doc = new Document();
+      for (int j = 0; j < 10; j++) {
+        // add fields where name=value (e.g. 3=3) so we can detect if stuff gets screwed up.
+        doc.add(new StringField(Integer.toString(j), Integer.toString(j), Field.Store.YES));
+      }
+      for (int j = 0; j < 10; j++) {
+        iw.addDocument(doc);
+      }
+      
+      DirectoryReader reader = DirectoryReader.open(iw);
+      // mix up fields explicitly
+      if (random().nextBoolean()) {
+        reader = new MismatchedDirectoryReader(reader, random());
+      }
+      dirs[i] = newDirectory();
+      IndexWriter adder = new IndexWriter(dirs[i], new IndexWriterConfig(null));
+      TestUtil.addIndexesSlowly(adder, reader);
+      adder.commit();
+      adder.close();
+      
+      IOUtils.close(reader, iw, dir);
+    }
+    
+    Directory everything = newDirectory();
+    IndexWriter iw = new IndexWriter(everything, new IndexWriterConfig(null));
+    iw.addIndexes(dirs);
+    iw.forceMerge(1);
+    
+    LeafReader ir = getOnlySegmentReader(DirectoryReader.open(iw));
+    for (int i = 0; i < ir.maxDoc(); i++) {
+      Document doc = ir.document(i);
+      assertEquals(10, doc.getFields().size());
+      for (int j = 0; j < 10; j++) {
+        assertEquals(Integer.toString(j), doc.get(Integer.toString(j)));
+      }
+    }
+
+    IOUtils.close(iw, ir, everything);
+    IOUtils.close(dirs);
+  }
 }

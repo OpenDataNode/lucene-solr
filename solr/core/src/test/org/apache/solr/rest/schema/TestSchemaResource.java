@@ -1,4 +1,3 @@
-package org.apache.solr.rest.schema;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,8 +14,7 @@ package org.apache.solr.rest.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
+package org.apache.solr.rest.schema;
 import org.apache.solr.rest.SolrRestletTestBase;
 import org.junit.Test;
 
@@ -29,7 +27,7 @@ public class TestSchemaResource extends SolrRestletTestBase {
             "/response/lst[@name='schema']/str[@name='name'][.='test-rest']",
 
             "count(/response/lst[@name='schema']/float[@name='version']) = 1",
-            "/response/lst[@name='schema']/float[@name='version'][.='1.5']",
+            "/response/lst[@name='schema']/float[@name='version'][.='1.6']",
 
             "count(/response/lst[@name='schema']/lst[@name='solrQueryParser']/str[@name='defaultOperator']) = 1",
             "/response/lst[@name='schema']/lst[@name='solrQueryParser']/str[@name='defaultOperator'][.='OR']",
@@ -114,7 +112,7 @@ public class TestSchemaResource extends SolrRestletTestBase {
     assertJQ("/schema?wt=json", // Should work with or without a trailing slash
 
              "/schema/name=='test-rest'",
-             "/schema/version==1.5",
+             "/schema/version==1.6",
              "/schema/solrQueryParser/defaultOperator=='OR'",
              "/schema/uniqueKey=='id'",
              "/schema/defaultSearchField=='text'",
@@ -131,19 +129,19 @@ public class TestSchemaResource extends SolrRestletTestBase {
              "/schema/dynamicFields/[1]/name=='ignored_*'",
              "/schema/dynamicFields/[2]/name=='*_mfacet'",
                  
-             "/schema/copyFields/[6]=={'source':'title','dest':'dest_sub_no_ast_s'}",
+             "/schema/copyFields/[1]=={'source':'src_sub_no_ast_i','dest':'title'}",
 
-             "/schema/copyFields/[7]=={'source':'*_i','dest':'title'}",
-             "/schema/copyFields/[8]=={'source':'*_i','dest':'*_s'}",
-             "/schema/copyFields/[9]=={'source':'*_i','dest':'*_dest_sub_s'}",
-             "/schema/copyFields/[10]=={'source':'*_i','dest':'dest_sub_no_ast_s'}",
+             "/schema/copyFields/[7]=={'source':'title','dest':'dest_sub_no_ast_s'}",
+             "/schema/copyFields/[8]=={'source':'*_i','dest':'title'}",
+             "/schema/copyFields/[9]=={'source':'*_i','dest':'*_s'}",
+             "/schema/copyFields/[10]=={'source':'*_i','dest':'*_dest_sub_s'}",
+             "/schema/copyFields/[11]=={'source':'*_i','dest':'dest_sub_no_ast_s'}",
 
-             "/schema/copyFields/[11]=={'source':'*_src_sub_i','dest':'title'}",
-             "/schema/copyFields/[12]=={'source':'*_src_sub_i','dest':'*_s'}",
-             "/schema/copyFields/[13]=={'source':'*_src_sub_i','dest':'*_dest_sub_s'}",
-             "/schema/copyFields/[14]=={'source':'*_src_sub_i','dest':'dest_sub_no_ast_s'}",
+             "/schema/copyFields/[12]=={'source':'*_src_sub_i','dest':'title'}",
+             "/schema/copyFields/[13]=={'source':'*_src_sub_i','dest':'*_s'}",
+             "/schema/copyFields/[14]=={'source':'*_src_sub_i','dest':'*_dest_sub_s'}",
+             "/schema/copyFields/[15]=={'source':'*_src_sub_i','dest':'dest_sub_no_ast_s'}",
 
-             "/schema/copyFields/[15]=={'source':'src_sub_no_ast_i','dest':'title'}",
              "/schema/copyFields/[16]=={'source':'src_sub_no_ast_i','dest':'*_s'}",
              "/schema/copyFields/[17]=={'source':'src_sub_no_ast_i','dest':'*_dest_sub_s'}",
              "/schema/copyFields/[18]=={'source':'src_sub_no_ast_i','dest':'dest_sub_no_ast_s'}");
@@ -155,7 +153,7 @@ public class TestSchemaResource extends SolrRestletTestBase {
     assertQ("/schema?wt=schema.xml",  // should work with or without trailing slash on '/schema/' path
 
             "/schema/@name = 'test-rest'",
-            "/schema/@version = '1.5'",
+            "/schema/@version = '1.6'",
             "/schema/solrQueryParser/@defaultOperator = 'OR'",
             "/schema/uniqueKey = 'id'",
             "/schema/defaultSearchField = 'text'",

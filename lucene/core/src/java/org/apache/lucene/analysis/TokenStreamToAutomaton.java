@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis;
+
 
 import java.io.IOException;
 
@@ -78,7 +78,7 @@ public class TokenStreamToAutomaton {
     }
   }
 
-  /** Subclass & implement this if you need to change the
+  /** Subclass and implement this if you need to change the
    *  token (such as escaping certain bytes) before it's
    *  turned into a graph. */ 
   protected BytesRef changeToken(BytesRef in) {
@@ -104,8 +104,6 @@ public class TokenStreamToAutomaton {
     final PositionIncrementAttribute posIncAtt = in.addAttribute(PositionIncrementAttribute.class);
     final PositionLengthAttribute posLengthAtt = in.addAttribute(PositionLengthAttribute.class);
     final OffsetAttribute offsetAtt = in.addAttribute(OffsetAttribute.class);
-
-    final BytesRef term = termBytesAtt.getBytesRef();
 
     in.reset();
 
@@ -157,8 +155,7 @@ public class TokenStreamToAutomaton {
 
       final int endPos = pos + posLengthAtt.getPositionLength();
 
-      termBytesAtt.fillBytesRef();
-      final BytesRef termUTF8 = changeToken(term);
+      final BytesRef termUTF8 = changeToken(termBytesAtt.getBytesRef());
       int[] termUnicode = null;
       final Position endPosData = positions.get(endPos);
       if (endPosData.arriving == -1) {

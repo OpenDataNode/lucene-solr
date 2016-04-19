@@ -18,6 +18,7 @@
  -->
 
 <project name="lucene" default="default" basedir="."
+         xmlns:jacoco="antlib:org.jacoco.ant"
          xmlns:artifact="antlib:org.apache.maven.artifact.ant">
 
   <import file="common-build.xml"/>
@@ -52,7 +53,7 @@
   </target>
 
   <!-- "-clover.load" is *not* a useless dependency. do not remove -->
-  <target name="test" depends="-clover.load, -init-totals, test-core, test-modules, test-backwards, -check-totals"
+  <target name="test" depends="-clover.load, -init-totals, test-core, test-test-framework, test-modules, -check-totals"
           description="Runs all unit tests (core, modules and back-compat)"
   />
 
@@ -60,87 +61,9 @@
           description="Runs pitests (core, modules and back-compat)"
   />
 
-  <path id="backwards.test.compile.classpath">
-    <path refid="junit-path"/>
-    <path refid="ant-path"/>
-    <fileset dir="${backwards.dir}/lib">
-      <include name="lucene-core*.jar"/>
-    </fileset>
-  </path>
-	
-  <path id="backwards.junit.classpath">
-    <path refid="junit-path"/>
-    <path refid="classpath"/>
-    <pathelement location="${build.dir.backwards}/classes/test"/>
-    <pathelement path="${java.class.path}"/>
-  </path>
-
-  <target name="compile-backwards" depends="compile-core"
-  	description="Runs tests of a previous Lucene version.">
-	<sequential>
-      <mkdir dir="${build.dir.backwards}"/>	  
-      
-      <!-- TODO: separate test-framework from core tests (because META-INF duplicates in trunk) -->
-      
-      <!-- compile branch tests against previous version JAR file -->	
-      <compile-test-macro srcdir="${backwards.dir}/test-framework/src/java" destdir="${build.dir.backwards}/classes/test"
-                  test.classpath="backwards.test.compile.classpath" javac.source="${javac.source.backwards}" javac.target="${javac.target.backwards}"/>
-      <!-- Copy the resources folder (if existent) -->
-      <copy todir="${build.dir.backwards}/classes/test">
-        <fileset dir="${backwards.dir}/test-framework/src/resources" erroronmissingdir="no"/>
-      </copy>
-      <compile-test-macro srcdir="${backwards.dir}/core/src/test" destdir="${build.dir.backwards}/classes/test"
-                  test.classpath="backwards.test.compile.classpath" javac.source="${javac.source.backwards}" javac.target="${javac.target.backwards}"/>
-      
-
-  	</sequential>
-  </target>	
-
-  <target name="backwards-test-warning" depends="check-backwards-params" if="backwards.ignoring.params">
-    <echo>
-       Warning: Ignoring your multiplier and nightly settings for backwards tests.
-       These tests are for API compatibility only!
-    </echo>
+  <target name="beast">
+    <fail message="The Beast only works inside of individual modules"/>
   </target>
-
-  <!--
-  Add dependency after 4.0: depends="compile-backwards, backwards-test-warning"
-  and uncomment inside of this target.
-  -->
-  <target name="test-backwards" depends="install-junit4-taskdef">
-    <!--
-    <mkdir dir="${build.dir.backwards}/test"/>
-    <backwards-test-macro/>
-    -->
-  </target>
-
-  <target name="check-backwards-params">
-    <condition property="backwards.ignoring.params">
-      <or>
-        <istrue value="${tests.nightly}"/>
-        <not><equals arg1="${tests.multiplier}" arg2="1"/></not>
-      </or>
-    </condition>
-  </target>
-
-  <macrodef name="backwards-test-macro">
-  	<attribute name="threadNum" default="1"/>
-  	<attribute name="threadTotal" default="1"/>
-  	<sequential>
-  	  <!-- run branch tests against trunk jar:
-          Note: we disable multiplier/nightly because the purpose is to find API breaks
-          -->
-      <test-macro 
-        dataDir="${backwards.dir}/core/src/test" 
-        workDir="${build.dir.backwards}/test" 
-        junit.classpath="backwards.junit.classpath" 
-        junit.output.dir="${junit.output.dir.backwards}" 
-        tests.nightly="false"
-        tests.multiplier="1"
-        threadNum="@{threadNum}" 
-        threadTotal="@{threadTotal}"/>
-    </sequential>
-  </macrodef>
 
   <target name="compile-core" depends="compile-lucene-core"/>
 
@@ -155,10 +78,11 @@
 
   <!-- Validation here depends on compile-tools: but we want to compile modules' tools too -->
   <target name="compile-tools" depends="common.compile-tools">
-  	<modules-crawl target="compile-tools" failonerror="true"/>
+    <modules-crawl target="compile-tools" failonerror="true"/>
   </target>
 
   <target name="check-licenses" depends="compile-tools,resolve,load-custom-tasks" description="Validate license stuff.">
+    <property name="skipRegexChecksum" value=""/>
     <license-check-macro dir="${basedir}" licensedir="${common.dir}/licenses">
       <additional-filters>
         <replaceregex pattern="jetty([^/]+)$" replace="jetty" flags="gi" />
@@ -174,6 +98,8 @@
     <lib-versions-check-macro dir="${common.dir}/.."
                               centralized.versions.file="${common.dir}/ivy-versions.properties"
                               ivy.settings.file="${common.dir}/ivy-settings.xml"
+                              ivy.resolution-cache.dir="${ivy.resolution-cache.dir}"
+                              ivy.lock-strategy="${ivy.lock-strategy}"
                               common.build.dir="${common.build.dir}"
                               ignore.conflicts.file="${common.dir}/ivy-ignore-conflicts.properties"/>
   </target>
@@ -264,6 +190,8 @@
     <check-missing-javadocs dir="build/docs/core/org/apache/lucene/search/similarities" level="method"/>
     <check-missing-javadocs dir="build/docs/core/org/apache/lucene/index" level="method"/>
     <check-missing-javadocs dir="build/docs/core/org/apache/lucene/codecs" level="method"/>
+
+    <check-missing-javadocs dir="build/docs/spatial3d" level="method"/>
   </target>
   
   <target name="-ecj-javadoc-lint" depends="compile,compile-test,-ecj-javadoc-lint-unsupported,-ecj-resolve" if="ecj-javadoc-lint.supported">
@@ -275,21 +203,15 @@
     <modules-crawl target="-ecj-javadoc-lint"/>
   </target>
 
-  <target name="process-webpages" depends="resolve-groovy,resolve-pegdown">
+  <target name="process-webpages" depends="resolve-pegdown">
     <makeurl property="process-webpages.buildfiles" separator="|">
-      <fileset dir="." includes="**/build.xml" excludes="build.xml,analysis/*,build/**,tools/**,backwards/**,site/**"/>
+      <fileset dir="." includes="**/build.xml" excludes="build.xml,analysis/*,build/**,tools/**,site/**"/>
     </makeurl>
     <property name="Codec.java" location="core/src/java/org/apache/lucene/codecs/Codec.java"/>
-    <loadfile srcfile="${Codec.java}" property="defaultCodecPackage">
+    <loadfile srcfile="${Codec.java}" property="defaultCodec" encoding="UTF-8">
       <filterchain>
-        <tokenfilter>
-          <filetokenizer/>
-          <scriptfilter language="groovy" classpathref="groovy.classpath"><![CDATA[
-            //                   private static Codec defaultCodec   =   Codec    .   forName    (   "LuceneXXX"   )   ;
-            def defaultCodecMatcher = self.getToken() =~ /defaultCodec\s*=\s*Codec\s*\.\s*forName\s*\(\s*"([^"]+)"\s*\)\s*;/
-            self.setToken(defaultCodecMatcher[0][1].toLowerCase(Locale.ROOT));
-          ]]></scriptfilter>
-        </tokenfilter>
+        <!--  private static Codec defaultCodec   =   LOADER    .   lookup    (   "LuceneXXX"                 )   ; -->
+        <containsregex pattern="^.*defaultCodec\s*=\s*LOADER\s*\.\s*lookup\s*\(\s*&quot;([^&quot;]+)&quot;\s*\)\s*;.*$" replace="\1"/>
       </filterchain>
     </loadfile>
 
@@ -305,7 +227,7 @@
       <outputproperty name="indent" value="yes"/>
       <param name="buildfiles" expression="${process-webpages.buildfiles}"/>
       <param name="version" expression="${version}"/>
-      <param name="defaultCodecPackage" expression="${defaultCodecPackage}"/>
+      <param name="defaultCodec" expression="${defaultCodec}"/>
     </xslt>
     
     <pegdown todir="${javadoc.dir}">
@@ -314,10 +236,10 @@
     </pegdown>
 
     <copy todir="${javadoc.dir}">
-      <fileset dir="site/html" includes="**/*"/>
+      <fileset dir="site/html"/>
     </copy>
   </target>
-	
+  
   <target name="javadocs-modules" description="Generate javadoc for modules classes">
     <modules-crawl target="javadocs"
                    failonerror="true"/>
@@ -361,7 +283,7 @@
         <patternset refid="binary.build.dist.patterns"/>
       </zipfileset>
     </zip>
-	<make-checksums file="${dist.dir}/lucene-${version}.zip"/>
+    <make-checksums file="${dist.dir}/lucene-${version}.zip"/>
   </target>
 
   <!-- ================================================================== -->
@@ -414,25 +336,28 @@
     </target>
 
   <!-- ================================================================== -->
-  <!-- Packages the sources from "svn export" with tar-gzip               -->
+  <!-- Packages the sources with tar-gzip               -->
   <!-- ================================================================== -->
   <target name="package-tgz-src" depends="init-dist"
-          description="--> Generates the Lucene source distribution from 'svn export' as .tgz">
+          description="--> Generates the Lucene source distribution as .tgz">
     <property name="source.package.file"
-              value="${dist.dir}/lucene-${version}-src.tgz"/>
+              location="${dist.dir}/lucene-${version}-src.tgz"/>
     <delete file="${source.package.file}"/>
-    <svn-export-source source.dir="."/>
+    <export-source source.dir="."/>
 
     <!-- Exclude javadoc package-list files under licenses incompatible with the ASL -->
-    <delete dir="${svn.export.dir}/tools/javadoc/java7"/>
+    <delete dir="${src.export.dir}/tools/javadoc/java7"/>
     <!-- Exclude clover license files incompatible with the ASL -->
-    <delete dir="${svn.export.dir}/tools/clover"/>
+    <delete dir="${src.export.dir}/tools/clover"/>
 
-    <build-changes changes.src.file="${svn.export.dir}/CHANGES.txt"
-                   changes.target.dir="${svn.export.dir}/docs/changes"
+    <!-- because we only package the "lucene/" folder, we have to adjust dir to work on: -->
+    <property name="local.src.export.dir" location="${src.export.dir}/lucene"/>
+    
+    <build-changes changes.src.file="${local.src.export.dir}/CHANGES.txt"
+                   changes.target.dir="${local.src.export.dir}/docs/changes"
                    changes.product="LUCENE"/>
     <tar tarfile="${source.package.file}" compression="gzip" longfile="gnu">
-      <tarfileset prefix="lucene-${version}" dir="${svn.export.dir}"/>
+      <tarfileset prefix="lucene-${version}" dir="${local.src.export.dir}"/>
     </tar>
     <make-checksums file="${source.package.file}"/>
   </target>
@@ -488,6 +413,7 @@
       <m2-deploy pom.xml="${filtered.pom.templates.dir}/pom.xml"/>        <!-- Lucene/Solr grandparent POM -->
       <m2-deploy pom.xml="${filtered.pom.templates.dir}/lucene/pom.xml"/> <!-- Lucene parent POM -->
       <subant target="-dist-maven" failonerror="true" inheritall="false">
+        <propertyset refid="uptodate.and.compiled.properties"/>
         <fileset dir="${common.dir}/core" includes="build.xml"/>
         <fileset dir="${common.dir}/test-framework" includes="build.xml"/>
       </subant>
@@ -496,11 +422,11 @@
   </target>
 
   <target name="generate-maven-artifacts" depends="-unpack-lucene-tgz">
-    <sequential>
-      <ant dir=".." target="resolve" inheritall="false"/>
-      <antcall target="-filter-pom-templates" inheritall="false"/>
-      <antcall target="-dist-maven" inheritall="false"/>
-    </sequential>
+    <ant dir=".." target="resolve" inheritall="false"/>
+    <antcall target="-filter-pom-templates" inheritall="false"/>
+    <antcall target="-dist-maven" inheritall="false">
+      <propertyset refid="uptodate.and.compiled.properties"/>
+    </antcall>
   </target>
   
   <target name="-validate-maven-dependencies" depends="compile-tools, install-maven-tasks, load-custom-tasks">
@@ -514,7 +440,7 @@
       <modules-crawl target="-validate-maven-dependencies"/>
     </sequential>
   </target>
-	
+  
   <!-- ================================================================== -->
   <!-- support for signing the artifacts using gpg                        -->
   <!-- ================================================================== -->
@@ -532,11 +458,20 @@
       <ant dir="core" target="compile-test" inheritall="false">
         <propertyset refid="uptodate.and.compiled.properties"/>
       </ant>
+      <ant dir="test-framework" target="compile-test" inheritall="false">
+        <propertyset refid="uptodate.and.compiled.properties"/>
+      </ant>
       <modules-crawl target="compile-test" failonerror="true"/>
     </sequential>
   </target>
+
+  <target name="test-test-framework">
+      <ant dir="test-framework" target="test" inheritall="false">
+        <propertyset refid="uptodate.and.compiled.properties"/>
+      </ant>
+  </target>
   
-  <target name="test-modules" depends="compile-test">
+  <target name="test-modules">
     <modules-crawl target="test" failonerror="true"/>
   </target>
 
@@ -546,6 +481,40 @@
 
   <target name="pitest-modules" depends="compile-test">
     <modules-crawl target="pitest" failonerror="false"/>
+  </target>
+
+  <target name="jacoco" description="Generates JaCoCo code coverage reports" depends="-jacoco-install">
+    <!-- run jacoco for each module -->
+    <ant dir="${common.dir}/core" target="jacoco" inheritAll="false">
+      <propertyset refid="uptodate.and.compiled.properties"/>
+    </ant>
+    <ant dir="${common.dir}/test-framework" target="jacoco" inheritAll="false">
+      <propertyset refid="uptodate.and.compiled.properties"/>
+    </ant>
+    <modules-crawl target="jacoco" failonerror="true"/>
+
+    <!-- produce aggregate report -->
+    <property name="jacoco.output.dir" location="${jacoco.report.dir}/lucene-all"/>
+    <!-- try to clean output dir to prevent any confusion -->
+    <delete dir="${jacoco.output.dir}" failonerror="false"/>
+    <mkdir dir="${jacoco.output.dir}"/>
+
+    <jacoco:report>
+      <executiondata>
+        <fileset dir="${common.dir}/build" includes="**/jacoco.db"/>
+      </executiondata>
+      <structure name="${Name} aggregate JaCoCo coverage report">
+        <classfiles>
+          <fileset dir="${common.dir}/build">
+             <include name="**/classes/java/**/*.class"/>
+             <exclude name="tools/**"/>
+          </fileset>
+        </classfiles>
+        <!-- TODO: trying to specify source files could maybe work, but would
+             double the size of the reports -->
+      </structure>
+      <html destdir="${jacoco.output.dir}" footer="Copyright ${year} Apache Software Foundation.  All Rights Reserved."/>
+    </jacoco:report>
   </target>
 
   <!--

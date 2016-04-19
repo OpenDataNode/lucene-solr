@@ -1,5 +1,3 @@
-package org.apache.lucene.search.join;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.join;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.join;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -23,23 +22,19 @@ import java.util.Collections;
 import java.util.Locale;
 import java.util.Set;
 
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.search.ComplexExplanation;
-import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Explanation;
-import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.grouping.TopGroups;
 import org.apache.lucene.util.ArrayUtil;
-import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.FixedBitSet;
+import org.apache.lucene.util.BitSet;
 
 /**
  * This query requires that you index
@@ -49,7 +44,7 @@ import org.apache.lucene.util.FixedBitSet;
  * child documents must appear first, ending with the parent
  * document.  At search time you provide a Filter
  * identifying the parents, however this Filter must provide
- * an {@link FixedBitSet} per sub-reader.
+ * an {@link BitSet} per sub-reader.
  *
  * <p>Once the block index is built, use this query to wrap
  * any sub-query matching only child docs and join matches in that
@@ -85,7 +80,7 @@ import org.apache.lucene.util.FixedBitSet;
  */
 public class ToParentBlockJoinQuery extends Query {
 
-  private final Filter parentsFilter;
+  private final BitSetProducer parentsFilter;
   private final Query childQuery;
 
   // If we are rewritten, this is the original childQuery we
@@ -99,13 +94,11 @@ public class ToParentBlockJoinQuery extends Query {
   /** Create a ToParentBlockJoinQuery.
    * 
    * @param childQuery Query matching child documents.
-   * @param parentsFilter Filter (must produce FixedBitSet
-   * per-segment, like {@link FixedBitSetCachingWrapperFilter})
-   * identifying the parent documents.
+   * @param parentsFilter Filter identifying the parent documents.
    * @param scoreMode How to aggregate multiple child scores
    * into a single parent score.
    **/
-  public ToParentBlockJoinQuery(Query childQuery, Filter parentsFilter, ScoreMode scoreMode) {
+  public ToParentBlockJoinQuery(Query childQuery, BitSetProducer parentsFilter, ScoreMode scoreMode) {
     super();
     this.origChildQuery = childQuery;
     this.childQuery = childQuery;
@@ -113,7 +106,7 @@ public class ToParentBlockJoinQuery extends Query {
     this.scoreMode = scoreMode;
   }
 
-  private ToParentBlockJoinQuery(Query origChildQuery, Query childQuery, Filter parentsFilter, ScoreMode scoreMode) {
+  private ToParentBlockJoinQuery(Query origChildQuery, Query childQuery, BitSetProducer parentsFilter, ScoreMode scoreMode) {
     super();
     this.origChildQuery = origChildQuery;
     this.childQuery = childQuery;
@@ -122,18 +115,23 @@ public class ToParentBlockJoinQuery extends Query {
   }
 
   @Override
-  public Weight createWeight(IndexSearcher searcher) throws IOException {
-    return new BlockJoinWeight(this, childQuery.createWeight(searcher), parentsFilter, scoreMode);
+  public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+    return new BlockJoinWeight(this, childQuery.createWeight(searcher, needsScores), parentsFilter, needsScores ? scoreMode : ScoreMode.None);
+  }
+  
+  /** Return our child query. */
+  public Query getChildQuery() {
+    return childQuery;
   }
 
   private static class BlockJoinWeight extends Weight {
     private final Query joinQuery;
     private final Weight childWeight;
-    private final Filter parentsFilter;
+    private final BitSetProducer parentsFilter;
     private final ScoreMode scoreMode;
 
-    public BlockJoinWeight(Query joinQuery, Weight childWeight, Filter parentsFilter, ScoreMode scoreMode) {
-      super();
+    public BlockJoinWeight(Query joinQuery, Weight childWeight, BitSetProducer parentsFilter, ScoreMode scoreMode) {
+      super(joinQuery);
       this.joinQuery = joinQuery;
       this.childWeight = childWeight;
       this.parentsFilter = parentsFilter;
@@ -141,75 +139,93 @@ public class ToParentBlockJoinQuery extends Query {
     }
 
     @Override
-    public Query getQuery() {
-      return joinQuery;
-    }
+    public void extractTerms(Set<Term> terms) {}
 
     @Override
     public float getValueForNormalization() throws IOException {
-      return childWeight.getValueForNormalization() * joinQuery.getBoost() * joinQuery.getBoost();
+      return childWeight.getValueForNormalization();
     }
 
     @Override
-    public void normalize(float norm, float topLevelBoost) {
-      childWeight.normalize(norm, topLevelBoost * joinQuery.getBoost());
+    public void normalize(float norm, float boost) {
+      childWeight.normalize(norm, boost);
     }
 
     // NOTE: acceptDocs applies (and is checked) only in the
     // parent document space
     @Override
-    public Scorer scorer(AtomicReaderContext readerContext, Bits acceptDocs) throws IOException {
+    public Scorer scorer(LeafReaderContext readerContext) throws IOException {
 
-      final Scorer childScorer = childWeight.scorer(readerContext, readerContext.reader().getLiveDocs());
+      final Scorer childScorer = childWeight.scorer(readerContext);
       if (childScorer == null) {
         // No matches
         return null;
       }
 
-      final int firstChildDoc = childScorer.nextDoc();
+      final int firstChildDoc = childScorer.iterator().nextDoc();
       if (firstChildDoc == DocIdSetIterator.NO_MORE_DOCS) {
         // No matches
         return null;
       }
 
-      // NOTE: we cannot pass acceptDocs here because this
-      // will (most likely, justifiably) cause the filter to
-      // not return a FixedBitSet but rather a
-      // BitsFilteredDocIdSet.  Instead, we filter by
-      // acceptDocs when we score:
-      final DocIdSet parents = parentsFilter.getDocIdSet(readerContext, null);
+      // NOTE: this does not take accept docs into account, the responsibility
+      // to not match deleted docs is on the scorer
+      final BitSet parents = parentsFilter.getBitSet(readerContext);
 
       if (parents == null) {
         // No matches
         return null;
       }
-      if (!(parents instanceof FixedBitSet)) {
-        throw new IllegalStateException("parentFilter must return FixedBitSet; got " + parents);
-      }
 
-      return new BlockJoinScorer(this, childScorer, (FixedBitSet) parents, firstChildDoc, scoreMode, acceptDocs);
+      return new BlockJoinScorer(this, childScorer, parents, firstChildDoc, scoreMode);
     }
 
     @Override
-    public Explanation explain(AtomicReaderContext context, int doc) throws IOException {
-      BlockJoinScorer scorer = (BlockJoinScorer) scorer(context, context.reader().getLiveDocs());
-      if (scorer != null && scorer.advance(doc) == doc) {
+    public Explanation explain(LeafReaderContext context, int doc) throws IOException {
+      BlockJoinScorer scorer = (BlockJoinScorer) scorer(context);
+      if (scorer != null && scorer.iterator().advance(doc) == doc) {
         return scorer.explain(context.docBase);
       }
-      return new ComplexExplanation(false, 0.0f, "Not a match");
-    }
-
-    @Override
-    public boolean scoresDocsOutOfOrder() {
-      return false;
+      return Explanation.noMatch("Not a match");
     }
   }
-
-  static class BlockJoinScorer extends Scorer {
+  
+  /** 
+   * Ascendant for {@link ToParentBlockJoinQuery}'s scorer. 
+   * @lucene.experimental it might be removed at <b>6.0</b>
+   * */
+  public static abstract class ChildrenMatchesScorer extends Scorer{
+    
+    /** inherited constructor */
+    protected ChildrenMatchesScorer(Weight weight) {
+      super(weight);
+    }
+    
+    /** 
+     * enables children matches recording 
+     * */
+    public abstract void trackPendingChildHits() ;
+    
+    /**
+     * reports matched children 
+     * @return number of recorded matched children docs 
+     * */
+    public abstract int getChildCount() ;
+    
+    /**
+     * reports matched children 
+     * @param other array for recording matching children docs of next parent,
+     * it might be null (that's slower) or the same array which was returned 
+     * from the previous call
+     * @return array with {@link #getChildCount()} matched children docnums
+     *  */
+    public abstract int[] swapChildDocs(int[] other);
+  }
+  
+  static class BlockJoinScorer extends ChildrenMatchesScorer{
     private final Scorer childScorer;
-    private final FixedBitSet parentBits;
+    private final BitSet parentBits;
     private final ScoreMode scoreMode;
-    private final Bits acceptDocs;
     private int parentDoc = -1;
     private int prevParentDoc;
     private float parentScore;
@@ -219,13 +235,12 @@ public class ToParentBlockJoinQuery extends Query {
     private float[] pendingChildScores;
     private int childDocUpto;
 
-    public BlockJoinScorer(Weight weight, Scorer childScorer, FixedBitSet parentBits, int firstChildDoc, ScoreMode scoreMode, Bits acceptDocs) {
+    public BlockJoinScorer(Weight weight, Scorer childScorer, BitSet parentBits, int firstChildDoc, ScoreMode scoreMode) {
       super(weight);
       //System.out.println("Q.init firstChildDoc=" + firstChildDoc);
       this.parentBits = parentBits;
       this.childScorer = childScorer;
       this.scoreMode = scoreMode;
-      this.acceptDocs = acceptDocs;
       nextChildDoc = firstChildDoc;
     }
 
@@ -234,7 +249,8 @@ public class ToParentBlockJoinQuery extends Query {
       return Collections.singleton(new ChildScorer(childScorer, "BLOCK_JOIN"));
     }
 
-    int getChildCount() {
+    @Override
+    public int getChildCount() {
       return childDocUpto;
     }
 
@@ -242,7 +258,8 @@ public class ToParentBlockJoinQuery extends Query {
       return parentDoc;
     }
 
-    int[] swapChildDocs(int[] other) {
+    @Override
+    public int[] swapChildDocs(int[] other) {
       final int[] ret = pendingChildDocs;
       if (other == null) {
         pendingChildDocs = new int[5];
@@ -266,35 +283,64 @@ public class ToParentBlockJoinQuery extends Query {
     }
 
     @Override
-    public int nextDoc() throws IOException {
-      //System.out.println("Q.nextDoc() nextChildDoc=" + nextChildDoc);
-      // Loop until we hit a parentDoc that's accepted
-      while (true) {
-        if (nextChildDoc == NO_MORE_DOCS) {
-          //System.out.println("  end");
-          return parentDoc = NO_MORE_DOCS;
-        }
+    public DocIdSetIterator iterator() {
+      return new DocIdSetIterator() {
+        final DocIdSetIterator childIt = childScorer.iterator();
 
-        // Gather all children sharing the same parent as
-        // nextChildDoc
+        @Override
+        public int nextDoc() throws IOException {
+          //System.out.println("Q.nextDoc() nextChildDoc=" + nextChildDoc);
+          if (nextChildDoc == NO_MORE_DOCS) {
+            //System.out.println("  end");
+            return parentDoc = NO_MORE_DOCS;
+          }
 
-        parentDoc = parentBits.nextSetBit(nextChildDoc);
+          // Gather all children sharing the same parent as
+          // nextChildDoc
 
-        // Parent & child docs are supposed to be
-        // orthogonal:
-        if (nextChildDoc == parentDoc) {
-          throw new IllegalStateException("child query must only match non-parent docs, but parent docID=" + nextChildDoc + " matched childScorer=" + childScorer.getClass());
-        }
+          parentDoc = parentBits.nextSetBit(nextChildDoc);
 
-        //System.out.println("  parentDoc=" + parentDoc);
-        assert parentDoc != -1;
+          // Parent & child docs are supposed to be
+          // orthogonal:
+          if (nextChildDoc == parentDoc) {
+            throw new IllegalStateException("child query must only match non-parent docs, but parent docID=" + nextChildDoc + " matched childScorer=" + childScorer.getClass());
+          }
 
-        //System.out.println("  nextChildDoc=" + nextChildDoc);
-        if (acceptDocs != null && !acceptDocs.get(parentDoc)) {
-          // Parent doc not accepted; skip child docs until
-          // we hit a new parent doc:
+          //System.out.println("  parentDoc=" + parentDoc);
+          assert parentDoc != DocIdSetIterator.NO_MORE_DOCS;
+
+          float totalScore = 0;
+          float maxScore = Float.NEGATIVE_INFINITY;
+          float minScore = Float.POSITIVE_INFINITY;
+
+          childDocUpto = 0;
+          parentFreq = 0;
           do {
-            nextChildDoc = childScorer.nextDoc();
+
+            //System.out.println("  c=" + nextChildDoc);
+            if (pendingChildDocs != null && pendingChildDocs.length == childDocUpto) {
+              pendingChildDocs = ArrayUtil.grow(pendingChildDocs);
+            }
+            if (pendingChildScores != null && scoreMode != ScoreMode.None && pendingChildScores.length == childDocUpto) {
+              pendingChildScores = ArrayUtil.grow(pendingChildScores);
+            }
+            if (pendingChildDocs != null) {
+              pendingChildDocs[childDocUpto] = nextChildDoc;
+            }
+            if (scoreMode != ScoreMode.None) {
+              // TODO: specialize this into dedicated classes per-scoreMode
+              final float childScore = childScorer.score();
+              final int childFreq = childScorer.freq();
+              if (pendingChildScores != null) {
+                pendingChildScores[childDocUpto] = childScore;
+              }
+              maxScore = Math.max(childScore, maxScore);
+              minScore = Math.min(childScore, minScore);
+              totalScore += childScore;
+              parentFreq += childFreq;
+            }
+            childDocUpto++;
+            nextChildDoc = childIt.nextDoc();
           } while (nextChildDoc < parentDoc);
 
           // Parent & child docs are supposed to be
@@ -303,64 +349,76 @@ public class ToParentBlockJoinQuery extends Query {
             throw new IllegalStateException("child query must only match non-parent docs, but parent docID=" + nextChildDoc + " matched childScorer=" + childScorer.getClass());
           }
 
-          continue;
+          switch(scoreMode) {
+          case Avg:
+            parentScore = totalScore / childDocUpto;
+            break;
+          case Max:
+            parentScore = maxScore;
+            break;
+          case Min:
+            parentScore = minScore;
+            break;
+          case Total:
+            parentScore = totalScore;
+            break;
+          case None:
+            break;
+          }
+
+          //System.out.println("  return parentDoc=" + parentDoc + " childDocUpto=" + childDocUpto);
+          return parentDoc;
         }
 
-        float totalScore = 0;
-        float maxScore = Float.NEGATIVE_INFINITY;
+        @Override
+        public int advance(int parentTarget) throws IOException {
 
-        childDocUpto = 0;
-        parentFreq = 0;
-        do {
+          //System.out.println("Q.advance parentTarget=" + parentTarget);
+          if (parentTarget == NO_MORE_DOCS) {
+            return parentDoc = NO_MORE_DOCS;
+          }
 
-          //System.out.println("  c=" + nextChildDoc);
-          if (pendingChildDocs != null && pendingChildDocs.length == childDocUpto) {
-            pendingChildDocs = ArrayUtil.grow(pendingChildDocs);
+          if (parentTarget == 0) {
+            // Callers should only be passing in a docID from
+            // the parent space, so this means this parent
+            // has no children (it got docID 0), so it cannot
+            // possibly match.  We must handle this case
+            // separately otherwise we pass invalid -1 to
+            // prevSetBit below:
+            return nextDoc();
           }
-          if (pendingChildScores != null && scoreMode != ScoreMode.None && pendingChildScores.length == childDocUpto) {
-            pendingChildScores = ArrayUtil.grow(pendingChildScores);
-          }
-          if (pendingChildDocs != null) {
-            pendingChildDocs[childDocUpto] = nextChildDoc;
-          }
-          if (scoreMode != ScoreMode.None) {
-            // TODO: specialize this into dedicated classes per-scoreMode
-            final float childScore = childScorer.score();
-            final int childFreq = childScorer.freq();
-            if (pendingChildScores != null) {
-              pendingChildScores[childDocUpto] = childScore;
-            }
-            maxScore = Math.max(childScore, maxScore);
-            totalScore += childScore;
-            parentFreq += childFreq;
-          }
-          childDocUpto++;
-          nextChildDoc = childScorer.nextDoc();
-        } while (nextChildDoc < parentDoc);
 
-        // Parent & child docs are supposed to be
-        // orthogonal:
-        if (nextChildDoc == parentDoc) {
-          throw new IllegalStateException("child query must only match non-parent docs, but parent docID=" + nextChildDoc + " matched childScorer=" + childScorer.getClass());
+          prevParentDoc = parentBits.prevSetBit(parentTarget-1);
+
+          //System.out.println("  rolled back to prevParentDoc=" + prevParentDoc + " vs parentDoc=" + parentDoc);
+          assert prevParentDoc >= parentDoc;
+          if (prevParentDoc > nextChildDoc) {
+            nextChildDoc = childIt.advance(prevParentDoc);
+            // System.out.println("  childScorer advanced to child docID=" + nextChildDoc);
+          //} else {
+            //System.out.println("  skip childScorer advance");
+          }
+
+          // Parent & child docs are supposed to be orthogonal:
+          if (nextChildDoc == prevParentDoc) {
+            throw new IllegalStateException("child query must only match non-parent docs, but parent docID=" + nextChildDoc + " matched childScorer=" + childScorer.getClass());
+          }
+
+          final int nd = nextDoc();
+          //System.out.println("  return nextParentDoc=" + nd);
+          return nd;
         }
 
-        switch(scoreMode) {
-        case Avg:
-          parentScore = totalScore / childDocUpto;
-          break;
-        case Max:
-          parentScore = maxScore;
-          break;
-        case Total:
-          parentScore = totalScore;
-          break;
-        case None:
-          break;
+        @Override
+        public int docID() {
+          return parentDoc;
         }
 
-        //System.out.println("  return parentDoc=" + parentDoc + " childDocUpto=" + childDocUpto);
-        return parentDoc;
-      }
+        @Override
+        public long cost() {
+          return childIt.cost();
+        }
+      };
     }
 
     @Override
@@ -378,61 +436,17 @@ public class ToParentBlockJoinQuery extends Query {
       return parentFreq;
     }
 
-    @Override
-    public int advance(int parentTarget) throws IOException {
-
-      //System.out.println("Q.advance parentTarget=" + parentTarget);
-      if (parentTarget == NO_MORE_DOCS) {
-        return parentDoc = NO_MORE_DOCS;
-      }
-
-      if (parentTarget == 0) {
-        // Callers should only be passing in a docID from
-        // the parent space, so this means this parent
-        // has no children (it got docID 0), so it cannot
-        // possibly match.  We must handle this case
-        // separately otherwise we pass invalid -1 to
-        // prevSetBit below:
-        return nextDoc();
-      }
-
-      prevParentDoc = parentBits.prevSetBit(parentTarget-1);
-
-      //System.out.println("  rolled back to prevParentDoc=" + prevParentDoc + " vs parentDoc=" + parentDoc);
-      assert prevParentDoc >= parentDoc;
-      if (prevParentDoc > nextChildDoc) {
-        nextChildDoc = childScorer.advance(prevParentDoc);
-        // System.out.println("  childScorer advanced to child docID=" + nextChildDoc);
-      //} else {
-        //System.out.println("  skip childScorer advance");
-      }
-
-      // Parent & child docs are supposed to be orthogonal:
-      if (nextChildDoc == prevParentDoc) {
-        throw new IllegalStateException("child query must only match non-parent docs, but parent docID=" + nextChildDoc + " matched childScorer=" + childScorer.getClass());
-      }
-
-      final int nd = nextDoc();
-      //System.out.println("  return nextParentDoc=" + nd);
-      return nd;
-    }
-
     public Explanation explain(int docBase) throws IOException {
       int start = docBase + prevParentDoc + 1; // +1 b/c prevParentDoc is previous parent doc
       int end = docBase + parentDoc - 1; // -1 b/c parentDoc is parent doc
-      return new ComplexExplanation(
-          true, score(), String.format(Locale.ROOT, "Score based on child doc range from %d to %d", start, end)
+      return Explanation.match(score(), String.format(Locale.ROOT, "Score based on child doc range from %d to %d", start, end)
       );
-    }
-
-    @Override
-    public long cost() {
-      return childScorer.cost();
     }
 
     /**
      * Instructs this scorer to keep track of the child docIds and score ids for retrieval purposes.
      */
+    @Override
     public void trackPendingChildHits() {
       pendingChildDocs = new int[5];
       if (scoreMode != ScoreMode.None) {
@@ -442,22 +456,18 @@ public class ToParentBlockJoinQuery extends Query {
   }
 
   @Override
-  public void extractTerms(Set<Term> terms) {
-    childQuery.extractTerms(terms);
-  }
-
-  @Override
   public Query rewrite(IndexReader reader) throws IOException {
+    if (getBoost() != 1f) {
+      return super.rewrite(reader);
+    }
     final Query childRewrite = childQuery.rewrite(reader);
     if (childRewrite != childQuery) {
-      Query rewritten = new ToParentBlockJoinQuery(origChildQuery,
+      return new ToParentBlockJoinQuery(origChildQuery,
                                 childRewrite,
                                 parentsFilter,
                                 scoreMode);
-      rewritten.setBoost(getBoost());
-      return rewritten;
     } else {
-      return this;
+      return super.rewrite(reader);
     }
   }
 

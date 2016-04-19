@@ -1,20 +1,3 @@
-package org.apache.lucene.facet.taxonomy.writercache;
-
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.nio.ByteBuffer;
-import java.nio.charset.CharsetDecoder;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
-
-import org.apache.lucene.facet.FacetTestCase;
-import org.apache.lucene.util.TestUtil;
-
-import org.junit.Test;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -31,6 +14,20 @@ import org.junit.Test;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet.taxonomy.writercache;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import org.apache.lucene.facet.FacetTestCase;
+
+import org.junit.Test;
 
 public class TestCharBlockArray extends FacetTestCase {
 
@@ -85,18 +82,17 @@ public class TestCharBlockArray extends FacetTestCase {
 
     assertEqualsInternal("GrowingCharArray<->StringBuilder mismatch.", builder, array);
 
-    File tempDir = createTempDir("growingchararray");
-    File f = new File(tempDir, "GrowingCharArrayTest.tmp");
-    BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(f));
+    Path tempDir = createTempDir("growingchararray");
+    Path f = tempDir.resolve("GrowingCharArrayTest.tmp");
+    BufferedOutputStream out = new BufferedOutputStream(Files.newOutputStream(f));
     array.flush(out);
     out.flush();
     out.close();
 
-    BufferedInputStream in = new BufferedInputStream(new FileInputStream(f));
+    BufferedInputStream in = new BufferedInputStream(Files.newInputStream(f));
     array = CharBlockArray.open(in);
     assertEqualsInternal("GrowingCharArray<->StringBuilder mismatch after flush/load.", builder, array);
     in.close();
-    f.delete();
   }
 
   private static void assertEqualsInternal(String msg, StringBuilder expected, CharBlockArray actual) {

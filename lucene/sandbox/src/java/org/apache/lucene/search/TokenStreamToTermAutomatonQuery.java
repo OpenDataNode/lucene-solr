@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
 import java.io.IOException;
 
@@ -61,8 +60,6 @@ public class TokenStreamToTermAutomatonQuery {
     final PositionLengthAttribute posLengthAtt = in.addAttribute(PositionLengthAttribute.class);
     final OffsetAttribute offsetAtt = in.addAttribute(OffsetAttribute.class);
 
-    final BytesRef term = termBytesAtt.getBytesRef();
-
     in.reset();
 
     TermAutomatonQuery query = new TermAutomatonQuery(field);
@@ -93,7 +90,7 @@ public class TokenStreamToTermAutomatonQuery {
         state = query.createState();
       }
 
-      termBytesAtt.fillBytesRef();
+      BytesRef term = termBytesAtt.getBytesRef();
       //System.out.println(pos + "-" + endPos + ": " + term.utf8ToString() + ": posInc=" + posInc);
       if (term.length == 1 && term.bytes[term.offset] == (byte) '*') {
         query.addAnyTransition(pos, endPos);

@@ -14,10 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.queries.function.valuesource;
 
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
@@ -58,14 +57,14 @@ public class TotalTermFreqValueSource extends ValueSource {
   }
 
   @Override
-  public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+  public FunctionValues getValues(Map context, LeafReaderContext readerContext) throws IOException {
     return (FunctionValues)context.get(this);
   }
 
   @Override
   public void createWeight(Map context, IndexSearcher searcher) throws IOException {
     long totalTermFreq = 0;
-    for (AtomicReaderContext readerContext : searcher.getTopReaderContext().leaves()) {
+    for (LeafReaderContext readerContext : searcher.getTopReaderContext().leaves()) {
       long val = readerContext.reader().totalTermFreq(new Term(indexedField, indexedBytes));
       if (val == -1) {
         totalTermFreq = -1;

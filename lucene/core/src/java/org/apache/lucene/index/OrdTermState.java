@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 /**
  * An ordinal based {@link TermState}
@@ -23,7 +23,7 @@ package org.apache.lucene.index;
  * @lucene.experimental
  */
 public class OrdTermState extends TermState {
-  /** Term ordinal, i.e. it's position in the full list of
+  /** Term ordinal, i.e. its position in the full list of
    *  sorted terms. */
   public long ord;
 

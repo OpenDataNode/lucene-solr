@@ -19,7 +19,6 @@ package org.apache.solr.search;
 
 import static org.apache.solr.update.processor.DistributingUpdateProcessorFactory.DISTRIB_UPDATE_PARAM;
 
-import org.apache.solr.common.SolrException;
 import org.noggit.ObjectBuilder;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.request.SolrQueryRequest;
@@ -28,12 +27,12 @@ import org.apache.solr.update.UpdateLog;
 import org.apache.solr.update.UpdateHandler;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Deque;
@@ -45,16 +44,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.solr.SolrTestCaseJ4;
-import org.apache.solr.request.SolrQueryRequest;
-import org.apache.solr.update.DirectUpdateHandler2;
-import org.apache.solr.update.UpdateHandler;
-import org.apache.solr.update.UpdateLog;
 import org.apache.solr.update.processor.DistributedUpdateProcessor.DistribPhase;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.noggit.ObjectBuilder;
 
 public class TestRecovery extends SolrTestCaseJ4 {
 
@@ -498,6 +488,110 @@ public class TestRecovery extends SolrTestCaseJ4 {
 
   }
 
+  @Test
+  public void testBufferedMultipleCalls() throws Exception {
+
+    DirectUpdateHandler2.commitOnClose = false;
+    final Semaphore logReplay = new Semaphore(0);
+    final Semaphore logReplayFinish = new Semaphore(0);
+
+    UpdateLog.testing_logReplayHook = new Runnable() {
+      @Override
+      public void run() {
+        try {
+          assertTrue(logReplay.tryAcquire(timeout, TimeUnit.SECONDS));
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+      }
+    };
+
+    UpdateLog.testing_logReplayFinishHook = new Runnable() {
+      @Override
+      public void run() {
+        logReplayFinish.release();
+      }
+    };
+
+
+    SolrQueryRequest req = req();
+    UpdateHandler uhandler = req.getCore().getUpdateHandler();
+    UpdateLog ulog = uhandler.getUpdateLog();
+    Future<UpdateLog.RecoveryInfo> rinfoFuture;
+
+    try {
+      clearIndex();
+      assertU(commit());
+      assertEquals(UpdateLog.State.ACTIVE, ulog.getState());
+
+      ulog.bufferUpdates();
+      assertEquals(UpdateLog.State.BUFFERING, ulog.getState());
+
+      // simulate updates from a leader
+      updateJ(jsonAdd(sdoc("id","c1", "_version_","101")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","c2", "_version_","102")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","c3", "_version_","103")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+
+      // call bufferUpdates again (this currently happens when recovery fails)... we should get a new starting point
+      ulog.bufferUpdates();
+      assertEquals(UpdateLog.State.BUFFERING, ulog.getState());
+
+      updateJ(jsonAdd(sdoc("id", "c4", "_version_","104")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id", "c5", "_version_","105")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+
+      logReplay.release(1000);
+      rinfoFuture = ulog.applyBufferedUpdates();
+      UpdateLog.RecoveryInfo rinfo = rinfoFuture.get();
+      assertEquals(2, rinfo.adds);
+
+      assertJQ(req("qt","/get", "getVersions","2")
+          ,"=={'versions':[105,104]}"
+      );
+
+      // this time add some docs first before buffering starts (so tlog won't be at pos 0)
+      updateJ(jsonAdd(sdoc("id","c100", "_version_","200")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","c101", "_version_","201")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+
+      ulog.bufferUpdates();
+      updateJ(jsonAdd(sdoc("id","c103", "_version_","203")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","c104", "_version_","204")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+
+      // call bufferUpdates again (this currently happens when recovery fails)... we should get a new starting point
+      ulog.bufferUpdates();
+      updateJ(jsonAdd(sdoc("id","c105", "_version_","205")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+      updateJ(jsonAdd(sdoc("id","c106", "_version_","206")), params(DISTRIB_UPDATE_PARAM,FROM_LEADER));
+
+      rinfoFuture = ulog.applyBufferedUpdates();
+      rinfo = rinfoFuture.get();
+      assertEquals(2, rinfo.adds);
+
+      assertJQ(req("q", "*:*", "sort","_version_ asc", "fl","id,_version_")
+          , "/response/docs==["
+              + "{'id':'c4','_version_':104}"
+              + ",{'id':'c5','_version_':105}"
+              + ",{'id':'c100','_version_':200}"
+              + ",{'id':'c101','_version_':201}"
+              + ",{'id':'c105','_version_':205}"
+              + ",{'id':'c106','_version_':206}"
+              +"]"
+      );
+
+      // The updates that were buffered (but never applied) still appear in recent versions!
+      // This is good for some uses, but may not be good for others.
+      assertJQ(req("qt","/get", "getVersions","11")
+          ,"=={'versions':[206,205,204,203,201,200,105,104,103,102,101]}"
+      );
+
+      assertEquals(UpdateLog.State.ACTIVE, ulog.getState()); // leave each test method in a good state
+    } finally {
+      DirectUpdateHandler2.commitOnClose = true;
+      UpdateLog.testing_logReplayHook = null;
+      UpdateLog.testing_logReplayFinishHook = null;
+
+      req().close();
+    }
+
+  }
 
 
   // we need to make sure that the log is informed of a core reload
@@ -661,7 +755,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
 
   }
 
-  // make sure that log isn't needlessly replayed after a clean shutdown
+  // make sure that log isn't needlessly replayed after a clean close
   @Test
   public void testCleanShutdown() throws Exception {
     DirectUpdateHandler2.commitOnClose = true;
@@ -762,53 +856,70 @@ public class TestRecovery extends SolrTestCaseJ4 {
 
       String[] files = ulog.getLogList(logDir);
       for (String file : files) {
-        new File(logDir, file).delete();
+        Files.delete(new File(logDir, file).toPath());
       }
 
       assertEquals(0, ulog.getLogList(logDir).length);
 
       createCore();
 
-      int start = 0;
-      int maxReq = 50;
+      int numIndexed = 0;
+      int maxReq = 200;
 
       LinkedList<Long> versions = new LinkedList<>();
-      addDocs(10, start, versions); start+=10;
-      assertJQ(req("qt","/get", "getVersions",""+maxReq), "/versions==" + versions.subList(0,Math.min(maxReq,start)));
+
+      int docsPerBatch = 3;
+      // we don't expect to reach numRecordsToKeep as yet, so the bottleneck is still number of logs to keep
+      int expectedToRetain = ulog.getMaxNumLogsToKeep() * docsPerBatch;
+      int versExpected;
+
+      for (int i = 1; i <= ulog.getMaxNumLogsToKeep() + 2; i ++) {
+        addDocs(docsPerBatch, numIndexed, versions); numIndexed += docsPerBatch;
+        versExpected = Math.min(numIndexed, expectedToRetain + docsPerBatch); // not yet committed, so one more tlog could slip in
+        assertJQ(req("qt", "/get", "getVersions", "" + maxReq), "/versions==" + versions.subList(0, Math.min(maxReq, versExpected)));
+        assertU(commit());
+        versExpected = Math.min(numIndexed, expectedToRetain);
+        assertJQ(req("qt", "/get", "getVersions", "" + maxReq), "/versions==" + versions.subList(0, Math.min(maxReq, versExpected)));
+        assertEquals(Math.min(i, ulog.getMaxNumLogsToKeep()), ulog.getLogList(logDir).length);
+      }
+
+      docsPerBatch = ulog.getNumRecordsToKeep() + 20;
+      // about to commit a lot of docs, so numRecordsToKeep becomes the bottleneck
+      expectedToRetain = ulog.getNumRecordsToKeep();
+
+      addDocs(docsPerBatch, numIndexed, versions);  numIndexed+=docsPerBatch;
+      versExpected = Math.min(numIndexed, expectedToRetain);
+      assertJQ(req("qt", "/get", "getVersions", "" + maxReq), "/versions==" + versions.subList(0, Math.min(maxReq, versExpected)));
       assertU(commit());
-      assertJQ(req("qt","/get", "getVersions",""+maxReq), "/versions==" + versions.subList(0,Math.min(maxReq,start)));
+      expectedToRetain = expectedToRetain - 1; // we lose a log entry due to the commit record
+      versExpected = Math.min(numIndexed, expectedToRetain);
+      assertJQ(req("qt", "/get", "getVersions", "" + maxReq), "/versions==" + versions.subList(0, Math.min(maxReq, versExpected)));
 
-      addDocs(10, start, versions);  start+=10;
-      assertJQ(req("qt","/get", "getVersions",""+maxReq), "/versions==" + versions.subList(0,Math.min(maxReq,start)));
-      assertU(commit());
-      assertJQ(req("qt","/get", "getVersions",""+maxReq), "/versions==" + versions.subList(0,Math.min(maxReq,start)));
-
-      assertEquals(2, ulog.getLogList(logDir).length);
-
-      addDocs(105, start, versions);  start+=105;
-      assertJQ(req("qt","/get", "getVersions",""+maxReq), "/versions==" + versions.subList(0,Math.min(maxReq,start)));
-      assertU(commit());
-      assertJQ(req("qt","/get", "getVersions",""+maxReq), "/versions==" + versions.subList(0,Math.min(maxReq,start)));
-
-      // previous two logs should be gone now
+      // previous logs should be gone now
       assertEquals(1, ulog.getLogList(logDir).length);
 
-      addDocs(1, start, versions);  start+=1;
+      addDocs(1, numIndexed, versions);  numIndexed+=1;
       h.close();
       createCore();      // trigger recovery, make sure that tlog reference handling is correct
 
       // test we can get versions while replay is happening
-      assertJQ(req("qt","/get", "getVersions",""+maxReq), "/versions==" + versions.subList(0,Math.min(maxReq,start)));
+      assertJQ(req("qt", "/get", "getVersions", "" + maxReq), "/versions==" + versions.subList(0, Math.min(maxReq, expectedToRetain)));
 
       logReplay.release(1000);
       assertTrue(logReplayFinish.tryAcquire(timeout, TimeUnit.SECONDS));
 
-      assertJQ(req("qt","/get", "getVersions",""+maxReq), "/versions==" + versions.subList(0,Math.min(maxReq,start)));
+      expectedToRetain = expectedToRetain - 1; // we lose a log entry due to the commit record made by recovery
+      assertJQ(req("qt","/get", "getVersions",""+maxReq), "/versions==" + versions.subList(0,Math.min(maxReq,expectedToRetain)));
 
-      addDocs(105, start, versions);  start+=105;
-      assertJQ(req("qt","/get", "getVersions",""+maxReq), "/versions==" + versions.subList(0,Math.min(maxReq,start)));
+      docsPerBatch = ulog.getNumRecordsToKeep() + 20;
+      // about to commit a lot of docs, so numRecordsToKeep becomes the bottleneck
+      expectedToRetain = ulog.getNumRecordsToKeep();
+
+      addDocs(docsPerBatch, numIndexed, versions);  numIndexed+=docsPerBatch;
+      assertJQ(req("qt","/get", "getVersions",""+maxReq), "/versions==" + versions.subList(0,Math.min(maxReq,expectedToRetain)));
       assertU(commit());
-      assertJQ(req("qt","/get", "getVersions",""+maxReq), "/versions==" + versions.subList(0,Math.min(maxReq,start)));
+      expectedToRetain = expectedToRetain - 1; // we lose a log entry due to the commit record
+      assertJQ(req("qt","/get", "getVersions",""+maxReq), "/versions==" + versions.subList(0,Math.min(maxReq,expectedToRetain)));
 
       // previous logs should be gone now
       assertEquals(1, ulog.getLogList(logDir).length);
@@ -816,7 +927,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
       //
       // test that a corrupt tlog file doesn't stop us from coming up, or seeing versions before that tlog file.
       //
-      addDocs(1, start, new LinkedList<Long>()); // don't add this to the versions list because we are going to lose it...
+      addDocs(1, numIndexed, new LinkedList<Long>()); // don't add this to the versions list because we are going to lose it...
       h.close();
       files = ulog.getLogList(logDir);
       Arrays.sort(files);
@@ -827,7 +938,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
       ignoreException("Failure to open existing");
       createCore();
       // we should still be able to get the list of versions (not including the trashed log file)
-      assertJQ(req("qt", "/get", "getVersions", "" + maxReq), "/versions==" + versions.subList(0, Math.min(maxReq, start)));
+      assertJQ(req("qt", "/get", "getVersions", "" + maxReq), "/versions==" + versions.subList(0, Math.min(maxReq, expectedToRetain)));
       resetExceptionIgnores();
 
     } finally {
@@ -1094,7 +1205,7 @@ public class TestRecovery extends SolrTestCaseJ4 {
     try {
       String[] files = ulog.getLogList(logDir);
       for (String file : files) {
-        new File(logDir, file).delete();
+        Files.delete(new File(logDir, file).toPath());
       }
 
       assertEquals(0, ulog.getLogList(logDir).length);

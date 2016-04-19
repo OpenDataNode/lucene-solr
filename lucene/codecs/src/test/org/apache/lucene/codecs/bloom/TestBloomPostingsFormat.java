@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.bloom;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.codecs.bloom;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.bloom;
+
 
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.index.BasePostingsFormatTestCase;
@@ -25,7 +25,7 @@ import org.apache.lucene.util.TestUtil;
  * Basic tests for BloomPostingsFormat
  */
 public class TestBloomPostingsFormat extends BasePostingsFormatTestCase {
-  private final Codec codec = TestUtil.alwaysPostingsFormat(new TestBloomFilteredLucene41Postings());
+  private final Codec codec = TestUtil.alwaysPostingsFormat(new TestBloomFilteredLucenePostings());
 
   @Override
   protected Codec getCodec() {

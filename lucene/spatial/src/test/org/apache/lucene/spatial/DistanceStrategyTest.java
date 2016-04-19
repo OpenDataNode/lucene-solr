@@ -1,5 +1,3 @@
-package org.apache.lucene.spatial;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,31 +14,32 @@ package org.apache.lucene.spatial;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import com.carrotsearch.randomizedtesting.annotations.Name;
-import com.carrotsearch.randomizedtesting.annotations.ParametersFactory;
-import com.spatial4j.core.context.SpatialContext;
-import com.spatial4j.core.shape.Point;
-import com.spatial4j.core.shape.Shape;
-import org.apache.lucene.document.FieldType;
-import org.apache.lucene.spatial.bbox.BBoxStrategy;
-import org.apache.lucene.spatial.prefix.RecursivePrefixTreeStrategy;
-import org.apache.lucene.spatial.prefix.TermQueryPrefixTreeStrategy;
-import org.apache.lucene.spatial.prefix.tree.GeohashPrefixTree;
-import org.apache.lucene.spatial.prefix.tree.QuadPrefixTree;
-import org.apache.lucene.spatial.prefix.tree.SpatialPrefixTree;
-import org.apache.lucene.spatial.serialized.SerializedDVStrategy;
-import org.apache.lucene.spatial.vector.PointVectorStrategy;
-import org.junit.Test;
+package org.apache.lucene.spatial;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-public class DistanceStrategyTest extends StrategyTestCase {
+import com.carrotsearch.randomizedtesting.annotations.ParametersFactory;
+import com.spatial4j.core.context.SpatialContext;
+import com.spatial4j.core.shape.Point;
+import com.spatial4j.core.shape.Shape;
+import org.apache.lucene.document.FieldType;
+import org.apache.lucene.index.IndexOptions;
+import org.apache.lucene.spatial.bbox.BBoxStrategy;
+import org.apache.lucene.spatial.prefix.RecursivePrefixTreeStrategy;
+import org.apache.lucene.spatial.prefix.TermQueryPrefixTreeStrategy;
+import org.apache.lucene.spatial.prefix.tree.GeohashPrefixTree;
+import org.apache.lucene.spatial.prefix.tree.PackedQuadPrefixTree;
+import org.apache.lucene.spatial.prefix.tree.QuadPrefixTree;
+import org.apache.lucene.spatial.prefix.tree.SpatialPrefixTree;
+import org.apache.lucene.spatial.serialized.SerializedDVStrategy;
+import org.apache.lucene.spatial.vector.PointVectorStrategy;
+import org.junit.Test;
 
-  @ParametersFactory
+public class DistanceStrategyTest extends StrategyTestCase {
+  @ParametersFactory(argumentFormatting = "strategy=%s")
   public static Iterable<Object[]> parameters() {
     List<Object[]> ctorArgs = new ArrayList<>();
 
@@ -50,42 +49,29 @@ public class DistanceStrategyTest extends StrategyTestCase {
 
     grid = new QuadPrefixTree(ctx,25);
     strategy = new RecursivePrefixTreeStrategy(grid, "recursive_quad");
-    ctorArgs.add(new Object[]{new Param(strategy)});
+    ctorArgs.add(new Object[]{strategy.getFieldName(), strategy});
 
     grid = new GeohashPrefixTree(ctx,12);
     strategy = new TermQueryPrefixTreeStrategy(grid, "termquery_geohash");
-    ctorArgs.add(new Object[]{new Param(strategy)});
+    ctorArgs.add(new Object[]{strategy.getFieldName(), strategy});
+
+    grid = new PackedQuadPrefixTree(ctx,25);
+    strategy = new RecursivePrefixTreeStrategy(grid, "recursive_packedquad");
+    ctorArgs.add(new Object[]{strategy.getFieldName(), strategy});
 
     strategy = new PointVectorStrategy(ctx, "pointvector");
-    ctorArgs.add(new Object[]{new Param(strategy)});
+    ctorArgs.add(new Object[]{strategy.getFieldName(), strategy});
 
     strategy = new BBoxStrategy(ctx, "bbox");
-    ctorArgs.add(new Object[]{new Param(strategy)});
+    ctorArgs.add(new Object[]{strategy.getFieldName(), strategy});
 
     strategy = new SerializedDVStrategy(ctx, "serialized");
-    ctorArgs.add(new Object[]{new Param(strategy)});
+    ctorArgs.add(new Object[]{strategy.getFieldName(), strategy});
 
     return ctorArgs;
   }
 
-  // this is a hack for clover!
-  static class Param {
-    SpatialStrategy strategy;
-
-    Param(SpatialStrategy strategy) {
-      this.strategy = strategy;
-    }
-
-    @Override
-    public String toString() {
-      return strategy.getFieldName();
-    }
-  }
-
-//  private String fieldName;
-
-  public DistanceStrategyTest(@Name("strategy") Param param) {
-    SpatialStrategy strategy = param.strategy;
+  public DistanceStrategyTest(String suiteName, SpatialStrategy strategy) {
     this.ctx = strategy.getSpatialContext();
     this.strategy = strategy;
   }
@@ -96,7 +82,7 @@ public class DistanceStrategyTest extends StrategyTestCase {
     if (strategy instanceof BBoxStrategy && random().nextBoolean()) {//disable indexing sometimes
       BBoxStrategy bboxStrategy = (BBoxStrategy)strategy;
       final FieldType fieldType = new FieldType(bboxStrategy.getFieldType());
-      fieldType.setIndexed(false);
+      fieldType.setIndexOptions(IndexOptions.NONE);
       bboxStrategy.setFieldType(fieldType);
     }
   }

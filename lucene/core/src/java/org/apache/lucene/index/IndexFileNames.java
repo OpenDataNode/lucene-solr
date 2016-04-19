@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,12 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.util.regex.Pattern;
 
 import org.apache.lucene.codecs.Codec;
-
-// TODO: put all files under codec and remove all the static extensions here
 
 /**
  * This class contains useful constants representing filenames and extensions
@@ -46,36 +44,17 @@ public final class IndexFileNames {
 
   /** Name of the index segment file */
   public static final String SEGMENTS = "segments";
-
-  /** Extension of gen file */
-  public static final String GEN_EXTENSION = "gen";
   
+  /** Name of pending index segment file */
+  public static final String PENDING_SEGMENTS = "pending_segments";
+
   /** Name of the generation reference file name */
-  public static final String SEGMENTS_GEN = "segments." +  GEN_EXTENSION;
-
-  /** Extension of compound file */
-  public static final String COMPOUND_FILE_EXTENSION = "cfs";
-  
-  /** Extension of compound file entries */
-  public static final String COMPOUND_FILE_ENTRIES_EXTENSION = "cfe";
-
-  /**
-   * This array contains all filename extensions used by
-   * Lucene's index files, with one exception, namely the
-   * extension made up from  <code>.s</code> + a number.
-   * Also note that Lucene's <code>segments_N</code> files
-   * do not have any filename extension.
-   */
-  public static final String INDEX_EXTENSIONS[] = new String[] {
-    COMPOUND_FILE_EXTENSION,
-    COMPOUND_FILE_ENTRIES_EXTENSION,
-    GEN_EXTENSION,
-  };
+  public static final String OLD_SEGMENTS_GEN = "segments.gen";
 
   /**
    * Computes the full file name from base, extension and generation. If the
    * generation is -1, the file name is null. If it's 0, the file name is
-   * &lt;base&gt;.&lt;ext&gt;. If it's > 0, the file name is
+   * &lt;base&gt;.&lt;ext&gt;. If it's &gt; 0, the file name is
    * &lt;base&gt;_&lt;gen&gt;.&lt;ext&gt;.<br>
    * <b>NOTE:</b> .&lt;ext&gt; is added to the name only if <code>ext</code> is
    * not an empty string.

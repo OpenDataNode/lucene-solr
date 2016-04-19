@@ -1,5 +1,3 @@
-package org.apache.solr.analysis;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.analysis;
 
 import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
@@ -59,10 +58,8 @@ public class ThrowingMockTokenFilterFactory extends TokenFilterFactory {
         if (input.incrementToken()) {
           try {
             throw exceptionClass.newInstance();
-          } catch (IllegalAccessException iae) {
+          } catch (IllegalAccessException | InstantiationException iae) {
             throw new RuntimeException(iae);
-          } catch (InstantiationException ie) {
-            throw new RuntimeException(ie);
           }
         }
         return false;

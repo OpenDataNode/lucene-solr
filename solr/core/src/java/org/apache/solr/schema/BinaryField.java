@@ -14,21 +14,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.schema;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
 
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.search.SortField;
+import org.apache.lucene.uninverting.UninvertingReader.Type;
 import org.apache.lucene.util.BytesRef;
 import org.apache.solr.common.util.Base64;
 import org.apache.solr.response.TextResponseWriter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 public class BinaryField extends FieldType  {
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private String toBase64String(ByteBuffer buf) {
     return Base64.byteArrayToBase64(buf.array(), buf.position(), buf.limit()-buf.position());
@@ -44,6 +49,15 @@ public class BinaryField extends FieldType  {
     throw new RuntimeException("Cannot sort on a Binary field");
   }
 
+  @Override
+  public Type getUninversionType(SchemaField sf) {
+    // TODO: maybe just return null?
+    if (sf.multiValued()) {
+      return Type.SORTED_SET_BINARY;
+    } else {
+      return Type.BINARY;
+    }
+  }
 
   @Override
   public String toExternal(IndexableField f) {

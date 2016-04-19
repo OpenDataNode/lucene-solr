@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,13 +14,27 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
 
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
 import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.store.*;
-import org.apache.lucene.util.*;
-import org.apache.lucene.document.*;
-import org.apache.lucene.analysis.*;
-import java.util.*;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.TestUtil;
+import org.apache.lucene.util.UnicodeUtil;
 
 public class TestMultiFields extends LuceneTestCase {
 
@@ -123,15 +135,13 @@ public class TestMultiFields extends LuceneTestCase {
           System.out.println("TEST: seek term="+ UnicodeUtil.toHexString(term.utf8ToString()) + " " + term);
         }
         
-        DocsEnum docsEnum = TestUtil.docs(random(), reader, "field", term, liveDocs, null, DocsEnum.FLAG_NONE);
-        assertNotNull(docsEnum);
+        PostingsEnum postingsEnum = TestUtil.docs(random(), reader, "field", term, null, PostingsEnum.NONE);
+        assertNotNull(postingsEnum);
 
         for(int docID : docs.get(term)) {
-          if (!deleted.contains(docID)) {
-            assertEquals(docID, docsEnum.nextDoc());
-          }
+          assertEquals(docID, postingsEnum.nextDoc());
         }
-        assertEquals(DocIdSetIterator.NO_MORE_DOCS, docsEnum.nextDoc());
+        assertEquals(DocIdSetIterator.NO_MORE_DOCS, postingsEnum.nextDoc());
       }
 
       reader.close();
@@ -141,7 +151,7 @@ public class TestMultiFields extends LuceneTestCase {
 
   /*
   private void verify(IndexReader r, String term, List<Integer> expected) throws Exception {
-    DocsEnum docs = TestUtil.docs(random, r,
+    DocsEnum docs = _TestUtil.docs(random, r,
                                    "field",
                                    new BytesRef(term),
                                    MultiFields.getLiveDocs(r),
@@ -164,8 +174,8 @@ public class TestMultiFields extends LuceneTestCase {
     w.addDocument(d);
     IndexReader r = w.getReader();
     w.close();
-    DocsEnum d1 = TestUtil.docs(random(), r, "f", new BytesRef("j"), null, null, DocsEnum.FLAG_NONE);
-    DocsEnum d2 = TestUtil.docs(random(), r, "f", new BytesRef("j"), null, null, DocsEnum.FLAG_NONE);
+    PostingsEnum d1 = TestUtil.docs(random(), r, "f", new BytesRef("j"), null, PostingsEnum.NONE);
+    PostingsEnum d2 = TestUtil.docs(random(), r, "f", new BytesRef("j"), null, PostingsEnum.NONE);
     assertEquals(0, d1.nextDoc());
     assertEquals(0, d2.nextDoc());
     r.close();
@@ -182,7 +192,7 @@ public class TestMultiFields extends LuceneTestCase {
     w.addDocument(d);
     IndexReader r = w.getReader();
     w.close();
-    DocsEnum de = MultiFields.getTermDocsEnum(r, null, "f", new BytesRef("j"));
+    PostingsEnum de = MultiFields.getTermDocsEnum(r, "f", new BytesRef("j"));
     assertEquals(0, de.nextDoc());
     assertEquals(1, de.nextDoc());
     assertEquals(DocIdSetIterator.NO_MORE_DOCS, de.nextDoc());

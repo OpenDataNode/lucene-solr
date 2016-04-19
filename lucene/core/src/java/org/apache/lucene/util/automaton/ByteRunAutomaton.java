@@ -1,5 +1,3 @@
-package org.apache.lucene.util.automaton;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.util.automaton;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util.automaton;
+
 
 /**
  * Automaton representation for matching UTF-8 byte[].
@@ -24,12 +24,12 @@ public class ByteRunAutomaton extends RunAutomaton {
 
   /** Converts incoming automaton to byte-based (UTF32ToUTF8) first */
   public ByteRunAutomaton(Automaton a) {
-    this(a, false);
+    this(a, false, Operations.DEFAULT_MAX_DETERMINIZED_STATES);
   }
   
   /** expert: if utf8 is true, the input is already byte-based */
-  public ByteRunAutomaton(Automaton a, boolean utf8) {
-    super(utf8 ? a : new UTF32ToUTF8().convert(a), 256, true);
+  public ByteRunAutomaton(Automaton a, boolean isBinary, int maxDeterminizedStates) {
+    super(isBinary ? a : new UTF32ToUTF8().convert(a), 256, true, maxDeterminizedStates);
   }
 
   /**

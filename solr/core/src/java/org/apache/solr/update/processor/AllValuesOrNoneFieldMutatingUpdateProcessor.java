@@ -14,14 +14,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update.processor;
 
 import org.apache.solr.common.SolrInputField;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-                   
+
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 
@@ -38,7 +39,7 @@ import java.util.Locale;
  */
 public abstract class AllValuesOrNoneFieldMutatingUpdateProcessor extends FieldMutatingUpdateProcessor {
 
-  private static final Logger log = LoggerFactory.getLogger(AllValuesOrNoneFieldMutatingUpdateProcessor.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   public static final Object DELETE_VALUE_SINGLETON = new Object() {
     @Override
@@ -75,9 +76,11 @@ public abstract class AllValuesOrNoneFieldMutatingUpdateProcessor extends FieldM
   protected abstract Object mutateValue(final Object srcVal);
 
   protected final SolrInputField mutate(final SolrInputField srcField) {
+    Collection<Object> vals = srcField.getValues();
+    if(vals== null || vals.isEmpty()) return srcField;
     List<String> messages = null;
     SolrInputField result = new SolrInputField(srcField.getName());
-    for (final Object srcVal : srcField.getValues()) {
+    for (final Object srcVal : vals) {
       final Object destVal = mutateValue(srcVal);
       if (SKIP_FIELD_VALUE_LIST_SINGLETON == destVal) {
         log.debug("field '{}' {} value '{}' is not mutatable, so no values will be mutated",

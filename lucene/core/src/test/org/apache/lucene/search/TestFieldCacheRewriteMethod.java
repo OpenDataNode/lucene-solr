@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 
@@ -31,10 +31,10 @@ public class TestFieldCacheRewriteMethod extends TestRegexpRandom2 {
   @Override
   protected void assertSame(String regexp) throws IOException {   
     RegexpQuery fieldCache = new RegexpQuery(new Term(fieldName, regexp), RegExp.NONE);
-    fieldCache.setRewriteMethod(new FieldCacheRewriteMethod());
+    fieldCache.setRewriteMethod(new DocValuesRewriteMethod());
     
     RegexpQuery filter = new RegexpQuery(new Term(fieldName, regexp), RegExp.NONE);
-    filter.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_FILTER_REWRITE);
+    filter.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_REWRITE);
     
     TopDocs fieldCacheDocs = searcher1.search(fieldCache, 25);
     TopDocs filterDocs = searcher2.search(filter, 25);
@@ -49,9 +49,9 @@ public class TestFieldCacheRewriteMethod extends TestRegexpRandom2 {
     assertEquals(a1, a2);
     assertFalse(a1.equals(b));
     
-    a1.setRewriteMethod(new FieldCacheRewriteMethod());
-    a2.setRewriteMethod(new FieldCacheRewriteMethod());
-    b.setRewriteMethod(new FieldCacheRewriteMethod());
+    a1.setRewriteMethod(new DocValuesRewriteMethod());
+    a2.setRewriteMethod(new DocValuesRewriteMethod());
+    b.setRewriteMethod(new DocValuesRewriteMethod());
     assertEquals(a1, a2);
     assertFalse(a1.equals(b));
     QueryUtils.check(a1);

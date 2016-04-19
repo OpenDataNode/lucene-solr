@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.compressing.dummy;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.codecs.compressing.dummy;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.compressing.dummy;
 
 import java.io.IOException;
 
@@ -83,15 +82,15 @@ public class DummyCompressingCodec extends CompressingCodec {
   };
 
   /** Constructor that allows to configure the chunk size. */
-  public DummyCompressingCodec(int chunkSize, boolean withSegmentSuffix) {
+  public DummyCompressingCodec(int chunkSize, int maxDocsPerChunk, boolean withSegmentSuffix, int blockSize) {
     super("DummyCompressingStoredFields",
           withSegmentSuffix ? "DummyCompressingStoredFields" : "",
-          DUMMY, chunkSize);
+          DUMMY, chunkSize, maxDocsPerChunk, blockSize);
   }
 
   /** Default constructor. */
   public DummyCompressingCodec() {
-    this(1 << 14, false);
+    this(1 << 14, 128, false, 1024);
   }
 
 }

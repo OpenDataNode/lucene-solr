@@ -1,5 +1,3 @@
-package org.apache.solr.search.similarities;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,13 +14,14 @@ package org.apache.solr.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search.similarities;
 
-import org.apache.lucene.search.similarities.DefaultSimilarity;
+import org.apache.lucene.search.similarities.ClassicSimilarity;
 import org.apache.lucene.util.Version;
 import org.junit.After;
 
 /**
- * Verifies that the default behavior of the implicit {@link DefaultSimilarityFactory} 
+ * Verifies that the default behavior of the implicit {@link ClassicSimilarityFactory} 
  * (ie: no similarity configured in schema.xml at all) is consistnent with 
  * expectations based on the luceneMatchVersion
  * @see <a href="https://issues.apache.org/jira/browse/SOLR-5561">SOLR-5561</a>
@@ -37,21 +36,21 @@ public class TestNonDefinedSimilarityFactory extends BaseSimilarityTestCase {
   public void testCurrent() throws Exception {
     // no sys prop set, rely on LATEST
     initCore("solrconfig-basic.xml","schema-tiny.xml");
-    DefaultSimilarity sim = getSimilarity("text", DefaultSimilarity.class);
+    ClassicSimilarity sim = getSimilarity("text", ClassicSimilarity.class);
     assertEquals(true, sim.getDiscountOverlaps());
   }
 
   public void test47() throws Exception {
     System.setProperty("tests.luceneMatchVersion", Version.LUCENE_4_7_0.toString());
     initCore("solrconfig-basic.xml","schema-tiny.xml");
-    DefaultSimilarity sim = getSimilarity("text", DefaultSimilarity.class);
+    ClassicSimilarity sim = getSimilarity("text", ClassicSimilarity.class);
     assertEquals(true, sim.getDiscountOverlaps());
   }
 
   public void test46() throws Exception {
     System.setProperty("tests.luceneMatchVersion", Version.LUCENE_4_6_0.toString());
     initCore("solrconfig-basic.xml","schema-tiny.xml");
-    DefaultSimilarity sim = getSimilarity("text", DefaultSimilarity.class);
+    ClassicSimilarity sim = getSimilarity("text", ClassicSimilarity.class);
     assertEquals(false, sim.getDiscountOverlaps());
   }
 

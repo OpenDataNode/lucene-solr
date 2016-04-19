@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.memory;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.codecs.memory;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.memory;
+
 
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.index.BasePostingsFormatTestCase;
@@ -27,6 +27,11 @@ import org.apache.lucene.util.TestUtil;
 public class TestDirectPostingsFormat extends BasePostingsFormatTestCase {
   // TODO: randomize parameters
   private final Codec codec = TestUtil.alwaysPostingsFormat(new DirectPostingsFormat());
+
+  @Override
+  protected boolean isPostingsEnumReuseImplemented() {
+    return false;
+  }
 
   @Override
   protected Codec getCodec() {

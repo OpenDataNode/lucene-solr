@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,17 +14,17 @@ package org.apache.lucene.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis;
 
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.Reader;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.io.Writer;
-import java.lang.reflect.Constructor;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 
@@ -35,12 +33,13 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Attribute;
 import org.apache.lucene.util.AttributeFactory;
 import org.apache.lucene.util.AttributeImpl;
+import org.apache.lucene.util.AttributeReflector;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LineFileDocs;
 import org.apache.lucene.util.LuceneTestCase;
@@ -50,7 +49,7 @@ import org.apache.lucene.util.TestUtil;
 /** 
  * Base class for all Lucene unit tests that use TokenStreams. 
  * <p>
- * When writing unit tests for analysis components, its highly recommended
+ * When writing unit tests for analysis components, it's highly recommended
  * to use the helper methods here (especially in conjunction with {@link MockAnalyzer} or
  * {@link MockTokenizer}), as they contain many assertions and checks to 
  * catch bugs.
@@ -106,6 +105,11 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
     @Override
     public void copyTo(AttributeImpl target) {
       ((CheckClearAttributesAttributeImpl) target).clear();
+    }
+
+    @Override
+    public void reflectWith(AttributeReflector reflector) {
+      reflector.reflect(CheckClearAttributesAttribute.class, "clearCalled", clearCalled);
     }
   }
 
@@ -261,7 +265,7 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
     }
 
     if (ts.incrementToken()) {
-      fail("TokenStream has more tokens than expected (expected count=" + output.length + "); extra token=" + termAtt.toString());
+      fail("TokenStream has more tokens than expected (expected count=" + output.length + "); extra token=" + termAtt);
     }
 
     // repeat our extra safety checks for end()
@@ -392,9 +396,6 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
       }
     } catch (IllegalStateException expected) {
       // ok
-    } catch (AssertionError expected) {
-      // ok: MockTokenizer
-      assertTrue(expected.getMessage(), expected.getMessage() != null && expected.getMessage().contains("wrong state"));
     } catch (Exception unexpected) {
       unexpected.printStackTrace(System.err);
       fail("got wrong exception when reset() not called: " + unexpected);
@@ -443,6 +444,17 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
    */
   public static void checkRandomData(Random random, Analyzer a, int iterations, boolean simple) throws IOException {
     checkRandomData(random, a, iterations, 20, simple, true);
+  }
+  
+  /** Asserts that the given stream has expected number of tokens. */
+  public static void assertStreamHasNumberOfTokens(TokenStream ts, int expectedCount) throws IOException {
+    ts.reset();
+    int count = 0;
+    while (ts.incrementToken()) {
+      count++;
+    }
+    ts.end();
+    assertEquals("wrong number of tokens", expectedCount, count);
   }
   
   static class AnalysisThread extends Thread {
@@ -512,7 +524,7 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
     try {
       checkRandomData(new Random(seed), a, iterations, maxWordLength, useCharFilter, simple, offsetsAreCorrect, iw);
       // now test with multiple threads: note we do the EXACT same thing we did before in each thread,
-      // so this should only really fail from another thread if its an actual thread problem
+      // so this should only really fail from another thread if it's an actual thread problem
       int numThreads = TestUtil.nextInt(random, 2, 4);
       final CountDownLatch startingGun = new CountDownLatch(1);
       AnalysisThread threads[] = new AnalysisThread[numThreads];
@@ -535,12 +547,15 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
           throw new RuntimeException("some thread(s) failed");
         }
       }
+      if (iw != null) {
+        iw.close();
+      }
       success = true;
     } finally {
       if (success) {
-        IOUtils.close(iw, dir);
+        IOUtils.close(dir);
       } else {
-        IOUtils.closeWhileHandlingException(iw, dir); // checkindex
+        IOUtils.closeWhileHandlingException(dir); // checkindex
       }
     }
   }
@@ -558,25 +573,23 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
         ft.setStoreTermVectors(true);
         ft.setStoreTermVectorOffsets(random.nextBoolean());
         ft.setStoreTermVectorPositions(random.nextBoolean());
-        if (ft.storeTermVectorPositions() && !OLD_FORMAT_IMPERSONATION_IS_ACTIVE) {
+        if (ft.storeTermVectorPositions()) {
           ft.setStoreTermVectorPayloads(random.nextBoolean());
         }
       }
       if (random.nextBoolean()) {
         ft.setOmitNorms(true);
       }
-      String pf = TestUtil.getPostingsFormat("dummy");
-      boolean supportsOffsets = !doesntSupportOffsets.contains(pf);
       switch(random.nextInt(4)) {
-        case 0: ft.setIndexOptions(IndexOptions.DOCS_ONLY); break;
+        case 0: ft.setIndexOptions(IndexOptions.DOCS); break;
         case 1: ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS); break;
         case 2: ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS); break;
         default:
-                if (supportsOffsets && offsetsAreCorrect) {
-                  ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS);
-                } else {
-                  ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
-                }
+          if (offsetsAreCorrect) {
+            ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS);
+          } else {
+            ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
+          }
       }
       currentField = field = new Field("dummy", bogus, ft);
       doc.add(currentField);
@@ -743,7 +756,7 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
             // currently allow it, so, we must call
             // a.tokenStream inside the try since we may
             // hit the exc on init:
-            ts = a.tokenStream("dummy", useCharFilter ? new MockCharFilter(evilReader, remainder) : evilReader);
+            ts = a.tokenStream("dummy", useCharFilter ? new MockCharFilter(reader, remainder) : reader);
             ts.reset();
             while (ts.incrementToken());
             fail("did not hit exception");
@@ -752,13 +765,13 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
           }
           try {
             ts.end();
-          } catch (AssertionError ae) {
+          } catch (IllegalStateException ise) {
             // Catch & ignore MockTokenizer's
             // anger...
-            if ("end() called before incrementToken() returned false!".equals(ae.getMessage())) {
+            if ("end() called before incrementToken() returned false!".equals(ise.getMessage())) {
               // OK
             } else {
-              throw ae;
+              throw ise;
             }
           }
           ts.close();
@@ -777,13 +790,13 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
           }
           try {
             ts.end();
-          } catch (AssertionError ae) {
+          } catch (IllegalStateException ise) {
             // Catch & ignore MockTokenizer's
             // anger...
-            if ("end() called before incrementToken() returned false!".equals(ae.getMessage())) {
+            if ("end() called before incrementToken() returned false!".equals(ise.getMessage())) {
               // OK
             } else {
-              throw ae;
+              throw ise;
             }
           }
           ts.close();
@@ -895,7 +908,7 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
   }
 
   protected void toDotFile(Analyzer a, String inputText, String localFileName) throws IOException {
-    Writer w = new OutputStreamWriter(new FileOutputStream(localFileName), StandardCharsets.UTF_8);
+    Writer w = Files.newBufferedWriter(Paths.get(localFileName), StandardCharsets.UTF_8);
     final TokenStream ts = a.tokenStream("field", inputText);
     ts.reset();
     new TokenStreamToDot(inputText, ts, new PrintWriter(w)).toDot();
@@ -912,19 +925,27 @@ public abstract class BaseTokenStreamTestCase extends LuceneTestCase {
   }
 
   protected static MockTokenizer whitespaceMockTokenizer(Reader input) throws IOException {
-    return new MockTokenizer(input, MockTokenizer.WHITESPACE, false);
+    MockTokenizer mockTokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    mockTokenizer.setReader(input);
+    return mockTokenizer;
   }
 
   protected static MockTokenizer whitespaceMockTokenizer(String input) throws IOException {
-    return whitespaceMockTokenizer(new StringReader(input));
+    MockTokenizer mockTokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    mockTokenizer.setReader(new StringReader(input));
+    return mockTokenizer;
   }
 
   protected static MockTokenizer keywordMockTokenizer(Reader input) throws IOException {
-    return new MockTokenizer(input, MockTokenizer.KEYWORD, false);
+    MockTokenizer mockTokenizer = new MockTokenizer(MockTokenizer.KEYWORD, false);
+    mockTokenizer.setReader(input);
+    return mockTokenizer;
   }
 
   protected static MockTokenizer keywordMockTokenizer(String input) throws IOException {
-    return keywordMockTokenizer(new StringReader(input));
+    MockTokenizer mockTokenizer = new MockTokenizer(MockTokenizer.KEYWORD, false);
+    mockTokenizer.setReader(new StringReader(input));
+    return mockTokenizer;
   }
   
   /** Returns a random AttributeFactory impl */

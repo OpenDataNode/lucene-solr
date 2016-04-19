@@ -29,6 +29,13 @@
 
 package org.apache.lucene.util.automaton;
 
+import org.apache.lucene.util.ArrayUtil;
+import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BytesRefBuilder;
+import org.apache.lucene.util.IntsRef;
+import org.apache.lucene.util.IntsRefBuilder;
+import org.apache.lucene.util.RamUsageEstimator;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
@@ -40,20 +47,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.lucene.util.ArrayUtil;
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.BytesRefBuilder;
-import org.apache.lucene.util.IntsRef;
-import org.apache.lucene.util.IntsRefBuilder;
-import org.apache.lucene.util.RamUsageEstimator;
-
 /**
  * Automata operations.
  * 
  * @lucene.experimental
  */
 final public class Operations {
-  
+  /**
+   * Default maximum number of states that {@link Operations#determinize} should create.
+   */
+  public static final int DEFAULT_MAX_DETERMINIZED_STATES = 10000;
+
   private Operations() {}
 
   /**
@@ -146,7 +150,7 @@ final public class Operations {
 
   /**
    * Returns an automaton that accepts the union of the empty string and the
-   * language of the given automaton.
+   * language of the given automaton.  This may create a dead state.
    * <p>
    * Complexity: linear in number of states.
    */
@@ -170,6 +174,10 @@ final public class Operations {
    * Complexity: linear in number of states.
    */
   static public Automaton repeat(Automaton a) {
+    if (a.getNumStates() == 0) {
+      // Repeating the empty automata will still only accept the empty automata.
+      return a;
+    }
     Automaton.Builder builder = new Automaton.Builder();
     builder.createState();
     builder.setAccept(0, true);
@@ -202,12 +210,12 @@ final public class Operations {
    * <p>
    * Complexity: linear in number of states and in <code>min</code>.
    */
-  static public Automaton repeat(Automaton a, int min) {
-    if (min == 0) {
+  static public Automaton repeat(Automaton a, int count) {
+    if (count == 0) {
       return repeat(a);
     }
     List<Automaton> as = new ArrayList<>();
-    while (min-- > 0) {
+    while (count-- > 0) {
       as.add(a);
     }
     as.add(repeat(a));
@@ -242,19 +250,18 @@ final public class Operations {
     }
 
     Set<Integer> prevAcceptStates = toSet(b, 0);
-
+    Automaton.Builder builder = new Automaton.Builder();
+    builder.copy(b);
     for(int i=min;i<max;i++) {
-      int numStates = b.getNumStates();
-      b.copy(a);
+      int numStates = builder.getNumStates();
+      builder.copy(a);
       for(int s : prevAcceptStates) {
-        b.addEpsilon(s, numStates);
+        builder.addEpsilon(s, numStates);
       }
       prevAcceptStates = toSet(a, numStates);
     }
 
-    b.finishState();
-
-    return b;
+    return builder.finish();
   }
 
   private static Set<Integer> toSet(Automaton a, int offset) {
@@ -274,10 +281,14 @@ final public class Operations {
    * Returns a (deterministic) automaton that accepts the complement of the
    * language of the given automaton.
    * <p>
-   * Complexity: linear in number of states (if already deterministic).
+   * Complexity: linear in number of states if already deterministic and
+   *  exponential otherwise.
+   * @param maxDeterminizedStates maximum number of states determinizing the
+   *  automaton can result in.  Set higher to allow more complex queries and
+   *  lower to prevent memory exhaustion.
    */
-  static public Automaton complement(Automaton a) {
-    a = totalize(determinize(a));
+  static public Automaton complement(Automaton a, int maxDeterminizedStates) {
+    a = totalize(determinize(a, maxDeterminizedStates));
     int numStates = a.getNumStates();
     for (int p=0;p<numStates;p++) {
       a.setAccept(p, !a.isAccept(p));
@@ -291,16 +302,17 @@ final public class Operations {
    * <code>a2</code>. As a side-effect, the automata may be determinized, if not
    * already deterministic.
    * <p>
-   * Complexity: quadratic in number of states (if already deterministic).
+   * Complexity: quadratic in number of states if a2 already deterministic and
+   *  exponential in number of a2's states otherwise.
    */
-  static public Automaton minus(Automaton a1, Automaton a2) {
+  static public Automaton minus(Automaton a1, Automaton a2, int maxDeterminizedStates) {
     if (Operations.isEmpty(a1) || a1 == a2) {
       return Automata.makeEmpty();
     }
     if (Operations.isEmpty(a2)) {
       return a1;
     }
-    return intersection(a1, complement(a2));
+    return intersection(a1, complement(a2, maxDeterminizedStates));
   }
   
   /**
@@ -490,7 +502,6 @@ final public class Operations {
     result.createState();
 
     // Copy over all automata
-    Transition t = new Transition();
     for(Automaton a : l) {
       result.copy(a);
     }
@@ -644,8 +655,15 @@ final public class Operations {
    * Determinizes the given automaton.
    * <p>
    * Worst case complexity: exponential in number of states.
+   * @param maxDeterminizedStates Maximum number of states created when
+   *   determinizing.  Higher numbers allow this operation to consume more
+   *   memory but allow more complex automatons.  Use
+   *   DEFAULT_MAX_DETERMINIZED_STATES as a decent default if you don't know
+   *   how many to allow.
+   * @throws TooComplexToDeterminizeException if determinizing a creates an
+   *   automaton with more than maxDeterminizedStates
    */
-  public static Automaton determinize(Automaton a) {
+  public static Automaton determinize(Automaton a, int maxDeterminizedStates) {
     if (a.isDeterministic()) {
       // Already determinized
       return a;
@@ -673,11 +691,6 @@ final public class Operations {
 
     b.setAccept(0, a.isAccept(0));
     newstate.put(initialset, 0);
-
-    int newStateUpto = 0;
-    int[] newStatesArray = new int[5];
-    newStatesArray[newStateUpto] = 0;
-    newStateUpto++;
 
     // like Set<Integer,PointTransitions>
     final PointTransitionSet points = new PointTransitionSet();
@@ -726,6 +739,9 @@ final public class Operations {
           Integer q = newstate.get(statesSet);
           if (q == null) {
             q = b.createState();
+            if (q >= maxDeterminizedStates) {
+              throw new TooComplexToDeterminizeException(a, maxDeterminizedStates);
+            }
             final SortedIntSet.FrozenIntSet p = statesSet.freeze(q);
             //System.out.println("  make new state=" + q + " -> " + p + " accCount=" + accCount);
             worklist.add(p);
@@ -818,11 +834,20 @@ final public class Operations {
    * Returns true if the given automaton accepts all strings.  The automaton must be minimized.
    */
   public static boolean isTotal(Automaton a) {
+    return isTotal(a, Character.MIN_CODE_POINT, Character.MAX_CODE_POINT);
+  }
+
+  /**
+   * Returns true if the given automaton accepts all strings for the specified min/max
+   * range of the alphabet.  The automaton must be minimized.
+   */
+  public static boolean isTotal(Automaton a, int minAlphabet, int maxAlphabet) {
     if (a.isAccept(0) && a.getNumTransitions(0) == 1) {
       Transition t = new Transition();
       a.getTransition(0, 0, t);
-      return t.dest == 0 && t.min == Character.MIN_CODE_POINT
-          && t.max == Character.MAX_CODE_POINT;
+      return t.dest == 0
+        && t.min == minAlphabet
+        && t.max == maxAlphabet;
     }
     return false;
   }
@@ -1038,7 +1063,7 @@ final public class Operations {
    * Returns the longest string that is a prefix of all accepted strings and
    * visits each state at most once.  The automaton must be deterministic.
    * 
-   * @return common prefix
+   * @return common prefix, which can be an empty (length 0) String (never null)
    */
   public static String getCommonPrefix(Automaton a) {
     if (a.isDeterministic() == false) {
@@ -1072,7 +1097,7 @@ final public class Operations {
    * Returns the longest BytesRef that is a prefix of all accepted strings and
    * visits each state at most once.  The automaton must be deterministic.
    * 
-   * @return common prefix
+   * @return common prefix, which can be an empty (length 0) BytesRef (never null)
    */
   public static BytesRef getCommonPrefixBytesRef(Automaton a) {
     BytesRefBuilder builder = new BytesRefBuilder();
@@ -1096,16 +1121,48 @@ final public class Operations {
     return builder.get();
   }
 
+  /** If this automaton accepts a single input, return it.  Else, return null.
+   *  The automaton must be deterministic. */
+  public static IntsRef getSingleton(Automaton a) {
+    if (a.isDeterministic() == false) {
+      throw new IllegalArgumentException("input automaton must be deterministic");
+    }
+    IntsRefBuilder builder = new IntsRefBuilder();
+    HashSet<Integer> visited = new HashSet<>();
+    int s = 0;
+    Transition t = new Transition();
+    while (true) {
+      visited.add(s);
+      if (a.isAccept(s) == false) {
+        if (a.getNumTransitions(s) == 1) {
+          a.getTransition(s, 0, t);
+          if (t.min == t.max && !visited.contains(t.dest)) {
+            builder.append(t.min);
+            s = t.dest;
+            continue;
+          }
+        }
+      } else if (a.getNumTransitions(s) == 0) {
+        return builder.get();
+      }
+
+      // Automaton accepts more than one string:
+      return null;
+    }
+  }
+
   /**
    * Returns the longest BytesRef that is a suffix of all accepted strings.
    * Worst case complexity: exponential in number of states (this calls
    * determinize).
-   *
-   * @return common suffix
+   * @param maxDeterminizedStates maximum number of states determinizing the
+   *  automaton can result in.  Set higher to allow more complex queries and
+   *  lower to prevent memory exhaustion.
+   * @return common suffix, which can be an empty (length 0) BytesRef (never null)
    */
-  public static BytesRef getCommonSuffixBytesRef(Automaton a) {
+  public static BytesRef getCommonSuffixBytesRef(Automaton a, int maxDeterminizedStates) {
     // reverse the language of the automaton, then reverse its common prefix.
-    Automaton r = Operations.determinize(reverse(a));
+    Automaton r = Operations.determinize(reverse(a), maxDeterminizedStates);
     BytesRef ref = getCommonPrefixBytesRef(r);
     reverseBytes(ref);
     return ref;
@@ -1175,156 +1232,6 @@ final public class Operations {
     return result;
   }
 
-  private static class PathNode {
-
-    /** Which state the path node ends on, whose
-     *  transitions we are enumerating. */
-    public int state;
-
-    /** Which state the current transition leads to. */
-    public int to;
-
-    /** Which transition we are on. */
-    public int transition;
-
-    /** Which label we are on, in the min-max range of the
-     *  current Transition */
-    public int label;
-
-    private final Transition t = new Transition();
-
-    public void resetState(Automaton a, int state) {
-      assert a.getNumTransitions(state) != 0;
-      this.state = state;
-      transition = 0;
-      a.getTransition(state, 0, t);
-      label = t.min;
-      to = t.dest;
-    }
-
-    /** Returns next label of current transition, or
-     *  advances to next transition and returns its first
-     *  label, if current one is exhausted.  If there are
-     *  no more transitions, returns -1. */
-    public int nextLabel(Automaton a) {
-      if (label > t.max) {
-        // We've exhaused the current transition's labels;
-        // move to next transitions:
-        transition++;
-        if (transition >= a.getNumTransitions(state)) {
-          // We're done iterating transitions leaving this state
-          return -1;
-        }
-        a.getTransition(state, transition, t);
-        label = t.min;
-        to = t.dest;
-      }
-      return label++;
-    }
-  }
-
-  private static PathNode getNode(PathNode[] nodes, int index) {
-    assert index < nodes.length;
-    if (nodes[index] == null) {
-      nodes[index] = new PathNode();
-    }
-    return nodes[index];
-  }
-
-  // TODO: this is a dangerous method ... Automaton could be
-  // huge ... and it's better in general for caller to
-  // enumerate & process in a single walk:
-
-  /** Returns the set of accepted strings, up to at most
-   *  <code>limit</code> strings. If more than <code>limit</code> 
-   *  strings are accepted, the first limit strings found are returned. If <code>limit</code> == -1, then 
-   *  the limit is infinite.  If the {@link Automaton} has
-   *  cycles then this method might throw {@code
-   *  IllegalArgumentException} but that is not guaranteed
-   *  when the limit is set. */
-  public static Set<IntsRef> getFiniteStrings(Automaton a, int limit) {
-    Set<IntsRef> results = new HashSet<>();
-
-    if (limit == -1 || limit > 0) {
-      // OK
-    } else {
-      throw new IllegalArgumentException("limit must be -1 (which means no limit), or > 0; got: " + limit);
-    }
-
-    if (a.isAccept(0)) {
-      // Special case the empty string, as usual:
-      results.add(new IntsRef());
-    }
-
-    if (a.getNumTransitions(0) > 0 && (limit == -1 || results.size() < limit)) {
-
-      int numStates = a.getNumStates();
-
-      // Tracks which states are in the current path, for
-      // cycle detection:
-      BitSet pathStates = new BitSet(numStates);
-
-      // Stack to hold our current state in the
-      // recursion/iteration:
-      PathNode[] nodes = new PathNode[4];
-
-      pathStates.set(0);
-      PathNode root = getNode(nodes, 0);
-      root.resetState(a, 0);
-
-      IntsRefBuilder string = new IntsRefBuilder();
-      string.append(0);
-
-      while (string.length() > 0) {
-
-        PathNode node = nodes[string.length()-1];
-
-        // Get next label leaving the current node:
-        int label = node.nextLabel(a);
-
-        if (label != -1) {
-          string.setIntAt(string.length()-1, label);
-
-          if (a.isAccept(node.to)) {
-            // This transition leads to an accept state,
-            // so we save the current string:
-            results.add(string.toIntsRef());
-            if (results.size() == limit) {
-              break;
-            }
-          }
-
-          if (a.getNumTransitions(node.to) != 0) {
-            // Now recurse: the destination of this transition has
-            // outgoing transitions:
-            if (pathStates.get(node.to)) {
-              throw new IllegalArgumentException("automaton has cycles");
-            }
-            pathStates.set(node.to);
-
-            // Push node onto stack:
-            if (nodes.length == string.length()) {
-              PathNode[] newNodes = new PathNode[ArrayUtil.oversize(nodes.length+1, RamUsageEstimator.NUM_BYTES_OBJECT_REF)];
-              System.arraycopy(nodes, 0, newNodes, 0, nodes.length);
-              nodes = newNodes;
-            }
-            getNode(nodes, string.length()).resetState(a, node.to);
-            string.setLength(string.length() + 1);
-            string.grow(string.length());
-          }
-        } else {
-          // No more transitions leaving this state,
-          // pop/return back to previous state:
-          assert pathStates.get(node.state);
-          pathStates.clear(node.state);
-          string.setLength(string.length() - 1);
-        }
-      }
-    }
-
-    return results;
-  }
-
   /** Returns a new automaton accepting the same language with added
    *  transitions to a dead state so that from every state and every label
    *  there is a transition. */
@@ -1361,5 +1268,51 @@ final public class Operations {
 
     result.finishState();
     return result;
+  }
+
+  /** Returns the topological sort of all states reachable from
+   *  the initial state.  Behavior is undefined if this
+   *  automaton has cycles.  CPU cost is O(numTransitions),
+   *  and the implementation is recursive so an automaton
+   *  matching long strings may exhaust the java stack. */
+  public static int[] topoSortStates(Automaton a) {
+    if (a.getNumStates() == 0) {
+      return new int[0];
+    }
+    int numStates = a.getNumStates();
+    int[] states = new int[numStates];
+    final BitSet visited = new BitSet(numStates);
+    int upto = topoSortStatesRecurse(a, visited, states, 0, 0);
+
+    if (upto < states.length) {
+      // There were dead states
+      int[] newStates = new int[upto];
+      System.arraycopy(states, 0, newStates, 0, upto);
+      states = newStates;
+    }
+
+    // Reverse the order:
+    for(int i=0;i<states.length/2;i++) {
+      int s = states[i];
+      states[i] = states[states.length-1-i];
+      states[states.length-1-i] = s;
+    }
+
+    return states;
+  }
+
+  private static int topoSortStatesRecurse(Automaton a, BitSet visited, int[] states, int upto, int state) {
+    Transition t = new Transition();
+    int count = a.initTransition(state, t);
+    for (int i=0;i<count;i++) {
+      a.getNextTransition(t);
+      if (!visited.get(t.dest)) {
+        visited.set(t.dest);
+        upto = topoSortStatesRecurse(a, visited, states, upto, t.dest);
+      }
+    }
+    states[upto] = state;
+    upto++;
+    return upto;
   }
 }

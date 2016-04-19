@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.core;
+
 
 import java.io.IOException;
 
@@ -23,38 +23,21 @@ import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.util.CharacterUtils;
-import org.apache.lucene.util.Version;
 
 /**
  * Normalizes token text to lower case.
- * <a name="version"/>
- * <p>You may specify the {@link Version}
- * compatibility when creating LowerCaseFilter:
- * <ul>
- *   <li> As of 3.1, supplementary characters are properly lowercased.
- * </ul>
  */
 public final class LowerCaseFilter extends TokenFilter {
-  private final CharacterUtils charUtils;
+  private final CharacterUtils charUtils = CharacterUtils.getInstance();
   private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
   
   /**
    * Create a new LowerCaseFilter, that normalizes token text to lower case.
-   *
+   * 
    * @param in TokenStream to filter
    */
   public LowerCaseFilter(TokenStream in) {
     super(in);
-    charUtils = CharacterUtils.getInstance();
-  }
-
-  /**
-   * @deprecated Use {@link #LowerCaseFilter(TokenStream)}
-   */
-  @Deprecated
-  public LowerCaseFilter(Version matchVersion, TokenStream in) {
-    super(in);
-    charUtils = CharacterUtils.getInstance(matchVersion);
   }
   
   @Override

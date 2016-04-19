@@ -1,5 +1,3 @@
-package org.apache.lucene.search.similarities;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,17 +14,19 @@ package org.apache.lucene.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.similarities;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.FieldInvertState;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
@@ -95,6 +95,10 @@ public class TestSimilarityBase extends LuceneTestCase {
   static Lambda[] LAMBDAS = {
     new LambdaDF(), new LambdaTTF()
   };
+  /** Independence measures for DFI */
+  static Independence[] INDEPENDENCE_MEASURES = {
+    new IndependenceStandardized(), new IndependenceSaturated(), new IndependenceChiSquared()  
+  };
   
   private IndexSearcher searcher;
   private Directory dir;
@@ -112,7 +116,7 @@ public class TestSimilarityBase extends LuceneTestCase {
     for (int i = 0; i < docs.length; i++) {
       Document d = new Document();
       FieldType ft = new FieldType(TextField.TYPE_STORED);
-      ft.setIndexed(false);
+      ft.setIndexOptions(IndexOptions.NONE);
       d.add(newField(FIELD_ID, Integer.toString(i), ft));
       d.add(newTextField(FIELD_BODY, docs[i], Field.Store.YES));
       writer.addDocument(d);
@@ -140,6 +144,9 @@ public class TestSimilarityBase extends LuceneTestCase {
     sims.add(new LMDirichletSimilarity());
     sims.add(new LMJelinekMercerSimilarity(0.1f));
     sims.add(new LMJelinekMercerSimilarity(0.7f));
+    for (Independence independence : INDEPENDENCE_MEASURES) {
+      sims.add(new DFISimilarity(independence));
+    }
   }
   
   // ------------------------------- Unit tests --------------------------------
@@ -165,7 +172,7 @@ public class TestSimilarityBase extends LuceneTestCase {
   
   /** Creates the default statistics object that the specific tests modify. */
   private BasicStats createStats() {
-    BasicStats stats = new BasicStats("spoof", 1);
+    BasicStats stats = new BasicStats("spoof");
     stats.setNumberOfDocuments(NUMBER_OF_DOCUMENTS);
     stats.setNumberOfFieldTokens(NUMBER_OF_FIELD_TOKENS);
     stats.setAvgFieldLength(AVG_FIELD_LENGTH);
@@ -189,12 +196,13 @@ public class TestSimilarityBase extends LuceneTestCase {
    */
   private void unitTestCore(BasicStats stats, float freq, int docLen) {
     for (SimilarityBase sim : sims) {
-      BasicStats realStats = (BasicStats) sim.computeWeight(stats.getTotalBoost(),
+      BasicStats realStats = (BasicStats) sim.computeWeight(
           toCollectionStats(stats), 
           toTermStats(stats));
+      realStats.normalize(1f, stats.getBoost());
       float score = sim.score(realStats, freq, docLen);
       float explScore = sim.explain(
-          realStats, 1, new Explanation(freq, "freq"), docLen).getValue();
+          realStats, 1, Explanation.match(freq, "freq"), docLen).getValue();
       assertFalse("Score infinite: " + sim.toString(), Float.isInfinite(score));
       assertFalse("Score NaN: " + sim.toString(), Float.isNaN(score));
       assertTrue("Score negative: " + sim.toString(), score >= 0);
@@ -521,9 +529,10 @@ public class TestSimilarityBase extends LuceneTestCase {
    */
   private void correctnessTestCore(SimilarityBase sim, float gold) {
     BasicStats stats = createStats();
-    BasicStats realStats = (BasicStats) sim.computeWeight(stats.getTotalBoost(),
+    BasicStats realStats = (BasicStats) sim.computeWeight(
         toCollectionStats(stats), 
         toTermStats(stats));
+    realStats.normalize(1f, stats.getBoost());
     float score = sim.score(realStats, FREQ, DOC_LEN);
     assertEquals(
         sim.toString() + " score not correct.", gold, score, FLOAT_EPSILON);
@@ -559,9 +568,6 @@ public class TestSimilarityBase extends LuceneTestCase {
   
   /** Test whether all similarities return document 3 before documents 7 and 8. */
   public void testHeartRanking() throws IOException {
-    assumeFalse("PreFlex codec does not support the stats necessary for this test!", 
-        "Lucene3x".equals(Codec.getDefault().getName()));
-
     Query q = new TermQuery(new Term(FIELD_BODY, "heart"));
     
     for (SimilarityBase sim : sims) {
@@ -592,5 +598,66 @@ public class TestSimilarityBase extends LuceneTestCase {
     expected.setDiscountOverlaps(true);
     actual.setDiscountOverlaps(true);
     assertEquals(expected.computeNorm(state), actual.computeNorm(state));
+  }
+  
+  public void testSaneNormValues() {
+    for (SimilarityBase sim : sims) {
+      for (int i = 0; i < 256; i++) {
+        float len = sim.decodeNormValue((byte) i);
+        assertFalse("negative len: " + len + ", byte=" + i + ", sim=" + sim, len < 0.0f);
+        assertFalse("inf len: " + len + ", byte=" + i + ", sim=" + sim, Float.isInfinite(len));
+        assertFalse("nan len for byte=" + i + ", sim=" + sim, Float.isNaN(len));
+        if (i > 0) {
+          assertTrue("len is not decreasing: " + len + ",byte=" + i + ",sim=" + sim, len < sim.decodeNormValue((byte)(i-1)));
+        }
+      }
+    }
+  }
+  
+  /**
+   * make sure the similarity does not go crazy when tested against all possible norm values.
+   */
+  public void testCrazyIndexTimeBoosts() throws Exception {
+    long avgLength = 750;
+    long docCount = 500000;
+    long numTokens = docCount * avgLength;
+   
+    CollectionStatistics collectionStats = new CollectionStatistics("body", docCount, docCount, numTokens, numTokens);
+    
+    long docFreq = 2000;
+    long totalTermFreq = 2000 * avgLength;
+    
+    TermStatistics termStats = new TermStatistics(new BytesRef("term"), docFreq, totalTermFreq);
+    
+    for (SimilarityBase sim : sims) {
+      if (sim instanceof IBSimilarity) {
+        if (((IBSimilarity)sim).getDistribution() instanceof DistributionSPL) {
+          // score goes infinite for tiny doc lengths and negative for huge doc lengths
+          // TODO: fix this
+          continue;
+        }
+      } else if (sim instanceof DFRSimilarity) {
+        BasicModel model = ((DFRSimilarity)sim).getBasicModel();
+        if (model instanceof BasicModelD || model instanceof BasicModelP) {
+          // score goes NaN for tiny doc lengths
+          // TODO: fix this
+          continue;
+        } else if (model instanceof BasicModelBE) {
+          // score goes negative infinity for tiny doc lengths
+          // TODO: fix this
+          continue;
+        }
+      }
+      BasicStats stats = (BasicStats) sim.computeWeight(collectionStats, termStats);
+      for (float tf = 1.0f; tf <= 10.0f; tf += 1.0f) {
+        for (int i = 0; i < 256; i++) {
+          float len = sim.decodeNormValue((byte) i);
+          float score = sim.score(stats, tf, len);
+          assertFalse("negative score for " + sim + ", len=" + len + ",score=" + score, score < 0.0f);
+          assertFalse("inf score for " + sim + ", len=" + len, Float.isInfinite(score));
+          assertFalse("nan score for " + sim + ", len=" + len, Float.isNaN(score));
+        }
+      }
+    }
   }
 }

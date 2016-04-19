@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.in;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,10 @@ package org.apache.lucene.analysis.in;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.in;
+
 
 import java.io.IOException;
-import java.io.Reader;
 import java.io.StringReader;
 
 import org.apache.lucene.analysis.Analyzer;
@@ -47,7 +46,8 @@ public class TestIndicNormalizer extends BaseTokenStreamTestCase {
   }
   
   private void check(String input, String output) throws IOException {
-    Tokenizer tokenizer = new MockTokenizer(new StringReader(input), MockTokenizer.WHITESPACE, false);;
+    Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);;
+    tokenizer.setReader(new StringReader(input));
     TokenFilter tf = new IndicNormalizationFilter(tokenizer);
     assertTokenStreamContents(tf, new String[] { output });
   }
@@ -55,11 +55,12 @@ public class TestIndicNormalizer extends BaseTokenStreamTestCase {
   public void testEmptyTerm() throws IOException {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new KeywordTokenizer(reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new KeywordTokenizer();
         return new TokenStreamComponents(tokenizer, new IndicNormalizationFilter(tokenizer));
       }
     };
     checkOneTerm(a, "", "");
+    a.close();
   }
 }

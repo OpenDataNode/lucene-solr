@@ -18,22 +18,24 @@ package org.apache.solr.servlet;
 
 
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.Date;
-
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.impl.cookie.DateUtils;
 import org.apache.solr.common.params.CommonParams;
+import org.apache.solr.common.util.SuppressForbidden;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.Arrays;
+import java.util.Date;
 
 /**
  * A test case for the several HTTP cache headers emitted by Solr
@@ -43,9 +45,9 @@ public class CacheHeaderTest extends CacheHeaderTestBase {
     
   @BeforeClass
   public static void beforeTest() throws Exception {
-    solrHomeDirectory = createTempDir();
+    solrHomeDirectory = createTempDir().toFile();
     setupJettyTestHome(solrHomeDirectory, "collection1");
-    createJetty(solrHomeDirectory.getAbsolutePath(), null, null);
+    createJetty(solrHomeDirectory.getAbsolutePath());
   }
 
   @AfterClass
@@ -64,7 +66,7 @@ public class CacheHeaderTest extends CacheHeaderTestBase {
     HttpResponse response = getClient().execute(m);
     assertEquals(200, response.getStatusLine().getStatusCode());
     checkVetoHeaders(response, true);
-    f.delete();
+    Files.delete(f.toPath());
   }
   
   @Test
@@ -76,6 +78,7 @@ public class CacheHeaderTest extends CacheHeaderTestBase {
     checkVetoHeaders(response, false);
   }
 
+  @SuppressForbidden(reason = "Needs currentTimeMillis to check against expiry headers from Solr")
   protected void checkVetoHeaders(HttpResponse response, boolean checkExpires) throws Exception {
     Header head = response.getFirstHeader("Cache-Control");
     assertNotNull("We got no Cache-Control header", head);

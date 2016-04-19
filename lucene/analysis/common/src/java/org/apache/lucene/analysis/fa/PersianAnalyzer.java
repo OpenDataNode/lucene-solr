@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.fa;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.fa;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.fa;
+
 
 import java.io.IOException;
 import java.io.Reader;
@@ -23,11 +23,12 @@ import java.io.Reader;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
-import org.apache.lucene.analysis.ar.ArabicLetterTokenizer;
 import org.apache.lucene.analysis.ar.ArabicNormalizationFilter;
+import org.apache.lucene.analysis.core.DecimalDigitFilter;
 import org.apache.lucene.analysis.core.LowerCaseFilter;
 import org.apache.lucene.analysis.core.StopFilter;
 import org.apache.lucene.analysis.standard.StandardTokenizer;
+import org.apache.lucene.analysis.standard.std40.StandardTokenizer40;
 import org.apache.lucene.analysis.util.CharArraySet;
 import org.apache.lucene.analysis.util.StopwordAnalyzerBase;
 import org.apache.lucene.util.Version;
@@ -91,14 +92,6 @@ public final class PersianAnalyzer extends StopwordAnalyzerBase {
   public PersianAnalyzer() {
     this(DefaultSetHolder.DEFAULT_STOP_SET);
   }
-
-  /**
-   * @deprecated Use {@link #PersianAnalyzer()}
-   */
-  @Deprecated
-  public PersianAnalyzer(Version matchVersion) {
-    this(matchVersion, DefaultSetHolder.DEFAULT_STOP_SET);
-  }
   
   /**
    * Builds an analyzer with the given stop words 
@@ -106,16 +99,8 @@ public final class PersianAnalyzer extends StopwordAnalyzerBase {
    * @param stopwords
    *          a stopword set
    */
-  public PersianAnalyzer(CharArraySet stopwords) {
+  public PersianAnalyzer(CharArraySet stopwords){
     super(stopwords);
-  }
-
-  /**
-   * @deprecated Use {@link #PersianAnalyzer(CharArraySet)}
-   */
-  @Deprecated
-  public PersianAnalyzer(Version matchVersion, CharArraySet stopwords){
-    super(matchVersion, stopwords);
   }
 
   /**
@@ -125,19 +110,21 @@ public final class PersianAnalyzer extends StopwordAnalyzerBase {
    * 
    * @return {@link org.apache.lucene.analysis.Analyzer.TokenStreamComponents}
    *         built from a {@link StandardTokenizer} filtered with
-   *         {@link LowerCaseFilter}, {@link ArabicNormalizationFilter},
+   *         {@link LowerCaseFilter}, {@link DecimalDigitFilter}, {@link ArabicNormalizationFilter},
    *         {@link PersianNormalizationFilter} and Persian Stop words
    */
   @Override
-  protected TokenStreamComponents createComponents(String fieldName,
-      Reader reader) {
+  protected TokenStreamComponents createComponents(String fieldName) {
     final Tokenizer source;
-    if (getVersion().onOrAfter(Version.LUCENE_3_1_0)) {
-      source = new StandardTokenizer(getVersion(), reader);
+    if (getVersion().onOrAfter(Version.LUCENE_4_7_0)) {
+      source = new StandardTokenizer();
     } else {
-      source = new ArabicLetterTokenizer(getVersion(), reader);
+      source = new StandardTokenizer40();
     }
-    TokenStream result = new LowerCaseFilter(getVersion(), source);
+    TokenStream result = new LowerCaseFilter(source);
+    if (getVersion().onOrAfter(Version.LUCENE_5_4_0)) {
+      result = new DecimalDigitFilter(result);
+    }
     result = new ArabicNormalizationFilter(result);
     /* additional persian-specific normalization */
     result = new PersianNormalizationFilter(result);
@@ -145,7 +132,7 @@ public final class PersianAnalyzer extends StopwordAnalyzerBase {
      * the order here is important: the stopword list is normalized with the
      * above!
      */
-    return new TokenStreamComponents(source, new StopFilter(getVersion(), result, stopwords));
+    return new TokenStreamComponents(source, new StopFilter(result, stopwords));
   }
   
   /** 
@@ -153,8 +140,6 @@ public final class PersianAnalyzer extends StopwordAnalyzerBase {
    */
   @Override
   protected Reader initReader(String fieldName, Reader reader) {
-    return getVersion().onOrAfter(Version.LUCENE_3_1_0) ?
-       new PersianCharFilter(reader) :
-       reader;
+    return new PersianCharFilter(reader); 
   }
 }

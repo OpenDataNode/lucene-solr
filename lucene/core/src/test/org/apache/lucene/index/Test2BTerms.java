@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -27,12 +27,10 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
-import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.store.BaseDirectoryWrapper;
@@ -40,30 +38,27 @@ import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.util.Attribute;
 import org.apache.lucene.util.AttributeFactory;
 import org.apache.lucene.util.AttributeImpl;
+import org.apache.lucene.util.AttributeReflector;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase.Monster;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
+import org.apache.lucene.util.LuceneTestCase.SuppressSysoutChecks;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.TimeUnits;
 
 import com.carrotsearch.randomizedtesting.annotations.TimeoutSuite;
 
-// NOTE: this test will fail w/ PreFlexRW codec!  (Because
-// this test uses full binary term space, but PreFlex cannot
-// handle this since it requires the terms are UTF8 bytes).
-//
-// Also, SimpleText codec will consume very large amounts of
+// NOTE: SimpleText codec will consume very large amounts of
 // disk (but, should run successfully).  Best to run w/
-// -Dtests.codec=Standard, and w/ plenty of RAM, eg:
+// -Dtests.codec=<current codec>, and w/ plenty of RAM, eg:
 //
-//   ant test -Dtests.monster=true -Dtests.heapsize=8g
-//
-//   java -server -Xmx8g -d64 -cp .:lib/junit-4.10.jar:./build/classes/test:./build/classes/test-framework:./build/classes/java -Dlucene.version=4.0-dev -Dtests.directory=MMapDirectory -DtempDir=build -ea org.junit.runner.JUnitCore org.apache.lucene.index.Test2BTerms
+//   ant test -Dtests.monster=true -Dtests.heapsize=8g -Dtests.codec=Lucene53 -Dtestcase=Test2BTerms
 //
 @SuppressCodecs({ "SimpleText", "Memory", "Direct" })
-@Monster("very slow, use 8g heap")
-@TimeoutSuite(millis = 6 * TimeUnits.HOUR)
+@Monster("very slow, use 5g minimum heap")
+@TimeoutSuite(millis = 80 * TimeUnits.HOUR) // effectively no limit
+@SuppressSysoutChecks(bugUrl = "Stuff gets printed")
 public class Test2BTerms extends LuceneTestCase {
 
   private final static int TOKEN_LEN = 5;
@@ -116,11 +111,6 @@ public class Test2BTerms extends LuceneTestCase {
 
     private final static class MyTermAttributeImpl extends AttributeImpl implements TermToBytesRefAttribute {
       @Override
-      public void fillBytesRef() {
-        // no-op: the bytes was already filled by our owner's incrementToken
-      }
-      
-      @Override
       public BytesRef getBytesRef() {
         return bytes;
       }
@@ -130,22 +120,18 @@ public class Test2BTerms extends LuceneTestCase {
       }
 
       @Override
-      public boolean equals(Object other) {
-        return other == this;
-      }
-
-      @Override
-      public int hashCode() {
-        return System.identityHashCode(this);
-      }
-    
-      @Override
       public void copyTo(AttributeImpl target) {
+        throw new UnsupportedOperationException();
       }
     
       @Override
       public MyTermAttributeImpl clone() {
         throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public void reflectWith(AttributeReflector reflector) {
+        reflector.reflect(TermToBytesRefAttribute.class, "bytes", getBytesRef());
       }
     }
 
@@ -169,9 +155,6 @@ public class Test2BTerms extends LuceneTestCase {
 
   public void test2BTerms() throws IOException {
 
-    if ("Lucene3x".equals(Codec.getDefault().getName())) {
-      throw new RuntimeException("this test cannot run with PreFlex codec");
-    }
     System.out.println("Starting Test2B");
     final long TERM_COUNT = ((long) Integer.MAX_VALUE) + 100000000;
 
@@ -189,12 +172,13 @@ public class Test2BTerms extends LuceneTestCase {
     if (true) {
 
       IndexWriter w = new IndexWriter(dir,
-                                      new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))
+                                      new IndexWriterConfig(new MockAnalyzer(random()))
                                       .setMaxBufferedDocs(IndexWriterConfig.DISABLE_AUTO_FLUSH)
                                       .setRAMBufferSizeMB(256.0)
                                       .setMergeScheduler(new ConcurrentMergeScheduler())
                                       .setMergePolicy(newLogMergePolicy(false, 10))
-                                      .setOpenMode(IndexWriterConfig.OpenMode.CREATE));
+                                      .setOpenMode(IndexWriterConfig.OpenMode.CREATE)
+                                      .setCodec(TestUtil.getDefaultCodec()));
 
       MergePolicy mp = w.getConfig().getMergePolicy();
       if (mp instanceof LogByteSizeMergePolicy) {
@@ -206,7 +190,7 @@ public class Test2BTerms extends LuceneTestCase {
       final MyTokenStream ts = new MyTokenStream(random(), TERMS_PER_DOC);
 
       FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
-      customType.setIndexOptions(IndexOptions.DOCS_ONLY);
+      customType.setIndexOptions(IndexOptions.DOCS);
       customType.setOmitNorms(true);
       Field field = new Field("field", ts, customType);
       doc.add(field);
@@ -253,7 +237,7 @@ public class Test2BTerms extends LuceneTestCase {
 
   private List<BytesRef> findTerms(IndexReader r) throws IOException {
     System.out.println("TEST: findTerms");
-    final TermsEnum termsEnum = MultiFields.getTerms(r, "field").iterator(null);
+    final TermsEnum termsEnum = MultiFields.getTerms(r, "field").iterator();
     final List<BytesRef> savedTerms = new ArrayList<>();
     int nextSave = TestUtil.nextInt(random(), 500000, 1000000);
     BytesRef term;
@@ -270,8 +254,8 @@ public class Test2BTerms extends LuceneTestCase {
   private void testSavedTerms(IndexReader r, List<BytesRef> terms) throws IOException {
     System.out.println("TEST: run " + terms.size() + " terms on reader=" + r);
     IndexSearcher s = newSearcher(r);
-    Collections.shuffle(terms);
-    TermsEnum termsEnum = MultiFields.getTerms(r, "field").iterator(null);
+    Collections.shuffle(terms, random());
+    TermsEnum termsEnum = MultiFields.getTerms(r, "field").iterator();
     boolean failed = false;
     for(int iter=0;iter<10*terms.size();iter++) {
       final BytesRef term = terms.get(random().nextInt(terms.size()));

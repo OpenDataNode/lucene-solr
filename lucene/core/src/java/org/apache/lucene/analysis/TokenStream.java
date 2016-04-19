@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis;
+
 
 import java.io.IOException;
 import java.io.Closeable;
@@ -161,7 +161,7 @@ public abstract class TokenStream extends AttributeSource implements Closeable {
    * consumed, after {@link #incrementToken()} returned <code>false</code>
    * (using the new <code>TokenStream</code> API). Streams implementing the old API
    * should upgrade to use this feature.
-   * <p/>
+   * <p>
    * This method can be used to perform any end-of-stream operations, such as
    * setting the final offset of a stream. The final offset of a stream might
    * differ from the offset of the last token eg in case one or more whitespaces

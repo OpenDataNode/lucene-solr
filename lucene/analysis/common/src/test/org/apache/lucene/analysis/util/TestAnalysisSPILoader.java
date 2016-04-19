@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.util;
+
 
 import java.util.HashMap;
 import java.util.Map;
@@ -25,12 +25,13 @@ import org.apache.lucene.analysis.core.LowerCaseFilterFactory;
 import org.apache.lucene.analysis.core.WhitespaceTokenizerFactory;
 import org.apache.lucene.analysis.miscellaneous.RemoveDuplicatesTokenFilterFactory;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.Version;
 
 public class TestAnalysisSPILoader extends LuceneTestCase {
   
   private Map<String,String> versionArgOnly() {
     return new HashMap<String,String>() {{
-      put("luceneMatchVersion", TEST_VERSION_CURRENT.toString());
+      put("luceneMatchVersion", Version.LATEST.toString());
     }};
   }
   

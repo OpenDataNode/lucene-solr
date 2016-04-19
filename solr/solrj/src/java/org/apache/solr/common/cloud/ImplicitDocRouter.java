@@ -1,5 +1,3 @@
-package org.apache.solr.common.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,11 @@ package org.apache.solr.common.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.common.cloud;
 
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.params.SolrParams;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -31,16 +28,16 @@ import static org.apache.solr.common.params.ShardParams._ROUTE_;
 /** This document router is for custom sharding
  */
 public class ImplicitDocRouter extends DocRouter {
+
   public static final String NAME = "implicit";
-//  @Deprecated
-//  public static final String DEFAULT_SHARD_PARAM = "_shard_";
-  private static Logger log = LoggerFactory
-      .getLogger(ImplicitDocRouter.class);
 
   @Override
-  public Slice getTargetSlice(String id, SolrInputDocument sdoc, SolrParams params, DocCollection collection) {
+  public Slice getTargetSlice(String id, SolrInputDocument sdoc, String route, SolrParams params, DocCollection collection) {
     String shard = null;
-    if (sdoc != null) {
+
+    if (route != null) // if a route is already passed in, try to use it
+      shard = route;
+    else if (sdoc != null) {
       String f = getRouteField(collection);
       if(f !=null) {
         Object o = sdoc.getFieldValue(f);
@@ -49,7 +46,6 @@ public class ImplicitDocRouter extends DocRouter {
       }
       if(shard == null) {
         Object o = sdoc.getFieldValue(_ROUTE_);
-        if (o == null) o = sdoc.getFieldValue("_shard_");//deprecated . for backcompat remove later
         if (o != null) {
           shard = o.toString();
         }
@@ -58,7 +54,6 @@ public class ImplicitDocRouter extends DocRouter {
 
     if (shard == null) {
       shard = params.get(_ROUTE_);
-      if(shard == null) shard =params.get("_shard_"); //deperecated for back compat
     }
 
     if (shard != null) {

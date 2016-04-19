@@ -1,5 +1,3 @@
-package org.apache.lucene.search.suggest;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,9 @@ package org.apache.lucene.search.suggest;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.suggest;
 
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.Iterator;
 import java.util.Set;
 
@@ -83,11 +81,6 @@ public final class InputArrayIterator implements InputIterator {
   @Override
   public boolean hasPayloads() {
     return hasPayloads;
-  }
-  
-  @Override
-  public Comparator<BytesRef> getComparator() {
-    return null;
   }
 
   @Override

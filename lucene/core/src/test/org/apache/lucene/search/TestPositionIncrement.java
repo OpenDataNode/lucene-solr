@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,36 +14,40 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
-import java.io.Reader;
 import java.io.StringReader;
-import java.nio.charset.StandardCharsets;
-import java.util.Collection;
+import java.util.ArrayList;
+import java.util.List;
 
-import org.apache.lucene.analysis.*;
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.MockPayloadAnalyzer;
+import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
-import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.AtomicReader;
-import org.apache.lucene.index.MultiFields;
-import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.MultiFields;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.SlowCompositeReaderWrapper;
 import org.apache.lucene.index.Term;
-import org.apache.lucene.store.Directory;
-import org.apache.lucene.search.payloads.PayloadSpanUtil;
 import org.apache.lucene.search.spans.MultiSpansWrapper;
+import org.apache.lucene.search.spans.SpanCollector;
 import org.apache.lucene.search.spans.SpanNearQuery;
 import org.apache.lucene.search.spans.SpanQuery;
-import org.apache.lucene.search.spans.SpanTermQuery;
 import org.apache.lucene.search.spans.Spans;
-import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.search.spans.SpanTermQuery;
+import org.apache.lucene.search.spans.SpanWeight;
+import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.LuceneTestCase;
 
 /**
  * Term position unit test.
@@ -59,8 +61,8 @@ public class TestPositionIncrement extends LuceneTestCase {
   public void testSetPosition() throws Exception {
     Analyzer analyzer = new Analyzer() {
       @Override
-      public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        return new TokenStreamComponents(new Tokenizer(reader) {
+      public TokenStreamComponents createComponents(String fieldName) {
+        return new TokenStreamComponents(new Tokenizer() {
           // TODO: use CannedTokenStream
           private final String[] TOKENS = {"1", "2", "3", "4", "5"};
           private final int[] INCREMENTS = {1, 2, 1, 0, 1};
@@ -101,8 +103,7 @@ public class TestPositionIncrement extends LuceneTestCase {
 
     IndexSearcher searcher = newSearcher(reader);
     
-    DocsAndPositionsEnum pos = MultiFields.getTermPositionsEnum(searcher.getIndexReader(),
-                                                                MultiFields.getLiveDocs(searcher.getIndexReader()),
+    PostingsEnum pos = MultiFields.getTermPositionsEnum(searcher.getIndexReader(),
                                                                 "field",
                                                                 new BytesRef("1"));
     pos.nextDoc();
@@ -110,7 +111,6 @@ public class TestPositionIncrement extends LuceneTestCase {
     assertEquals(0, pos.nextPosition());
     
     pos = MultiFields.getTermPositionsEnum(searcher.getIndexReader(),
-                                           MultiFields.getLiveDocs(searcher.getIndexReader()),
                                            "field",
                                            new BytesRef("2"));
     pos.nextDoc();
@@ -120,86 +120,100 @@ public class TestPositionIncrement extends LuceneTestCase {
     PhraseQuery q;
     ScoreDoc[] hits;
 
-    q = new PhraseQuery();
-    q.add(new Term("field", "1"));
-    q.add(new Term("field", "2"));
-    hits = searcher.search(q, null, 1000).scoreDocs;
+    q = new PhraseQuery("field", "1", "2");
+    hits = searcher.search(q, 1000).scoreDocs;
+    assertEquals(0, hits.length);
+
+    // same as previous, using the builder with implicit positions
+    PhraseQuery.Builder builder = new PhraseQuery.Builder();
+    builder.add(new Term("field", "1"));
+    builder.add(new Term("field", "2"));
+    q = builder.build();
+    hits = searcher.search(q, 1000).scoreDocs;
     assertEquals(0, hits.length);
 
     // same as previous, just specify positions explicitely.
-    q = new PhraseQuery(); 
-    q.add(new Term("field", "1"),0);
-    q.add(new Term("field", "2"),1);
-    hits = searcher.search(q, null, 1000).scoreDocs;
+    builder = new PhraseQuery.Builder();
+    builder.add(new Term("field", "1"), 0);
+    builder.add(new Term("field", "2"), 1);
+    q = builder.build();
+    hits = searcher.search(q, 1000).scoreDocs;
     assertEquals(0, hits.length);
 
     // specifying correct positions should find the phrase.
-    q = new PhraseQuery();
-    q.add(new Term("field", "1"),0);
-    q.add(new Term("field", "2"),2);
-    hits = searcher.search(q, null, 1000).scoreDocs;
+    builder = new PhraseQuery.Builder();
+    builder.add(new Term("field", "1"), 0);
+    builder.add(new Term("field", "2"), 2);
+    q = builder.build();
+    hits = searcher.search(q, 1000).scoreDocs;
     assertEquals(1, hits.length);
 
-    q = new PhraseQuery();
-    q.add(new Term("field", "2"));
-    q.add(new Term("field", "3"));
-    hits = searcher.search(q, null, 1000).scoreDocs;
+    q = new PhraseQuery("field", "2", "3");
+    hits = searcher.search(q, 1000).scoreDocs;
     assertEquals(1, hits.length);
 
-    q = new PhraseQuery();
-    q.add(new Term("field", "3"));
-    q.add(new Term("field", "4"));
-    hits = searcher.search(q, null, 1000).scoreDocs;
+    q = new PhraseQuery("field", "3", "4");
+    hits = searcher.search(q, 1000).scoreDocs;
     assertEquals(0, hits.length);
 
     // phrase query would find it when correct positions are specified. 
-    q = new PhraseQuery();
-    q.add(new Term("field", "3"),0);
-    q.add(new Term("field", "4"),0);
-    hits = searcher.search(q, null, 1000).scoreDocs;
+    builder = new PhraseQuery.Builder();
+    builder.add(new Term("field", "3"), 0);
+    builder.add(new Term("field", "4"), 0);
+    q = builder.build();
+    hits = searcher.search(q, 1000).scoreDocs;
     assertEquals(1, hits.length);
 
     // phrase query should fail for non existing searched term 
     // even if there exist another searched terms in the same searched position. 
-    q = new PhraseQuery();
-    q.add(new Term("field", "3"),0);
-    q.add(new Term("field", "9"),0);
-    hits = searcher.search(q, null, 1000).scoreDocs;
+    builder = new PhraseQuery.Builder();
+    builder.add(new Term("field", "3"), 0);
+    builder.add(new Term("field", "9"), 0);
+    q = builder.build();
+    hits = searcher.search(q, 1000).scoreDocs;
     assertEquals(0, hits.length);
 
     // multi-phrase query should succed for non existing searched term
     // because there exist another searched terms in the same searched position. 
     MultiPhraseQuery mq = new MultiPhraseQuery();
     mq.add(new Term[]{new Term("field", "3"),new Term("field", "9")},0);
-    hits = searcher.search(mq, null, 1000).scoreDocs;
+    hits = searcher.search(mq, 1000).scoreDocs;
     assertEquals(1, hits.length);
 
-    q = new PhraseQuery();
-    q.add(new Term("field", "2"));
-    q.add(new Term("field", "4"));
-    hits = searcher.search(q, null, 1000).scoreDocs;
+    q = new PhraseQuery("field", "2", "4");
+    hits = searcher.search(q, 1000).scoreDocs;
     assertEquals(1, hits.length);
 
-    q = new PhraseQuery();
-    q.add(new Term("field", "3"));
-    q.add(new Term("field", "5"));
-    hits = searcher.search(q, null, 1000).scoreDocs;
+    q = new PhraseQuery("field", "3", "5");
+    hits = searcher.search(q, 1000).scoreDocs;
     assertEquals(1, hits.length);
 
-    q = new PhraseQuery();
-    q.add(new Term("field", "4"));
-    q.add(new Term("field", "5"));
-    hits = searcher.search(q, null, 1000).scoreDocs;
+    q = new PhraseQuery("field", "4", "5");
+    hits = searcher.search(q, 1000).scoreDocs;
     assertEquals(1, hits.length);
 
-    q = new PhraseQuery();
-    q.add(new Term("field", "2"));
-    q.add(new Term("field", "5"));
-    hits = searcher.search(q, null, 1000).scoreDocs;
+    q = new PhraseQuery("field", "2", "5");
+    hits = searcher.search(q, 1000).scoreDocs;
     assertEquals(0, hits.length);
     
     reader.close();
     store.close();
+  }
+
+  static class PayloadSpanCollector implements SpanCollector {
+
+    List<BytesRef> payloads = new ArrayList<>();
+
+    @Override
+    public void collectLeaf(PostingsEnum postings, int position, Term term) throws IOException {
+      if (postings.getPayload() != null)
+        payloads.add(BytesRef.deepCopyOf(postings.getPayload()));
+    }
+
+    @Override
+    public void reset() {
+      payloads.clear();
+    }
   }
 
   public void testPayloadsPos0() throws Exception {
@@ -211,9 +225,9 @@ public class TestPositionIncrement extends LuceneTestCase {
     writer.addDocument(doc);
 
     final IndexReader readerFromWriter = writer.getReader();
-    AtomicReader r = SlowCompositeReaderWrapper.wrap(readerFromWriter);
+    LeafReader r = SlowCompositeReaderWrapper.wrap(readerFromWriter);
 
-    DocsAndPositionsEnum tp = r.termPositionsEnum(new Term("content", "a"));
+    PostingsEnum tp = r.postings(new Term("content", "a"), PostingsEnum.ALL);
     
     int count = 0;
     assertTrue(tp.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
@@ -239,50 +253,43 @@ public class TestPositionIncrement extends LuceneTestCase {
     if (VERBOSE) {
       System.out.println("\ngetPayloadSpans test");
     }
-    Spans pspans = MultiSpansWrapper.wrap(is.getTopReaderContext(), snq);
-    while (pspans.next()) {
-      if (VERBOSE) {
-        System.out.println("doc " + pspans.doc() + ": span " + pspans.start()
-            + " to " + pspans.end());
-      }
-      Collection<byte[]> payloads = pspans.getPayload();
-      sawZero |= pspans.start() == 0;
-      for (byte[] bytes : payloads) {
-        count++;
+    PayloadSpanCollector collector = new PayloadSpanCollector();
+    Spans pspans = MultiSpansWrapper.wrap(is.getIndexReader(), snq, SpanWeight.Postings.PAYLOADS);
+    while (pspans.nextDoc() != Spans.NO_MORE_DOCS) {
+      while (pspans.nextStartPosition() != Spans.NO_MORE_POSITIONS) {
         if (VERBOSE) {
-          System.out.println("  payload: " + new String(bytes, StandardCharsets.UTF_8));
+          System.out.println("doc " + pspans.docID() + ": span " + pspans.startPosition()
+              + " to " + pspans.endPosition());
+        }
+        collector.reset();
+        pspans.collect(collector);
+        sawZero |= pspans.startPosition() == 0;
+        for (BytesRef payload : collector.payloads) {
+          count++;
+          if (VERBOSE) {
+            System.out.println("  payload: " + Term.toString(payload));
+          }
         }
       }
     }
     assertTrue(sawZero);
-    assertEquals(5, count);
+    assertEquals(8, count);
 
     // System.out.println("\ngetSpans test");
-    Spans spans = MultiSpansWrapper.wrap(is.getTopReaderContext(), snq);
+    Spans spans = MultiSpansWrapper.wrap(is.getIndexReader(), snq);
     count = 0;
     sawZero = false;
-    while (spans.next()) {
-      count++;
-      sawZero |= spans.start() == 0;
-      // System.out.println(spans.doc() + " - " + spans.start() + " - " +
-      // spans.end());
+    while (spans.nextDoc() != Spans.NO_MORE_DOCS) {
+      while (spans.nextStartPosition() != Spans.NO_MORE_POSITIONS) {
+        count++;
+        sawZero |= spans.startPosition() == 0;
+        // System.out.println(spans.doc() + " - " + spans.start() + " - " +
+        // spans.end());
+      }
     }
     assertEquals(4, count);
     assertTrue(sawZero);
 
-    // System.out.println("\nPayloadSpanUtil test");
-
-    sawZero = false;
-    PayloadSpanUtil psu = new PayloadSpanUtil(is.getTopReaderContext());
-    Collection<byte[]> pls = psu.getPayloadsForQuery(snq);
-    count = pls.size();
-    for (byte[] bytes : pls) {
-      String s = new String(bytes, StandardCharsets.UTF_8);
-      //System.out.println(s);
-      sawZero |= s.equals("pos: 0");
-    }
-    assertEquals(5, count);
-    assertTrue(sawZero);
     writer.close();
     is.getIndexReader().close();
     dir.close();

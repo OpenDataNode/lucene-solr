@@ -1,5 +1,3 @@
-package org.apache.lucene.document;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,16 +14,15 @@ package org.apache.lucene.document;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.document;
 
-import org.apache.lucene.index.AtomicReader; // javadocs
-import org.apache.lucene.search.FieldCache; // javadocs
 
 /**
  * Syntactic sugar for encoding doubles as NumericDocValues
  * via {@link Double#doubleToRawLongBits(double)}.
  * <p>
  * Per-document double values can be retrieved via
- * {@link FieldCache#getDoubles(AtomicReader, String, boolean)}.
+ * {@link org.apache.lucene.index.LeafReader#getNumericDocValues(String)}.
  * <p>
  * <b>NOTE</b>: In most all cases this will be rather inefficient,
  * requiring eight bytes per document. Consider encoding double

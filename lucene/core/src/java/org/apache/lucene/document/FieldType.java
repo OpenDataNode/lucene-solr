@@ -1,5 +1,3 @@
-package org.apache.lucene.document;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,12 @@ package org.apache.lucene.document;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.document;
+
 
 import org.apache.lucene.analysis.Analyzer; // javadocs
-import org.apache.lucene.index.FieldInfo.DocValuesType;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.DocValuesType;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.IndexableFieldType;
 import org.apache.lucene.search.NumericRangeQuery; // javadocs
 import org.apache.lucene.util.NumericUtils;
@@ -32,7 +32,7 @@ public class FieldType implements IndexableFieldType {
   /** Data type of the numeric value
    * @since 3.2
    */
-  public static enum NumericType {
+  public enum NumericType {
     /** 32-bit integer numeric type */
     INT, 
     /** 64-bit long numeric type */
@@ -43,7 +43,6 @@ public class FieldType implements IndexableFieldType {
     DOUBLE
   }
 
-  private boolean indexed;
   private boolean stored;
   private boolean tokenized = true;
   private boolean storeTermVectors;
@@ -51,17 +50,16 @@ public class FieldType implements IndexableFieldType {
   private boolean storeTermVectorPositions;
   private boolean storeTermVectorPayloads;
   private boolean omitNorms;
-  private IndexOptions indexOptions = IndexOptions.DOCS_AND_FREQS_AND_POSITIONS;
+  private IndexOptions indexOptions = IndexOptions.NONE;
   private NumericType numericType;
   private boolean frozen;
   private int numericPrecisionStep = NumericUtils.PRECISION_STEP_DEFAULT;
-  private DocValuesType docValueType;
+  private DocValuesType docValuesType = DocValuesType.NONE;
 
   /**
    * Create a new mutable FieldType with all of the properties from <code>ref</code>
    */
   public FieldType(FieldType ref) {
-    this.indexed = ref.indexed();
     this.stored = ref.stored();
     this.tokenized = ref.tokenized();
     this.storeTermVectors = ref.storeTermVectors();
@@ -70,8 +68,9 @@ public class FieldType implements IndexableFieldType {
     this.storeTermVectorPayloads = ref.storeTermVectorPayloads();
     this.omitNorms = ref.omitNorms();
     this.indexOptions = ref.indexOptions();
-    this.docValueType = ref.docValueType();
     this.numericType = ref.numericType();
+    this.numericPrecisionStep = ref.numericPrecisionStep();
+    this.docValuesType = ref.docValuesType();
     // Do not copy frozen!
   }
   
@@ -81,7 +80,11 @@ public class FieldType implements IndexableFieldType {
   public FieldType() {
   }
 
-  private void checkIfFrozen() {
+  /**
+   * Throws an exception if this FieldType is frozen. Subclasses should
+   * call this within setters for additional state.
+   */
+  protected void checkIfFrozen() {
     if (frozen) {
       throw new IllegalStateException("this FieldType is already frozen and cannot be changed");
     }
@@ -96,29 +99,6 @@ public class FieldType implements IndexableFieldType {
     this.frozen = true;
   }
   
-  /**
-   * {@inheritDoc}
-   * <p>
-   * The default is <code>false</code>.
-   * @see #setIndexed(boolean)
-   */
-  @Override
-  public boolean indexed() {
-    return this.indexed;
-  }
-  
-  /**
-   * Set to <code>true</code> to index (invert) this field.
-   * @param value true if this field should be indexed.
-   * @throws IllegalStateException if this FieldType is frozen against
-   *         future modifications.
-   * @see #indexed()
-   */
-  public void setIndexed(boolean value) {
-    checkIfFrozen();
-    this.indexed = value;
-  }
-
   /**
    * {@inheritDoc}
    * <p>
@@ -148,7 +128,6 @@ public class FieldType implements IndexableFieldType {
    * The default is <code>true</code>.
    * @see #setTokenized(boolean)
    */
-  @Override
   public boolean tokenized() {
     return this.tokenized;
   }
@@ -289,7 +268,7 @@ public class FieldType implements IndexableFieldType {
    * {@inheritDoc}
    * <p>
    * The default is {@link IndexOptions#DOCS_AND_FREQS_AND_POSITIONS}.
-   * @see #setIndexOptions(org.apache.lucene.index.FieldInfo.IndexOptions)
+   * @see #setIndexOptions(IndexOptions)
    */
   @Override
   public IndexOptions indexOptions() {
@@ -305,6 +284,9 @@ public class FieldType implements IndexableFieldType {
    */
   public void setIndexOptions(IndexOptions value) {
     checkIfFrozen();
+    if (value == null) {
+      throw new NullPointerException("IndexOptions cannot be null");
+    }
     this.indexOptions = value;
   }
 
@@ -367,7 +349,7 @@ public class FieldType implements IndexableFieldType {
     if (stored()) {
       result.append("stored");
     }
-    if (indexed()) {
+    if (indexOptions != IndexOptions.NONE) {
       if (result.length() > 0)
         result.append(",");
       result.append("indexed");
@@ -400,11 +382,12 @@ public class FieldType implements IndexableFieldType {
         result.append(numericPrecisionStep);
       }
     }
-    if (docValueType != null) {
-      if (result.length() > 0)
+    if (docValuesType != DocValuesType.NONE) {
+      if (result.length() > 0) {
         result.append(",");
-      result.append("docValueType=");
-      result.append(docValueType);
+      }
+      result.append("docValuesType=");
+      result.append(docValuesType);
     }
     
     return result.toString();
@@ -414,32 +397,34 @@ public class FieldType implements IndexableFieldType {
    * {@inheritDoc}
    * <p>
    * The default is <code>null</code> (no docValues) 
-   * @see #setDocValueType(org.apache.lucene.index.FieldInfo.DocValuesType)
+   * @see #setDocValuesType(DocValuesType)
    */
   @Override
-  public DocValuesType docValueType() {
-    return docValueType;
+  public DocValuesType docValuesType() {
+    return docValuesType;
   }
 
   /**
-   * Set's the field's DocValuesType
+   * Sets the field's DocValuesType
    * @param type DocValues type, or null if no DocValues should be stored.
    * @throws IllegalStateException if this FieldType is frozen against
    *         future modifications.
-   * @see #docValueType()
+   * @see #docValuesType()
    */
-  public void setDocValueType(DocValuesType type) {
+  public void setDocValuesType(DocValuesType type) {
     checkIfFrozen();
-    docValueType = type;
+    if (type == null) {
+      throw new NullPointerException("DocValuesType cannot be null");
+    }
+    docValuesType = type;
   }
 
   @Override
   public int hashCode() {
     final int prime = 31;
     int result = 1;
-    result = prime * result + ((docValueType == null) ? 0 : docValueType.hashCode());
-    result = prime * result + ((indexOptions == null) ? 0 : indexOptions.hashCode());
-    result = prime * result + (indexed ? 1231 : 1237);
+    result = prime * result + ((docValuesType == null) ? 0 : docValuesType.hashCode());
+    result = prime * result + indexOptions.hashCode();
     result = prime * result + numericPrecisionStep;
     result = prime * result + ((numericType == null) ? 0 : numericType.hashCode());
     result = prime * result + (omitNorms ? 1231 : 1237);
@@ -458,9 +443,8 @@ public class FieldType implements IndexableFieldType {
     if (obj == null) return false;
     if (getClass() != obj.getClass()) return false;
     FieldType other = (FieldType) obj;
-    if (docValueType != other.docValueType) return false;
+    if (docValuesType != other.docValuesType) return false;
     if (indexOptions != other.indexOptions) return false;
-    if (indexed != other.indexed) return false;
     if (numericPrecisionStep != other.numericPrecisionStep) return false;
     if (numericType != other.numericType) return false;
     if (omitNorms != other.omitNorms) return false;

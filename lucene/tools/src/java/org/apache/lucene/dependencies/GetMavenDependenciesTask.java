@@ -1,5 +1,3 @@
-package org.apache.lucene.dependencies;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.dependencies;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.dependencies;
 
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.Project;
@@ -104,11 +103,7 @@ public class GetMavenDependenciesTask extends Task {
     // (i.e., not invoke Maven's transitive dependency mechanism).
     // Format is "groupId:artifactId"
     globalOptionalExternalDependencies.addAll(Arrays.asList
-        ("org.slf4j:jcl-over-slf4j", "org.slf4j:jul-to-slf4j", "org.slf4j:slf4j-log4j12"));
-
-    // Add per-module optional external dependencies here.
-    Set<String> optionalDeps = new HashSet<>(Arrays.asList("org.slf4j:slf4j-api"));
-    perModuleOptionalExternalDependencies.put("solr-webapp", optionalDeps);
+        ("org.slf4j:jul-to-slf4j", "org.slf4j:slf4j-log4j12"));
   }
 
   private final XPath xpath = XPathFactory.newInstance().newXPath();
@@ -264,7 +259,7 @@ public class GetMavenDependenciesTask extends Task {
     // so dependency sharing is limited to a depth of one.
     Map<String,SortedSet<ExternalDependency>> sharedDependencies = new HashMap<>();
     for (String module : interModuleExternalCompileScopeDependencies.keySet()) {
-      TreeSet<ExternalDependency> deps = new TreeSet<ExternalDependency>();
+      TreeSet<ExternalDependency> deps = new TreeSet<>();
       sharedDependencies.put(module, deps);
       Set<String> moduleDependencies = interModuleExternalCompileScopeDependencies.get(module);
       if (null != moduleDependencies) {
@@ -446,13 +441,13 @@ public class GetMavenDependenciesTask extends Task {
     } catch (IOException e) {
       throw new BuildException("Exception reading centralized versions file " + centralizedVersionsFile.getPath(), e);
     } 
-    SortedSet<Map.Entry> sortedEntries = new TreeSet<>(new Comparator<Map.Entry>() {
-      @Override public int compare(Map.Entry o1, Map.Entry o2) {
+    SortedSet<Map.Entry<?,?>> sortedEntries = new TreeSet<>(new Comparator<Map.Entry<?,?>>() {
+      @Override public int compare(Map.Entry<?,?> o1, Map.Entry<?,?> o2) {
         return ((String)o1.getKey()).compareTo((String)o2.getKey());
       }
     });
     sortedEntries.addAll(versions.entrySet());
-    for (Map.Entry entry : sortedEntries) {
+    for (Map.Entry<?,?> entry : sortedEntries) {
       String key = (String)entry.getKey();
       Matcher matcher = COORDINATE_KEY_PATTERN.matcher(key);
       if (matcher.lookingAt()) {
@@ -529,7 +524,7 @@ public class GetMavenDependenciesTask extends Task {
     }
     Map<String,SortedSet<String>> testScopeDependencies = new HashMap<>();
     Map<String, String> testScopePropertyKeys = new HashMap<>();
-    for (Map.Entry entry : moduleDependencies.entrySet()) {
+    for (Map.Entry<?,?> entry : moduleDependencies.entrySet()) {
       String newPropertyKey = (String)entry.getKey();
       StringBuilder newPropertyValue = new StringBuilder();
       String value = (String)entry.getValue();
@@ -552,8 +547,10 @@ public class GetMavenDependenciesTask extends Task {
       } else {
         // Lucene analysis modules' build dirs do not include hyphens, but Solr contribs' build dirs do
         String origModuleDir = antProjectName.replace("analyzers-", "analysis/");
+        // Exclude the module's own build output, in addition to UNWANTED_INTERNAL_DEPENDENCIES
         Pattern unwantedInternalDependencies = Pattern.compile
-            ("(?:lucene/build/|solr/build/(?:contrib/)?)" + origModuleDir + "|" + UNWANTED_INTERNAL_DEPENDENCIES);
+            ("(?:lucene/build/|solr/build/(?:contrib/)?)" + origModuleDir + "/" // require dir separator 
+             + "|" + UNWANTED_INTERNAL_DEPENDENCIES);
         SortedSet<String> sortedDeps = new TreeSet<>();
         for (String dependency : value.split(",")) {
           matcher = SHARED_EXTERNAL_DEPENDENCIES_PATTERN.matcher(dependency);
@@ -695,7 +692,7 @@ public class GetMavenDependenciesTask extends Task {
       String dependencyCoordinate = groupId + ':' + artifactId;
       Set<String> classifiers = dependencyClassifiers.get(dependencyCoordinate);
       if (null == classifiers) {
-        classifiers = new HashSet<String>();
+        classifiers = new HashSet<>();
         dependencyClassifiers.put(dependencyCoordinate, classifiers);
       }
       String conf = dependency.getAttribute("conf");

@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -25,7 +25,6 @@ import java.util.TreeSet;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
-import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.TermsEnum.SeekStatus;
@@ -37,8 +36,9 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
-import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.automaton.*;
+
+import static org.apache.lucene.util.automaton.Operations.DEFAULT_MAX_DETERMINIZED_STATES;
 
 public class TestTermsEnum2 extends LuceneTestCase {
   private Directory dir;
@@ -51,9 +51,7 @@ public class TestTermsEnum2 extends LuceneTestCase {
   @Override
   public void setUp() throws Exception {
     super.setUp();
-    // we generate aweful regexps: good for testing.
-    // but for preflex codec, the test can be very slow, so use less iterations.
-    numIterations = Codec.getDefault().getName().equals("Lucene3x") ? 10 * RANDOM_MULTIPLIER : atLeast(50);
+    numIterations = atLeast(50);
     dir = newDirectory();
     RandomIndexWriter writer = new RandomIndexWriter(random(), dir,
         newIndexWriterConfig(new MockAnalyzer(random(), MockTokenizer.KEYWORD, false))
@@ -90,7 +88,8 @@ public class TestTermsEnum2 extends LuceneTestCase {
 
     for (int i = 0; i < numIterations; i++) {
       String reg = AutomatonTestUtil.randomRegexp(random());
-      Automaton automaton = Operations.determinize(new RegExp(reg, RegExp.NONE).toAutomaton());
+      Automaton automaton = Operations.determinize(new RegExp(reg, RegExp.NONE).toAutomaton(),
+        DEFAULT_MAX_DETERMINIZED_STATES);
       final List<BytesRef> matchedTerms = new ArrayList<>();
       for(BytesRef t : terms) {
         if (Operations.run(automaton, t.utf8ToString())) {
@@ -101,9 +100,9 @@ public class TestTermsEnum2 extends LuceneTestCase {
       Automaton alternate = Automata.makeStringUnion(matchedTerms);
       //System.out.println("match " + matchedTerms.size() + " " + alternate.getNumberOfStates() + " states, sigma=" + alternate.getStartPoints().length);
       //AutomatonTestUtil.minimizeSimple(alternate);
-      //System.out.println("minmize done");
+      //System.out.println("minimize done");
       AutomatonQuery a1 = new AutomatonQuery(new Term("field", ""), automaton);
-      AutomatonQuery a2 = new AutomatonQuery(new Term("field", ""), alternate);
+      AutomatonQuery a2 = new AutomatonQuery(new Term("field", ""), alternate, Integer.MAX_VALUE);
 
       ScoreDoc[] origHits = searcher.search(a1, 25).scoreDocs;
       ScoreDoc[] newHits = searcher.search(a2, 25).scoreDocs;
@@ -115,8 +114,9 @@ public class TestTermsEnum2 extends LuceneTestCase {
   public void testSeeking() throws Exception {
     for (int i = 0; i < numIterations; i++) {
       String reg = AutomatonTestUtil.randomRegexp(random());
-      Automaton automaton = Operations.determinize(new RegExp(reg, RegExp.NONE).toAutomaton());
-      TermsEnum te = MultiFields.getTerms(reader, "field").iterator(null);
+      Automaton automaton = Operations.determinize(new RegExp(reg, RegExp.NONE).toAutomaton(),
+        DEFAULT_MAX_DETERMINIZED_STATES);
+      TermsEnum te = MultiFields.getTerms(reader, "field").iterator();
       ArrayList<BytesRef> unsortedTerms = new ArrayList<>(terms);
       Collections.shuffle(unsortedTerms, random());
 
@@ -139,7 +139,7 @@ public class TestTermsEnum2 extends LuceneTestCase {
   /** mixes up seek and next for all terms */
   public void testSeekingAndNexting() throws Exception {
     for (int i = 0; i < numIterations; i++) {
-      TermsEnum te = MultiFields.getTerms(reader, "field").iterator(null);
+      TermsEnum te = MultiFields.getTerms(reader, "field").iterator();
 
       for (BytesRef term : terms) {
         int c = random().nextInt(3);
@@ -162,13 +162,15 @@ public class TestTermsEnum2 extends LuceneTestCase {
       Automaton automaton = new RegExp(reg, RegExp.NONE).toAutomaton();
       CompiledAutomaton ca = new CompiledAutomaton(automaton, Operations.isFinite(automaton), false);
       TermsEnum te = MultiFields.getTerms(reader, "field").intersect(ca, null);
-      Automaton expected = Operations.determinize(Operations.intersection(termsAutomaton, automaton));
+      Automaton expected = Operations.determinize(Operations.intersection(termsAutomaton, automaton),
+        DEFAULT_MAX_DETERMINIZED_STATES);
       TreeSet<BytesRef> found = new TreeSet<>();
       while (te.next() != null) {
         found.add(BytesRef.deepCopyOf(te.term()));
       }
       
-      Automaton actual = Operations.determinize(Automata.makeStringUnion(found));
+      Automaton actual = Operations.determinize(Automata.makeStringUnion(found),
+        DEFAULT_MAX_DETERMINIZED_STATES);
       assertTrue(Operations.sameLanguage(expected, actual));
     }
   }

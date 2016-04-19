@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.LinkedList;
@@ -24,7 +24,6 @@ import org.apache.lucene.analysis.CannedTokenStream;
 import org.apache.lucene.analysis.Token;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
@@ -34,7 +33,6 @@ import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.RAMDirectory;
@@ -74,7 +72,7 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
     
     // this TermEnum gives "piccadilly", "pie" and "pizza".
     String prefix = "pi";
-    TermsEnum te = MultiFields.getFields(reader).terms("body").iterator(null);
+    TermsEnum te = MultiFields.getFields(reader).terms("body").iterator();
     te.seekCeil(new BytesRef(prefix));
     do {
       String s = te.term().utf8ToString();
@@ -92,9 +90,9 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
         .toString());
     
     ScoreDoc[] result;
-    result = searcher.search(query1, null, 1000).scoreDocs;
+    result = searcher.search(query1, 1000).scoreDocs;
     assertEquals(2, result.length);
-    result = searcher.search(query2, null, 1000).scoreDocs;
+    result = searcher.search(query2, 1000).scoreDocs;
     assertEquals(0, result.length);
     
     // search for "blue* pizza":
@@ -112,13 +110,13 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
     query3.add(termsWithPrefix.toArray(new Term[0]));
     query3.add(new Term("body", "pizza"));
     
-    result = searcher.search(query3, null, 1000).scoreDocs;
+    result = searcher.search(query3, 1000).scoreDocs;
     assertEquals(2, result.length); // blueberry pizza, bluebird pizza
     assertEquals("body:\"(blueberry bluebird) pizza\"", query3.toString());
     
     // test slop:
     query3.setSlop(1);
-    result = searcher.search(query3, null, 1000).scoreDocs;
+    result = searcher.search(query3, 1000).scoreDocs;
     
     // just make sure no exc:
     searcher.explain(query3, 0);
@@ -217,7 +215,7 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
     IndexReader reader = writer.getReader();
     IndexSearcher searcher = newSearcher(reader);
     // This query will be equivalent to +body:pie +body:"blue*"
-    BooleanQuery q = new BooleanQuery();
+    BooleanQuery.Builder q = new BooleanQuery.Builder();
     q.add(new TermQuery(new Term("body", "pie")), BooleanClause.Occur.MUST);
     
     MultiPhraseQuery trouble = new MultiPhraseQuery();
@@ -226,12 +224,12 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
     q.add(trouble, BooleanClause.Occur.MUST);
     
     // exception will be thrown here without fix
-    ScoreDoc[] hits = searcher.search(q, null, 1000).scoreDocs;
+    ScoreDoc[] hits = searcher.search(q.build(), 1000).scoreDocs;
     
     assertEquals("Wrong number of hits", 2, hits.length);
     
     // just make sure no exc:
-    searcher.explain(q, 0);
+    searcher.explain(q.build(), 0);
     
     writer.close();
     reader.close();
@@ -248,7 +246,7 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
     IndexSearcher searcher = newSearcher(reader);
     
     // This query will be equivalent to +type:note +body:"a t*"
-    BooleanQuery q = new BooleanQuery();
+    BooleanQuery.Builder q = new BooleanQuery.Builder();
     q.add(new TermQuery(new Term("type", "note")), BooleanClause.Occur.MUST);
     
     MultiPhraseQuery trouble = new MultiPhraseQuery();
@@ -258,7 +256,7 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
     q.add(trouble, BooleanClause.Occur.MUST);
     
     // exception will be thrown here without fix for #35626:
-    ScoreDoc[] hits = searcher.search(q, null, 1000).scoreDocs;
+    ScoreDoc[] hits = searcher.search(q.build(), 1000).scoreDocs;
     assertEquals("Wrong number of hits", 0, hits.length);
     writer.close();
     reader.close();
@@ -277,7 +275,7 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
     q.add(new Term("body", "a"));
     q.add(new Term[] {new Term("body", "nope"), new Term("body", "nope")});
     assertEquals("Wrong number of hits", 0,
-        searcher.search(q, null, 1).totalHits);
+        searcher.search(q, 1).totalHits);
     
     // just make sure no exc:
     searcher.explain(q, 0);
@@ -339,14 +337,14 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
     searcher.setSimilarity(new DefaultSimilarity() { 
       @Override
       public Explanation idfExplain(CollectionStatistics collectionStats, TermStatistics termStats[]) {
-        return new Explanation(10f, "just a test");
+        return Explanation.match(10f, "just a test");
       } 
     });
     
     MultiPhraseQuery query = new MultiPhraseQuery();
     query.add(new Term[] { new Term("body", "this"), new Term("body", "that") });
     query.add(new Term("body", "is"));
-    Weight weight = query.createWeight(searcher);
+    Weight weight = query.createWeight(searcher, true);
     assertEquals(10f * 10f, weight.getValueForNormalization(), 0.001f);
 
     writer.close();
@@ -472,7 +470,7 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
     Document doc = new Document();
     doc.add(new TextField("field", new CannedTokenStream(INCR_0_DOC_TOKENS)));
     writer.addDocument(doc);
-    IndexReader r = DirectoryReader.open(writer,false);
+    IndexReader r = DirectoryReader.open(writer);
     writer.close();
     IndexSearcher s = newSearcher(r);
     
@@ -498,17 +496,18 @@ public class TestMultiPhraseQuery extends LuceneTestCase {
    * PQ AND Mode - Manually creating a phrase query
    */
   public void testZeroPosIncrSloppyPqAnd() throws IOException {
-    final PhraseQuery pq = new PhraseQuery();
+    PhraseQuery.Builder builder = new PhraseQuery.Builder();
     int pos = -1;
     for (Token tap : INCR_0_QUERY_TOKENS_AND) {
       pos += tap.getPositionIncrement();
-      pq.add(new Term("field",tap.toString()), pos);
+      builder.add(new Term("field", tap.toString()), pos);
     }
-    doTestZeroPosIncrSloppy(pq, 0);
-    pq.setSlop(1);
-    doTestZeroPosIncrSloppy(pq, 0);
-    pq.setSlop(2);
-    doTestZeroPosIncrSloppy(pq, 1);
+    builder.setSlop(0);
+    doTestZeroPosIncrSloppy(builder.build(), 0);
+    builder.setSlop(1);
+    doTestZeroPosIncrSloppy(builder.build(), 0);
+    builder.setSlop(2);
+    doTestZeroPosIncrSloppy(builder.build(), 1);
   }
 
   /**

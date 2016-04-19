@@ -1,5 +1,3 @@
-package org.apache.solr.update.processor;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.update.processor;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.update.processor;
 
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
@@ -28,7 +27,7 @@ import org.apache.solr.util.plugin.SolrCoreAware;
 /**
  * Identifies the language of a set of input fields using Tika's
  * LanguageIdentifier. The tika-core-x.y.jar must be on the classpath
- * <p/>
+ * <p>
  * The UpdateProcessorChain config entry can take a number of parameters
  * which may also be passed as HTTP parameters on the update request
  * and override the defaults. Here is the simplest processor config possible:

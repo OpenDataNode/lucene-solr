@@ -28,8 +28,8 @@
 <schema name="test" version="1.2">
   <types>
 
-    <fieldType name="integer" class="solr.IntField"/>
-    <fieldtype name="string" class="solr.StrField" sortMissingLast="true"/>
+    <fieldType name="integer" class="solr.TrieIntField" precisionStep="0"/>
+    <fieldType name="string" class="solr.StrField" sortMissingLast="true"/>
 
 
   </types>

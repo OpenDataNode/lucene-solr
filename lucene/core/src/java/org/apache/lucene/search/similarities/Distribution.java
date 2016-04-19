@@ -1,5 +1,3 @@
-package org.apache.lucene.search.similarities;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.similarities;
+
 
 import org.apache.lucene.search.Explanation;
 
@@ -39,7 +39,7 @@ public abstract class Distribution {
   /** Explains the score. Returns the name of the model only, since
    * both {@code tfn} and {@code lambda} are explained elsewhere. */
   public Explanation explain(BasicStats stats, float tfn, float lambda) {
-    return new Explanation(
+    return Explanation.match(
         score(stats, tfn, lambda), getClass().getSimpleName());
   }
   

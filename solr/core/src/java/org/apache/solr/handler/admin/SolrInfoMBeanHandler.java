@@ -1,5 +1,3 @@
-package org.apache.solr.handler.admin;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.handler.admin;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.admin;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.solr.handler.RequestHandlerBase;
@@ -106,7 +105,7 @@ public class SolrInfoMBeanHandler extends RequestHandlerBase {
     try {
       XMLResponseParser parser = new XMLResponseParser();
       return (NamedList<NamedList<NamedList<Object>>>)
-          parser.processResponse(new StringReader(content.substring(idx))).get("solr-mbeans");
+          parser.processResponse(new StringReader(content)).get("solr-mbeans");
     }
     catch(Exception ex) {
       throw new SolrException(ErrorCode.BAD_REQUEST, "Unable to read original XML", ex);
@@ -299,10 +298,5 @@ public class SolrInfoMBeanHandler extends RequestHandlerBase {
   @Override
   public String getDescription() {
     return "Get Info (and statistics) for registered SolrInfoMBeans";
-  }
-
-  @Override
-  public String getSource() {
-    return null;
   }
 }

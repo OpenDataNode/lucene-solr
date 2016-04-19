@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.snowball;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,20 +14,23 @@ package org.apache.lucene.analysis.snowball;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.snowball;
+
 
 import java.io.IOException;
-import java.io.Reader;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.core.KeywordTokenizer;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.LuceneTestCase.Slow;
 
 import static org.apache.lucene.analysis.VocabularyAssert.*;
 
 /**
  * Test the snowball filters against the snowball data tests
  */
+@Slow
 public class TestSnowballVocab extends LuceneTestCase {
   /**
    * Run all languages against their snowball vocabulary tests.
@@ -38,18 +39,14 @@ public class TestSnowballVocab extends LuceneTestCase {
     assertCorrectOutput("Danish", "danish");
     assertCorrectOutput("Dutch", "dutch");
     assertCorrectOutput("English", "english");
-    // disabled due to snowball java code generation bug: 
-    // see http://article.gmane.org/gmane.comp.search.snowball/1139
-    // assertCorrectOutput("Finnish", "finnish");
+    assertCorrectOutput("Finnish", "finnish");
     assertCorrectOutput("French", "french");
     assertCorrectOutput("German", "german");
     assertCorrectOutput("German2", "german2");
     assertCorrectOutput("Hungarian", "hungarian");
     assertCorrectOutput("Italian", "italian");
     assertCorrectOutput("Kp", "kraaij_pohlmann");
-    // disabled due to snowball java code generation bug: 
-    // see http://article.gmane.org/gmane.comp.search.snowball/1139
-    // assertCorrectOutput("Lovins", "lovins");
+    assertCorrectOutput("Lovins", "lovins");
     assertCorrectOutput("Norwegian", "norwegian");
     assertCorrectOutput("Porter", "porter");
     assertCorrectOutput("Portuguese", "portuguese");
@@ -70,14 +67,14 @@ public class TestSnowballVocab extends LuceneTestCase {
     
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName,
-          Reader reader) {
-        Tokenizer t = new KeywordTokenizer(reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer t = new KeywordTokenizer();
         return new TokenStreamComponents(t, new SnowballFilter(t, snowballLanguage));
       }  
     };
     
-    assertVocabulary(a, getDataFile("TestSnowballVocabData.zip"), 
+    assertVocabulary(a, getDataPath("TestSnowballVocabData.zip"), 
         dataDirectory + "/voc.txt", dataDirectory + "/output.txt");
+    a.close();
   }
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene.queries;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queries;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queries;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -28,7 +27,7 @@ import java.util.Set;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
@@ -41,14 +40,17 @@ import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.QueryUtils;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.search.similarities.BM25Similarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LineFileDocs;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.PriorityQueue;
@@ -126,9 +128,7 @@ public class CommonTermsQueryTest extends LuceneTestCase {
       assertEquals("3", r.document(search.scoreDocs[0].doc).get("id"));
       
     }
-    r.close();
-    w.close();
-    dir.close();
+    IOUtils.close(r, w, dir, analyzer);
   }
   
   public void testEqualsHashCode() {
@@ -265,7 +265,7 @@ public class CommonTermsQueryTest extends LuceneTestCase {
       assertEquals("0", r.document(search.scoreDocs[0].doc).get("id"));
       assertEquals("2", r.document(search.scoreDocs[1].doc).get("id"));
       assertEquals("3", r.document(search.scoreDocs[2].doc).get("id"));
-      assertTrue(search.scoreDocs[1].score > search.scoreDocs[2].score);
+      assertTrue(search.scoreDocs[1].score >= search.scoreDocs[2].score);
     }
     
     {
@@ -321,9 +321,7 @@ public class CommonTermsQueryTest extends LuceneTestCase {
               r.document(search.scoreDocs[0].doc).get("id"),
               r.document(search.scoreDocs[1].doc).get("id"))));
     }
-    r.close();
-    w.close();
-    dir.close();
+    IOUtils.close(r, w, dir, analyzer);
   }
   
   public void testIllegalOccur() {
@@ -363,6 +361,9 @@ public class CommonTermsQueryTest extends LuceneTestCase {
 
     IndexReader r = w.getReader();
     IndexSearcher s = newSearcher(r);
+    // don't use a randomized similarity, e.g. stopwords for DFI can get scored as 0,
+    // so boosting them is kind of crazy
+    s.setSimilarity(new BM25Similarity());
     {
       CommonTermsQuery query = new CommonTermsQuery(Occur.SHOULD, Occur.SHOULD,
           random().nextBoolean() ? 2.0f : 0.5f);
@@ -395,9 +396,7 @@ public class CommonTermsQueryTest extends LuceneTestCase {
       assertEquals("3", r.document(search.scoreDocs[1].doc).get("id"));
       assertEquals("0", r.document(search.scoreDocs[2].doc).get("id"));
     }
-    r.close();
-    w.close();
-    dir.close();
+    IOUtils.close(r, w, dir, analyzer);
   }
   
   public void testRandomIndex() throws IOException {
@@ -407,7 +406,7 @@ public class CommonTermsQueryTest extends LuceneTestCase {
     RandomIndexWriter w = new RandomIndexWriter(random(), dir, analyzer);
     createRandomIndex(atLeast(50), w, random().nextLong());
     DirectoryReader reader = w.getReader();
-    AtomicReader wrapper = SlowCompositeReaderWrapper.wrap(reader);
+    LeafReader wrapper = SlowCompositeReaderWrapper.wrap(reader);
     String field = "body";
     Terms terms = wrapper.terms(field);
     PriorityQueue<TermAndFreq> lowFreqQueue = new PriorityQueue<CommonTermsQueryTest.TermAndFreq>(
@@ -429,7 +428,7 @@ public class CommonTermsQueryTest extends LuceneTestCase {
       
     };
     try {
-      TermsEnum iterator = terms.iterator(null);
+      TermsEnum iterator = terms.iterator();
       while (iterator.next() != null) {
         if (highFreqQueue.size() < 5) {
           highFreqQueue.add(new TermAndFreq(
@@ -458,7 +457,7 @@ public class CommonTermsQueryTest extends LuceneTestCase {
       
       IndexSearcher searcher = newSearcher(reader);
       Occur lowFreqOccur = randomOccur(random());
-      BooleanQuery verifyQuery = new BooleanQuery();
+      BooleanQuery.Builder verifyQuery = new BooleanQuery.Builder();
       CommonTermsQuery cq = new CommonTermsQuery(randomOccur(random()),
           lowFreqOccur, highFreq - 1, random().nextBoolean());
       for (TermAndFreq termAndFreq : lowTerms) {
@@ -472,7 +471,7 @@ public class CommonTermsQueryTest extends LuceneTestCase {
       
       TopDocs cqSearch = searcher.search(cq, reader.maxDoc());
       
-      TopDocs verifySearch = searcher.search(verifyQuery, reader.maxDoc());
+      TopDocs verifySearch = searcher.search(verifyQuery.build(), reader.maxDoc());
       assertEquals(verifySearch.totalHits, cqSearch.totalHits);
       Set<Integer> hits = new HashSet<>();
       for (ScoreDoc doc : verifySearch.scoreDocs) {
@@ -496,10 +495,7 @@ public class CommonTermsQueryTest extends LuceneTestCase {
       QueryUtils.check(random(), cq, newSearcher(reader2));
       reader2.close();
     } finally {
-      reader.close();
-      wrapper.close();
-      w.close();
-      dir.close();
+      IOUtils.close(reader, wrapper, w, dir, analyzer);
     }
     
   }
@@ -531,8 +527,8 @@ public class CommonTermsQueryTest extends LuceneTestCase {
   public static void createRandomIndex(int numdocs, RandomIndexWriter writer,
       long seed) throws IOException {
     Random random = new Random(seed);
-    // primary source for our data is from linefiledocs, its realistic.
-    LineFileDocs lineFileDocs = new LineFileDocs(random, false); // no docvalues in 4x
+    // primary source for our data is from linefiledocs, it's realistic.
+    LineFileDocs lineFileDocs = new LineFileDocs(random);
     
     // TODO: we should add other fields that use things like docs&freqs but omit
     // positions,
@@ -554,7 +550,7 @@ public class CommonTermsQueryTest extends LuceneTestCase {
     protected Query newTermQuery(Term term, TermContext context) {
       Query query = super.newTermQuery(term, context);
       if (term.text().equals("universe")) {
-        query.setBoost(100f);
+        query = new BoostQuery(query, 100f);
       }
       return query;
     }

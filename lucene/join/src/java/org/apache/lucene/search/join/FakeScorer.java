@@ -1,5 +1,3 @@
-package org.apache.lucene.search.join;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,26 +14,21 @@ package org.apache.lucene.search.join;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.join;
 
-import java.util.Collection;
+import java.io.IOException;
 
-import org.apache.lucene.search.Collector;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Scorer;
-import org.apache.lucene.search.Weight;
 
-/** Passed to {@link Collector#setScorer} during join collection. */
-final class FakeScorer extends Scorer {
+class FakeScorer extends Scorer {
+
   float score;
   int doc = -1;
   int freq = 1;
 
-  public FakeScorer() {
+  FakeScorer() {
     super(null);
-  }
-    
-  @Override
-  public int advance(int target) {
-    throw new UnsupportedOperationException("FakeScorer doesn't support advance(int)");
   }
 
   @Override
@@ -44,32 +37,17 @@ final class FakeScorer extends Scorer {
   }
 
   @Override
-  public int freq() {
-    throw new UnsupportedOperationException("FakeScorer doesn't support freq()");
+  public DocIdSetIterator iterator() {
+    throw new UnsupportedOperationException();
   }
 
   @Override
-  public int nextDoc() {
-    throw new UnsupportedOperationException("FakeScorer doesn't support nextDoc()");
+  public int freq() throws IOException {
+    return freq;
   }
-    
+
   @Override
-  public float score() {
+  public float score() throws IOException {
     return score;
-  }
-
-  @Override
-  public long cost() {
-    return 1;
-  }
-
-  @Override
-  public Weight getWeight() {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public Collection<ChildScorer> getChildren() {
-    throw new UnsupportedOperationException();
   }
 }

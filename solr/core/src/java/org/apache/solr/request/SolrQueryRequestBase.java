@@ -14,16 +14,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.request;
 
+import org.apache.solr.common.util.SuppressForbidden;
 import org.apache.solr.search.SolrIndexSearcher;
+import org.apache.solr.util.RTimerTree;
 import org.apache.solr.util.RefCounted;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.ContentStream;
 import org.apache.solr.core.SolrCore;
 
+import java.io.Closeable;
+import java.security.Principal;
 import java.util.Map;
 import java.util.HashMap;
 
@@ -40,18 +43,29 @@ import java.util.HashMap;
  *
  *
  */
-public abstract class SolrQueryRequestBase implements SolrQueryRequest {
+public abstract class SolrQueryRequestBase implements SolrQueryRequest, Closeable {
   protected final SolrCore core;
   protected final SolrParams origParams;
   protected volatile IndexSchema schema;
   protected SolrParams params;
   protected Map<Object,Object> context;
   protected Iterable<ContentStream> streams;
+  protected Map<String,Object> json;
 
-  public SolrQueryRequestBase(SolrCore core, SolrParams params) {
+  private final RTimerTree requestTimer;
+  protected final long startTime;
+
+  @SuppressForbidden(reason = "Need currentTimeMillis to get start time for request (to be used for stats/debugging)")
+  public SolrQueryRequestBase(SolrCore core, SolrParams params, RTimerTree requestTimer) {
     this.core = core;
     this.schema = null == core ? null : core.getLatestSchema();
     this.params = this.origParams = params;
+    this.requestTimer = requestTimer;
+    this.startTime = System.currentTimeMillis();
+  }
+
+  public SolrQueryRequestBase(SolrCore core, SolrParams params) {
+    this(core, params, new RTimerTree());
   }
 
   @Override
@@ -76,11 +90,16 @@ public abstract class SolrQueryRequestBase implements SolrQueryRequest {
     this.params = params;
   }
 
-  protected final long startTime=System.currentTimeMillis();
+
   // Get the start time of this request in milliseconds
   @Override
   public long getStartTime() {
     return startTime;
+  }
+
+  @Override
+  public RTimerTree getRequestTimer () {
+    return requestTimer;
   }
 
   // The index searcher associated with this request
@@ -150,4 +169,18 @@ public abstract class SolrQueryRequestBase implements SolrQueryRequest {
     return this.getClass().getSimpleName() + '{' + params + '}';
   }
 
+  @Override
+  public Map<String, Object> getJSON() {
+    return json;
+  }
+
+  @Override
+  public void setJSON(Map<String, Object> json) {
+    this.json = json;
+  }
+
+  @Override
+  public Principal getUserPrincipal() {
+    return null;
+  }
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene.benchmark.byTask.tasks;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.benchmark.byTask.tasks;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.benchmark.byTask.tasks;
+
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -27,12 +27,11 @@ import org.apache.lucene.benchmark.byTask.PerfRunData;
 
 /**
  * Task to support benchmarking collation.
- * <p>
+ * <br>
  * <ul>
  *  <li> <code>NewCollationAnalyzer</code> with the default jdk impl
  *  <li> <code>NewCollationAnalyzer(impl:icu)</code> specify an impl (jdk,icu)
  * </ul>
- * </p>
  */
 public class NewCollationAnalyzerTask extends PerfTask {
   /**
@@ -66,8 +65,7 @@ public class NewCollationAnalyzerTask extends PerfTask {
   static Analyzer createAnalyzer(Locale locale, Implementation impl)
       throws Exception {
     final Class<?> collatorClazz = Class.forName(impl.collatorClassName);
-    Method collatorMethod = collatorClazz.getMethod("getInstance",
-        new Class[] {Locale.class});
+    Method collatorMethod = collatorClazz.getMethod("getInstance", Locale.class);
     Object collator = collatorMethod.invoke(null, locale);
     
     final Class<? extends Analyzer> clazz = Class.forName(impl.className)

@@ -14,14 +14,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler.dataimport;
 
 /**
  * <p> Exception class for all DataImportHandler exceptions </p>
- * <p/>
+ * <p>
  * <b>This API is experimental and subject to change</b>
- * <p/>
  *
  * @since solr 1.3
  */

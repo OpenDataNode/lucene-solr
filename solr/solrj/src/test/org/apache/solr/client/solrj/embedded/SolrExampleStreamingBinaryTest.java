@@ -1,5 +1,3 @@
-package org.apache.solr.client.solrj.embedded;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,23 +14,24 @@ package org.apache.solr.client.solrj.embedded;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.client.solrj.embedded;
 
 import org.apache.solr.SolrTestCaseJ4.SuppressSSL;
 import org.apache.lucene.util.LuceneTestCase.Slow;
-import org.apache.solr.client.solrj.SolrServer;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.impl.BinaryRequestWriter;
 import org.apache.solr.client.solrj.impl.BinaryResponseParser;
-import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrServer;
+import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrClient;
 
 @Slow
 @SuppressSSL(bugUrl = "https://issues.apache.org/jira/browse/SOLR-5776")
 public class SolrExampleStreamingBinaryTest extends SolrExampleStreamingTest {
 
   @Override
-  public SolrServer createNewSolrServer() {
-    ConcurrentUpdateSolrServer s = (ConcurrentUpdateSolrServer)super.createNewSolrServer();
-    s.setParser(new BinaryResponseParser());
-    s.setRequestWriter(new BinaryRequestWriter());
-    return s;
+  public SolrClient createNewSolrClient() {
+    ConcurrentUpdateSolrClient client = (ConcurrentUpdateSolrClient)super.createNewSolrClient();
+    client.setParser(new BinaryResponseParser());
+    client.setRequestWriter(new BinaryRequestWriter());
+    return client;
   }
 }

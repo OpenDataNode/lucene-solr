@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.common.util;
 
 import java.io.*;
@@ -94,6 +93,21 @@ public class FastInputStream extends DataInputInputStream {
   @Override
   public int available() throws IOException {
     return end - pos;
+  }
+
+  /** Returns the internal buffer used for caching */
+  public byte[] getBuffer() {
+    return buf;
+  }
+
+  /** Current position within the internal buffer */
+  public int getPositionInBuffer() {
+    return pos;
+  }
+
+  /** Current end-of-data position within the internal buffer.  This is one past the last valid byte. */
+  public int getEndInBuffer() {
+    return end;
   }
 
   @Override

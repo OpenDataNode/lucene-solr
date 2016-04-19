@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import org.apache.lucene.util.BytesRef;
 
@@ -23,8 +23,7 @@ import org.apache.lucene.util.BytesRef;
  * Exposes multi-valued view over a single-valued instance.
  * <p>
  * This can be used if you want to have one multi-valued implementation
- * against e.g. FieldCache.getDocTermOrds that also works for single-valued 
- * fields.
+ * that works for single or multi-valued types.
  */
 final class SingletonSortedSetDocValues extends RandomAccessOrds {
   private final SortedDocValues in;

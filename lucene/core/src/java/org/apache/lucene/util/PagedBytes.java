@@ -1,5 +1,3 @@
-package org.apache.lucene.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,13 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
+
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 
 import org.apache.lucene.store.DataInput;
 import org.apache.lucene.store.DataOutput;
@@ -134,6 +136,16 @@ public final class PagedBytes implements Accountable {
       }
       return size;
     }
+    
+    @Override
+    public Collection<Accountable> getChildResources() {
+      return Collections.emptyList();
+    }
+
+    @Override
+    public String toString() {
+      return "PagedBytes(blocksize=" + blockSize + ")";
+    }
   }
 
   /** 1&lt;&lt;blockBits must be bigger than biggest single
@@ -181,7 +193,7 @@ public final class PagedBytes implements Accountable {
 
   /** Copy BytesRef in, setting BytesRef out to the result.
    * Do not use this if you will use freeze(true).
-   * This only supports bytes.length <= blockSize */
+   * This only supports bytes.length &lt;= blockSize */
   public void copy(BytesRef bytes, BytesRef out) {
     int left = blockSize - upto;
     if (bytes.length > left || currentBlock==null) {
@@ -246,10 +258,15 @@ public final class PagedBytes implements Accountable {
     }
     return size;
   }
+  
+  @Override
+  public Collection<Accountable> getChildResources() {
+    return Collections.emptyList();
+  }
 
   /** Copy bytes in, writing the length as a 1 or 2 byte
    *  vInt prefix. */
-  // TODO: this really needs to be refactored into fieldcacheimpl
+  // TODO: this really needs to be refactored into fieldcacheimpl!
   public long copyUsingLengthPrefix(BytesRef bytes) {
     if (bytes.length >= 32768) {
       throw new IllegalArgumentException("max length is 32767 (got " + bytes.length + ")");

@@ -1,5 +1,3 @@
-package org.apache.lucene.collation.tokenattributes;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.collation.tokenattributes;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.collation.tokenattributes;
+
 
 import org.apache.lucene.analysis.tokenattributes.CharTermAttributeImpl;
 import org.apache.lucene.util.BytesRef;
@@ -45,11 +45,12 @@ public class ICUCollatedTermAttributeImpl extends CharTermAttributeImpl {
   }
 
   @Override
-  public void fillBytesRef() {
-    BytesRef bytes = getBytesRef();
+  public BytesRef getBytesRef() {
     collator.getRawCollationKey(toString(), key);
-    bytes.bytes = key.bytes;
-    bytes.offset = 0;
-    bytes.length = key.size;
+    final BytesRef ref = this.builder.get();
+    ref.bytes = key.bytes;
+    ref.offset = 0;
+    ref.length = key.size;
+    return ref;
   }
 }

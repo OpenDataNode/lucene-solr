@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -44,7 +43,7 @@ public abstract class BaseCompressingDocValuesFormatTestCase extends BaseDocValu
 
   public void testUniqueValuesCompression() throws IOException {
     final Directory dir = new RAMDirectory();
-    final IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    final IndexWriterConfig iwc = new IndexWriterConfig(new MockAnalyzer(random()));
     final IndexWriter iwriter = new IndexWriter(dir, iwc);
 
     final int uniqueValueCount = TestUtil.nextInt(random(), 1, 256);
@@ -78,7 +77,7 @@ public abstract class BaseCompressingDocValuesFormatTestCase extends BaseDocValu
 
   public void testDateCompression() throws IOException {
     final Directory dir = new RAMDirectory();
-    final IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    final IndexWriterConfig iwc = new IndexWriterConfig(new MockAnalyzer(random()));
     final IndexWriter iwriter = new IndexWriter(dir, iwc);
 
     final long base = 13; // prime
@@ -105,7 +104,7 @@ public abstract class BaseCompressingDocValuesFormatTestCase extends BaseDocValu
 
   public void testSingleBigValueCompression() throws IOException {
     final Directory dir = new RAMDirectory();
-    final IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    final IndexWriterConfig iwc = new IndexWriterConfig(new MockAnalyzer(random()));
     final IndexWriter iwriter = new IndexWriter(dir, iwc);
 
     final Document doc = new Document();

@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,12 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
-import java.util.Comparator;
 
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.Fields;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReaderContext;
 import org.apache.lucene.index.Term;
@@ -31,31 +29,27 @@ import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.BytesRef;
 
-abstract class TermCollectingRewrite<Q extends Query> extends MultiTermQuery.RewriteMethod {
+abstract class TermCollectingRewrite<B> extends MultiTermQuery.RewriteMethod {
   
   
-  /** Return a suitable top-level Query for holding all expanded terms. */
-  protected abstract Q getTopLevelQuery() throws IOException;
-  
-  /** Add a MultiTermQuery term to the top-level query */
-  protected final void addClause(Q topLevel, Term term, int docCount, float boost) throws IOException {
+  /** Return a suitable builder for the top-level Query for holding all expanded terms. */
+  protected abstract B getTopLevelBuilder() throws IOException;
+
+  /** Finalize the creation of the query from the builder. */
+  protected abstract Query build(B builder);
+
+  /** Add a MultiTermQuery term to the top-level query builder. */
+  protected final void addClause(B topLevel, Term term, int docCount, float boost) throws IOException {
     addClause(topLevel, term, docCount, boost, null);
   }
   
-  protected abstract void addClause(Q topLevel, Term term, int docCount, float boost, TermContext states) throws IOException;
+  protected abstract void addClause(B topLevel, Term term, int docCount, float boost, TermContext states) throws IOException;
 
   
   final void collectTerms(IndexReader reader, MultiTermQuery query, TermCollector collector) throws IOException {
     IndexReaderContext topReaderContext = reader.getContext();
-    Comparator<BytesRef> lastTermComp = null;
-    for (AtomicReaderContext context : topReaderContext.leaves()) {
-      final Fields fields = context.reader().fields();
-      if (fields == null) {
-        // reader has no fields
-        continue;
-      }
-
-      final Terms terms = fields.terms(query.field);
+    for (LeafReaderContext context : topReaderContext.leaves()) {
+      final Terms terms = context.reader().terms(query.field);
       if (terms == null) {
         // field does not exist
         continue;
@@ -67,11 +61,6 @@ abstract class TermCollectingRewrite<Q extends Query> extends MultiTermQuery.Rew
       if (termsEnum == TermsEnum.EMPTY)
         continue;
       
-      // Check comparator compatibility:
-      final Comparator<BytesRef> newTermComp = termsEnum.getComparator();
-      if (lastTermComp != null && newTermComp != null && newTermComp != lastTermComp)
-        throw new RuntimeException("term comparator should not change between segments: "+lastTermComp+" != "+newTermComp);
-      lastTermComp = newTermComp;
       collector.setReaderContext(topReaderContext, context);
       collector.setNextEnum(termsEnum);
       BytesRef bytes;
@@ -84,10 +73,10 @@ abstract class TermCollectingRewrite<Q extends Query> extends MultiTermQuery.Rew
   
   static abstract class TermCollector {
     
-    protected AtomicReaderContext readerContext;
+    protected LeafReaderContext readerContext;
     protected IndexReaderContext topReaderContext;
 
-    public void setReaderContext(IndexReaderContext topReaderContext, AtomicReaderContext readerContext) {
+    public void setReaderContext(IndexReaderContext topReaderContext, LeafReaderContext readerContext) {
       this.readerContext = readerContext;
       this.topReaderContext = topReaderContext;
     }

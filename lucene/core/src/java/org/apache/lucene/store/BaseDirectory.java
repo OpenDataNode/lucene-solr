@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,13 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
+
 
 import java.io.IOException;
 
 /**
- * Base implementation for a concrete {@link Directory}.
+ * Base implementation for a concrete {@link Directory} that uses a {@link LockFactory} for locking.
  * @lucene.experimental
  */
 public abstract class BaseDirectory extends Directory {
@@ -29,35 +29,20 @@ public abstract class BaseDirectory extends Directory {
 
   /** Holds the LockFactory instance (implements locking for
    * this Directory instance). */
-  protected LockFactory lockFactory;
+  protected final LockFactory lockFactory;
 
   /** Sole constructor. */
-  protected BaseDirectory() {
+  protected BaseDirectory(LockFactory lockFactory) {
     super();
-  }
-
-  @Override
-  public Lock makeLock(String name) {
-      return lockFactory.makeLock(name);
-  }
-
-  @Override
-  public void clearLock(String name) throws IOException {
-    if (lockFactory != null) {
-      lockFactory.clearLock(name);
+    if (lockFactory == null) {
+      throw new NullPointerException("LockFactory cannot be null, use an explicit instance!");
     }
-  }
-
-  @Override
-  public void setLockFactory(LockFactory lockFactory) throws IOException {
-    assert lockFactory != null;
     this.lockFactory = lockFactory;
-    lockFactory.setLockPrefix(this.getLockID());
   }
 
   @Override
-  public LockFactory getLockFactory() {
-    return this.lockFactory;
+  public final Lock obtainLock(String name) throws IOException {
+    return lockFactory.obtainLock(this, name);
   }
 
   @Override
@@ -66,4 +51,9 @@ public abstract class BaseDirectory extends Directory {
       throw new AlreadyClosedException("this Directory is closed");
   }
 
+  @Override
+  public String toString() {
+    return super.toString()  + " lockFactory=" + lockFactory;
+  }
+  
 }

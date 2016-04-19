@@ -16,12 +16,16 @@
  */
 package org.apache.lucene.classification;
 
+import java.io.IOException;
+import java.util.Random;
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.SlowCompositeReaderWrapper;
 import org.apache.lucene.search.Query;
@@ -31,9 +35,6 @@ import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
 import org.junit.After;
 import org.junit.Before;
-
-import java.io.IOException;
-import java.util.Random;
 
 /**
  * Base class for testing {@link Classifier}s
@@ -45,6 +46,14 @@ public abstract class ClassificationTestBase<T> extends LuceneTestCase {
 
   public static final String TECHNOLOGY_INPUT = "Much is made of what the likes of Facebook, Google and Apple know about users." +
       " Truth is, Amazon may know more.";
+
+  public static final String STRONG_TECHNOLOGY_INPUT = "Much is made of what the likes of Facebook, Google and Apple know about users." +
+      " Truth is, Amazon may know more. This technology observation is extracted from the internet.";
+
+  public static final String SUPER_STRONG_TECHNOLOGY_INPUT = "More than 400 million people trust Google with their e-mail, and 50 million store files" +
+      " in the cloud using the Dropbox service. People manage their bank accounts, pay bills, trade stocks and " +
+      "generally transfer or store huge volumes of personal data online. traveling seeks raises some questions Republican presidential. ";
+
   public static final BytesRef TECHNOLOGY_RESULT = new BytesRef("technology");
 
   private RandomIndexWriter indexWriter;
@@ -83,18 +92,17 @@ public abstract class ClassificationTestBase<T> extends LuceneTestCase {
   }
 
   protected void checkCorrectClassification(Classifier<T> classifier, String inputDoc, T expectedResult, Analyzer analyzer, String textFieldName, String classFieldName, Query query) throws Exception {
-    AtomicReader atomicReader = null;
+    LeafReader leafReader = null;
     try {
-      populateSampleIndex(analyzer);
-      atomicReader = SlowCompositeReaderWrapper.wrap(indexWriter.getReader());
-      classifier.train(atomicReader, textFieldName, classFieldName, analyzer, query);
+      leafReader = populateSampleIndex(analyzer);
+      classifier.train(leafReader, textFieldName, classFieldName, analyzer, query);
       ClassificationResult<T> classificationResult = classifier.assignClass(inputDoc);
       assertNotNull(classificationResult.getAssignedClass());
       assertEquals("got an assigned class of " + classificationResult.getAssignedClass(), expectedResult, classificationResult.getAssignedClass());
       assertTrue("got a not positive score " + classificationResult.getScore(), classificationResult.getScore() > 0);
     } finally {
-      if (atomicReader != null)
-        atomicReader.close();
+      if (leafReader != null)
+        leafReader.close();
     }
   }
   protected void checkOnlineClassification(Classifier<T> classifier, String inputDoc, T expectedResult, Analyzer analyzer, String textFieldName, String classFieldName) throws Exception {
@@ -102,28 +110,28 @@ public abstract class ClassificationTestBase<T> extends LuceneTestCase {
   }
 
   protected void checkOnlineClassification(Classifier<T> classifier, String inputDoc, T expectedResult, Analyzer analyzer, String textFieldName, String classFieldName, Query query) throws Exception {
-    AtomicReader atomicReader = null;
+    LeafReader leafReader = null;
     try {
-      populateSampleIndex(analyzer);
-      atomicReader = SlowCompositeReaderWrapper.wrap(indexWriter.getReader());
-      classifier.train(atomicReader, textFieldName, classFieldName, analyzer, query);
+      leafReader = populateSampleIndex(analyzer);
+      classifier.train(leafReader, textFieldName, classFieldName, analyzer, query);
       ClassificationResult<T> classificationResult = classifier.assignClass(inputDoc);
       assertNotNull(classificationResult.getAssignedClass());
       assertEquals("got an assigned class of " + classificationResult.getAssignedClass(), expectedResult, classificationResult.getAssignedClass());
       assertTrue("got a not positive score " + classificationResult.getScore(), classificationResult.getScore() > 0);
-      updateSampleIndex(analyzer);
+      updateSampleIndex();
       ClassificationResult<T> secondClassificationResult = classifier.assignClass(inputDoc);
       assertEquals(classificationResult.getAssignedClass(), secondClassificationResult.getAssignedClass());
       assertEquals(Double.valueOf(classificationResult.getScore()), Double.valueOf(secondClassificationResult.getScore()));
 
     } finally {
-      if (atomicReader != null)
-        atomicReader.close();
+      if (leafReader != null)
+        leafReader.close();
     }
   }
 
-  private void populateSampleIndex(Analyzer analyzer) throws IOException {
-    indexWriter.deleteAll();
+  protected LeafReader populateSampleIndex(Analyzer analyzer) throws IOException {
+    indexWriter.close();
+    indexWriter = new RandomIndexWriter(random(), dir, newIndexWriterConfig(analyzer).setOpenMode(IndexWriterConfig.OpenMode.CREATE));
     indexWriter.commit();
 
     String text;
@@ -136,7 +144,7 @@ public abstract class ClassificationTestBase<T> extends LuceneTestCase {
     doc.add(new Field(categoryFieldName, "politics", ft));
     doc.add(new Field(booleanFieldName, "true", ft));
 
-    indexWriter.addDocument(doc, analyzer);
+    indexWriter.addDocument(doc);
 
     doc = new Document();
     text = "Mitt Romney seeks to assure Israel and Iran, as well as Jewish voters in the United" +
@@ -144,7 +152,7 @@ public abstract class ClassificationTestBase<T> extends LuceneTestCase {
     doc.add(new Field(textFieldName, text, ft));
     doc.add(new Field(categoryFieldName, "politics", ft));
     doc.add(new Field(booleanFieldName, "true", ft));
-    indexWriter.addDocument(doc, analyzer);
+    indexWriter.addDocument(doc);
 
     doc = new Document();
     text = "And there's a threshold question that he has to answer for the American people and " +
@@ -153,7 +161,7 @@ public abstract class ClassificationTestBase<T> extends LuceneTestCase {
     doc.add(new Field(textFieldName, text, ft));
     doc.add(new Field(categoryFieldName, "politics", ft));
     doc.add(new Field(booleanFieldName, "true", ft));
-    indexWriter.addDocument(doc, analyzer);
+    indexWriter.addDocument(doc);
 
     doc = new Document();
     text = "Still, when it comes to gun policy, many congressional Democrats have \"decided to " +
@@ -162,7 +170,7 @@ public abstract class ClassificationTestBase<T> extends LuceneTestCase {
     doc.add(new Field(textFieldName, text, ft));
     doc.add(new Field(categoryFieldName, "politics", ft));
     doc.add(new Field(booleanFieldName, "true", ft));
-    indexWriter.addDocument(doc, analyzer);
+    indexWriter.addDocument(doc);
 
     doc = new Document();
     text = "Standing amongst the thousands of people at the state Capitol, Jorstad, director of " +
@@ -171,7 +179,7 @@ public abstract class ClassificationTestBase<T> extends LuceneTestCase {
     doc.add(new Field(textFieldName, text, ft));
     doc.add(new Field(categoryFieldName, "technology", ft));
     doc.add(new Field(booleanFieldName, "false", ft));
-    indexWriter.addDocument(doc, analyzer);
+    indexWriter.addDocument(doc);
 
     doc = new Document();
     text = "So, about all those experts and analysts who've spent the past year or so saying " +
@@ -179,7 +187,7 @@ public abstract class ClassificationTestBase<T> extends LuceneTestCase {
     doc.add(new Field(textFieldName, text, ft));
     doc.add(new Field(categoryFieldName, "technology", ft));
     doc.add(new Field(booleanFieldName, "false", ft));
-    indexWriter.addDocument(doc, analyzer);
+    indexWriter.addDocument(doc);
 
     doc = new Document();
     text = "More than 400 million people trust Google with their e-mail, and 50 million store files" +
@@ -188,34 +196,36 @@ public abstract class ClassificationTestBase<T> extends LuceneTestCase {
     doc.add(new Field(textFieldName, text, ft));
     doc.add(new Field(categoryFieldName, "technology", ft));
     doc.add(new Field(booleanFieldName, "false", ft));
-    indexWriter.addDocument(doc, analyzer);
+    indexWriter.addDocument(doc);
 
     doc = new Document();
     text = "unlabeled doc";
     doc.add(new Field(textFieldName, text, ft));
-    indexWriter.addDocument(doc, analyzer);
+    indexWriter.addDocument(doc);
 
     indexWriter.commit();
+    return SlowCompositeReaderWrapper.wrap(indexWriter.getReader());
   }
 
   protected void checkPerformance(Classifier<T> classifier, Analyzer analyzer, String classFieldName) throws Exception {
-    AtomicReader atomicReader = null;
+    LeafReader leafReader = null;
     long trainStart = System.currentTimeMillis();
     try {
       populatePerformanceIndex(analyzer);
-      atomicReader = SlowCompositeReaderWrapper.wrap(indexWriter.getReader());
-      classifier.train(atomicReader, textFieldName, classFieldName, analyzer);
+      leafReader = SlowCompositeReaderWrapper.wrap(indexWriter.getReader());
+      classifier.train(leafReader, textFieldName, classFieldName, analyzer);
       long trainEnd = System.currentTimeMillis();
       long trainTime = trainEnd - trainStart;
       assertTrue("training took more than 2 mins : " + trainTime / 1000 + "s", trainTime < 120000);
     } finally {
-      if (atomicReader != null)
-        atomicReader.close();
+      if (leafReader != null)
+        leafReader.close();
     }
   }
 
   private void populatePerformanceIndex(Analyzer analyzer) throws IOException {
-    indexWriter.deleteAll();
+    indexWriter.close();
+    indexWriter = new RandomIndexWriter(random(), dir, newIndexWriterConfig(analyzer).setOpenMode(IndexWriterConfig.OpenMode.CREATE));
     indexWriter.commit();
 
     FieldType ft = new FieldType(TextField.TYPE_STORED);
@@ -230,7 +240,7 @@ public abstract class ClassificationTestBase<T> extends LuceneTestCase {
       doc.add(new Field(textFieldName, createRandomString(random), ft));
       doc.add(new Field(categoryFieldName, b ? "technology" : "politics", ft));
       doc.add(new Field(booleanFieldName, String.valueOf(b), ft));
-      indexWriter.addDocument(doc, analyzer);
+      indexWriter.addDocument(doc);
     }
     indexWriter.commit();
   }
@@ -244,7 +254,7 @@ public abstract class ClassificationTestBase<T> extends LuceneTestCase {
     return builder.toString();
   }
 
-  private void updateSampleIndex(Analyzer analyzer) throws Exception {
+  private void updateSampleIndex() throws Exception {
 
     String text;
 
@@ -254,54 +264,54 @@ public abstract class ClassificationTestBase<T> extends LuceneTestCase {
     doc.add(new Field(categoryFieldName, "politics", ft));
     doc.add(new Field(booleanFieldName, "true", ft));
 
-    indexWriter.addDocument(doc, analyzer);
+    indexWriter.addDocument(doc);
 
     doc = new Document();
     text = "Julian Zelizer says Bill Clinton is still trying to shape his party, years after the White House, while George W. Bush opts for a much more passive role.";
     doc.add(new Field(textFieldName, text, ft));
     doc.add(new Field(categoryFieldName, "politics", ft));
     doc.add(new Field(booleanFieldName, "true", ft));
-    indexWriter.addDocument(doc, analyzer);
+    indexWriter.addDocument(doc);
 
     doc = new Document();
     text = "Crossfire: Sen. Tim Scott passes on Sen. Lindsey Graham endorsement";
     doc.add(new Field(textFieldName, text, ft));
     doc.add(new Field(categoryFieldName, "politics", ft));
     doc.add(new Field(booleanFieldName, "true", ft));
-    indexWriter.addDocument(doc, analyzer);
+    indexWriter.addDocument(doc);
 
     doc = new Document();
     text = "Illinois becomes 16th state to allow same-sex marriage.";
     doc.add(new Field(textFieldName, text, ft));
     doc.add(new Field(categoryFieldName, "politics", ft));
     doc.add(new Field(booleanFieldName, "true", ft));
-    indexWriter.addDocument(doc, analyzer);
+    indexWriter.addDocument(doc);
 
     doc = new Document();
     text = "Apple is developing iPhones with curved-glass screens and enhanced sensors that detect different levels of pressure, according to a new report.";
     doc.add(new Field(textFieldName, text, ft));
     doc.add(new Field(categoryFieldName, "technology", ft));
     doc.add(new Field(booleanFieldName, "false", ft));
-    indexWriter.addDocument(doc, analyzer);
+    indexWriter.addDocument(doc);
 
     doc = new Document();
     text = "The Xbox One is Microsoft's first new gaming console in eight years. It's a quality piece of hardware but it's also noteworthy because Microsoft is using it to make a statement.";
     doc.add(new Field(textFieldName, text, ft));
     doc.add(new Field(categoryFieldName, "technology", ft));
     doc.add(new Field(booleanFieldName, "false", ft));
-    indexWriter.addDocument(doc, analyzer);
+    indexWriter.addDocument(doc);
 
     doc = new Document();
     text = "Google says it will replace a Google Maps image after a California father complained it shows the body of his teen-age son, who was shot to death in 2009.";
     doc.add(new Field(textFieldName, text, ft));
     doc.add(new Field(categoryFieldName, "technology", ft));
     doc.add(new Field(booleanFieldName, "false", ft));
-    indexWriter.addDocument(doc, analyzer);
+    indexWriter.addDocument(doc);
 
     doc = new Document();
     text = "second unlabeled doc";
     doc.add(new Field(textFieldName, text, ft));
-    indexWriter.addDocument(doc, analyzer);
+    indexWriter.addDocument(doc);
 
     indexWriter.commit();
   }

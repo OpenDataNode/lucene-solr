@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler.admin;
 
 import java.util.ArrayList;
@@ -69,5 +68,20 @@ public class MBeansHandlerTest extends SolrTestCaseJ4 {
     ));
     NamedList<NamedList<NamedList<Object>>> nl = SolrInfoMBeanHandler.fromXML(xml);
     assertNotNull( nl.get("QUERYHANDLER").get("org.apache.solr.handler.admin.CollectionsHandler"));
+  }
+
+  @Test
+  public void testXMLDiffWithExternalEntity() throws Exception {
+    String file = getFile("mailing_lists.pdf").toURI().toASCIIString();
+    String xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+        "<!DOCTYPE foo [<!ENTITY bar SYSTEM \""+file+"\">]>\n" +
+        "<response>\n" +
+        "&bar;" +
+        "<lst name=\"responseHeader\"><int name=\"status\">0</int><int name=\"QTime\">31</int></lst><lst name=\"solr-mbeans\"></lst>\n" +
+        "</response>";
+
+    NamedList<NamedList<NamedList<Object>>> nl = SolrInfoMBeanHandler.fromXML(xml);
+
+    assertTrue("external entity ignored properly", true);
   }
 }

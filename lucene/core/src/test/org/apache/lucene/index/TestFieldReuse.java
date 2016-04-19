@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 import java.io.Reader;
@@ -34,6 +34,7 @@ import org.apache.lucene.document.StringField;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.NumericUtils;
+import org.apache.lucene.util.Version;
 
 /** test tokenstream reuse by DefaultIndexingChain */
 public class TestFieldReuse extends BaseTokenStreamTestCase {
@@ -59,7 +60,7 @@ public class TestFieldReuse extends BaseTokenStreamTestCase {
         new int[]    { 3 }
     );
     
-    // pass a bogus stream and ensure its still ok
+    // pass a bogus stream and ensure it's still ok
     stringField = new StringField("foo", "beer", Field.Store.NO);
     TokenStream bogus = new NumericTokenStream();
     ts = stringField.tokenStream(null, bogus);
@@ -86,7 +87,7 @@ public class TestFieldReuse extends BaseTokenStreamTestCase {
     assertSame(ts, ts2);
     assertNumericContents(20, ts);
     
-    // pass a bogus stream and ensure its still ok
+    // pass a bogus stream and ensure it's still ok
     intField = new IntField("foo", 2343, Field.Store.NO);
     TokenStream bogus = new CannedTokenStream(new Token("bogus", 0, 5));
     ts = intField.tokenStream(null, bogus);
@@ -117,7 +118,7 @@ public class TestFieldReuse extends BaseTokenStreamTestCase {
     }
     
     @Override
-    public TokenStream tokenStream(Analyzer analyzer, TokenStream reuse) throws IOException {
+    public TokenStream tokenStream(Analyzer analyzer, TokenStream reuse) {
       lastSeen = reuse;
       return lastReturned = new CannedTokenStream(new Token("unimportant", 0, 10));
     }
@@ -150,7 +151,7 @@ public class TestFieldReuse extends BaseTokenStreamTestCase {
   
   public void testIndexWriterActuallyReuses() throws IOException {
     Directory dir = newDirectory();
-    IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT, null);
+    IndexWriterConfig iwc = new IndexWriterConfig(null);
     IndexWriter iw = new IndexWriter(dir, iwc);
     final MyField field1 = new MyField();
     iw.addDocument(Collections.singletonList(field1));

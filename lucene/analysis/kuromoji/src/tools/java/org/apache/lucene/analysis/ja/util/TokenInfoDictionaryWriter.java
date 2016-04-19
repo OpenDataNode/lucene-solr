@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.ja.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,13 @@ package org.apache.lucene.analysis.ja.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.ja.util;
 
-import java.io.File;
+
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 import org.apache.lucene.analysis.ja.dict.TokenInfoDictionary;
 import org.apache.lucene.util.fst.FST;
@@ -41,8 +43,8 @@ public class TokenInfoDictionaryWriter extends BinaryDictionaryWriter {
   }
   
   protected void writeFST(String filename) throws IOException {
-    File f = new File(filename);
-    f.getParentFile().mkdirs();
-    fst.save(f);
+    Path p = Paths.get(filename);
+    Files.createDirectories(p.getParent());
+    fst.save(p);
   }  
 }

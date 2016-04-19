@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.icu.segmentation;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.icu.segmentation;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.icu.segmentation;
+
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
@@ -24,12 +24,10 @@ import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.icu.ICUNormalizer2Filter;
 import org.apache.lucene.analysis.icu.tokenattributes.ScriptAttribute;
-import org.apache.lucene.util.IOUtils;
 
 import com.ibm.icu.lang.UScript;
 
 import java.io.IOException;
-import java.io.Reader;
 import java.io.StringReader;
 import java.util.Arrays;
 import java.util.Random;
@@ -44,7 +42,8 @@ public class TestICUTokenizer extends BaseTokenStreamTestCase {
     sb.append(whitespace);
     sb.append("testing 1234");
     String input = sb.toString();
-    ICUTokenizer tokenizer = new ICUTokenizer(newAttributeFactory(), new StringReader(input), new DefaultICUTokenizerConfig(false));
+    ICUTokenizer tokenizer = new ICUTokenizer(newAttributeFactory(), new DefaultICUTokenizerConfig(false));
+    tokenizer.setReader(new StringReader(input));
     assertTokenStreamContents(tokenizer, new String[] { "testing", "1234" });
   }
   
@@ -54,7 +53,8 @@ public class TestICUTokenizer extends BaseTokenStreamTestCase {
       sb.append('a');
     }
     String input = sb.toString();
-    ICUTokenizer tokenizer = new ICUTokenizer(newAttributeFactory(), new StringReader(input), new DefaultICUTokenizerConfig(false));
+    ICUTokenizer tokenizer = new ICUTokenizer(newAttributeFactory(), new DefaultICUTokenizerConfig(false));
+    tokenizer.setReader(new StringReader(input));
     char token[] = new char[4096];
     Arrays.fill(token, 'a');
     String expectedToken = new String(token);
@@ -67,14 +67,26 @@ public class TestICUTokenizer extends BaseTokenStreamTestCase {
     assertTokenStreamContents(tokenizer, expected);
   }
   
-  private Analyzer a = new Analyzer() {
-    @Override
-    protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      Tokenizer tokenizer = new ICUTokenizer(newAttributeFactory(), reader, new DefaultICUTokenizerConfig(false));
-      TokenFilter filter = new ICUNormalizer2Filter(tokenizer);
-      return new TokenStreamComponents(tokenizer, filter);
-    }
-  };
+  private Analyzer a; 
+  
+  @Override
+  public void setUp() throws Exception {
+    super.setUp();
+    a = new Analyzer() {
+      @Override
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new ICUTokenizer(newAttributeFactory(), new DefaultICUTokenizerConfig(false));
+        TokenFilter filter = new ICUNormalizer2Filter(tokenizer);
+        return new TokenStreamComponents(tokenizer, filter);
+      }
+    };
+  }
+  
+  @Override
+  public void tearDown() throws Exception {
+    a.close();
+    super.tearDown();
+  }
 
   public void testArmenian() throws Exception {
     assertAnalyzesTo(a, "Վիքիպեդիայի 13 միլիոն հոդվածները (4,600` հայերեն վիքիպեդիայում) գրվել են կամավորների կողմից ու համարյա բոլոր հոդվածները կարող է խմբագրել ցանկաց մարդ ով կարող է բացել Վիքիպեդիայի կայքը։",
@@ -120,6 +132,10 @@ public class TestICUTokenizer extends BaseTokenStreamTestCase {
   public void testLao() throws Exception {
     assertAnalyzesTo(a, "ກວ່າດອກ", new String[] { "ກວ່າ", "ດອກ" });
     assertAnalyzesTo(a, "ພາສາລາວ", new String[] { "ພາສາ", "ລາວ"}, new String[] { "<ALPHANUM>", "<ALPHANUM>" });
+  }
+  
+  public void testMyanmar() throws Exception {
+    assertAnalyzesTo(a, "သက်ဝင်လှုပ်ရှားစေပြီး", new String[] { "သက်ဝင်", "လှုပ်ရှား", "စေ", "ပြီး" });
   }
   
   public void testThai() throws Exception {
@@ -258,8 +274,7 @@ public class TestICUTokenizer extends BaseTokenStreamTestCase {
   }
   
   public void testTokenAttributes() throws Exception {
-    TokenStream ts = a.tokenStream("dummy", "This is a test");
-    try {
+    try (TokenStream ts = a.tokenStream("dummy", "This is a test")) {
       ScriptAttribute scriptAtt = ts.addAttribute(ScriptAttribute.class);
       ts.reset();
       while (ts.incrementToken()) {
@@ -269,8 +284,6 @@ public class TestICUTokenizer extends BaseTokenStreamTestCase {
         assertTrue(ts.reflectAsString(false).contains("script=Latin"));
       }
       ts.end();
-    } finally {
-      IOUtils.closeWhileHandlingException(ts);
     }
   }
   
@@ -288,7 +301,8 @@ public class TestICUTokenizer extends BaseTokenStreamTestCase {
             long tokenCount = 0;
             final String contents = "英 เบียร์ ビール ເບຍ abc";
             for (int i = 0; i < 1000; i++) {
-              try (Tokenizer tokenizer = new ICUTokenizer(new StringReader(contents))) {
+              try (Tokenizer tokenizer = new ICUTokenizer()) {
+                tokenizer.setReader(new StringReader(contents));
                 tokenizer.reset();
                 while (tokenizer.incrementToken()) {
                   tokenCount++;

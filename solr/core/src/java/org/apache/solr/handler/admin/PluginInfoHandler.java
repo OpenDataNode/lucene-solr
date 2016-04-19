@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler.admin;
 
 import java.net.URL;
@@ -28,6 +27,8 @@ import org.apache.solr.core.SolrInfoMBean;
 import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
+
+import static org.apache.solr.common.params.CommonParams.NAME;
 
 /**
  * @since solr 1.2
@@ -60,7 +61,7 @@ public class PluginInfoHandler extends RequestHandlerBase
         SimpleOrderedMap<Object> info = new SimpleOrderedMap<>();
         category.add( entry.getKey(), info );
 
-        info.add( "name",        (m.getName()       !=null ? m.getName()        : na) );
+        info.add( NAME,          (m.getName()       !=null ? m.getName()        : na) );
         info.add( "version",     (m.getVersion()    !=null ? m.getVersion()     : na) );
         info.add( "description", (m.getDescription()!=null ? m.getDescription() : na) );
         info.add( "source",      (m.getSource()     !=null ? m.getSource()      : na) );
@@ -88,10 +89,5 @@ public class PluginInfoHandler extends RequestHandlerBase
   @Override
   public String getDescription() {
     return "Registry";
-  }
-
-  @Override
-  public String getSource() {
-    return null;
   }
 }

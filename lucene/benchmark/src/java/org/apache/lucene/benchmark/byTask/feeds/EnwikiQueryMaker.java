@@ -1,5 +1,3 @@
-package org.apache.lucene.benchmark.byTask.feeds;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.benchmark.byTask.feeds;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.benchmark.byTask.feeds;
+
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -72,7 +72,7 @@ public class EnwikiQueryMaker extends AbstractQueryMaker implements
 
   private static Query[] getPrebuiltQueries(String field) {
     WildcardQuery wcq = new WildcardQuery(new Term(field, "fo*"));
-    wcq .setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_FILTER_REWRITE);
+    wcq .setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_REWRITE);
     // be wary of unanalyzed text
     return new Query[] {
         new SpanFirstQuery(new SpanTermQuery(new Term(field, "ford")), 5),

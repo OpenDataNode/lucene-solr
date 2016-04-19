@@ -1,5 +1,3 @@
-package org.apache.solr.schema;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.schema;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.charfilter.MappingCharFilterFactory;
@@ -88,7 +87,7 @@ public class MultiTermTest extends SolrTestCaseJ4 {
       assertTrue((factory instanceof ASCIIFoldingFilterFactory) || (factory instanceof LowerCaseFilterFactory));
     }
 
-    assertTrue(tc.getCharFilterFactories() == null);
+    assertTrue(tc.getCharFilterFactories().length == 0);
 
   }
 }

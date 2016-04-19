@@ -1,5 +1,3 @@
-package org.apache.lucene.search.suggest;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,9 @@ package org.apache.lucene.search.suggest;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.lucene.search.suggest;
 
 import java.io.*;
-import java.util.Comparator;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
 
@@ -32,15 +29,15 @@ import org.apache.lucene.util.IOUtils;
 /**
  * Dictionary represented by a text file.
  * 
- * <p/>Format allowed: 1 entry per line:<br/>
- * An entry can be: <br/>
+ * <p>Format allowed: 1 entry per line:<br>
+ * An entry can be: <br>
  * <ul>
  * <li>suggestion</li>
  * <li>suggestion <code>fieldDelimiter</code> weight</li>
  * <li>suggestion <code>fieldDelimiter</code> weight <code>fieldDelimiter</code> payload</li>
  * </ul>
- * where the default <code>fieldDelimiter</code> is {@value #DEFAULT_FIELD_DELIMITER}<br/>
- * <p/>
+ * where the default <code>fieldDelimiter</code> is {@value #DEFAULT_FIELD_DELIMITER}<br>
+ * <p>
  * <b>NOTE:</b> 
  * <ul>
  * <li>In order to have payload enabled, the first entry has to have a payload</li>
@@ -50,11 +47,11 @@ import org.apache.lucene.util.IOUtils;
  *  then an empty payload is returned</li>
  * <li>An entry cannot have more than two <code>fieldDelimiter</code></li>
  * </ul>
- * <p/>
- * <b>Example:</b><br/>
- * word1 word2 TAB 100 TAB payload1<br/>
- * word3 TAB 101<br/>
- * word4 word3 TAB 102<br/>
+ * <p>
+ * <b>Example:</b><br>
+ * word1 word2 TAB 100 TAB payload1<br>
+ * word3 TAB 101<br>
+ * word4 word3 TAB 102<br>
  */
 public class FileDictionary implements Dictionary {
 
@@ -114,7 +111,7 @@ public class FileDictionary implements Dictionary {
     try {
       return new FileIterator();
     } catch (IOException e) {
-      throw new RuntimeException();
+      throw new RuntimeException(e);
     }
   }
 
@@ -196,11 +193,6 @@ public class FileDictionary implements Dictionary {
     }
 
     @Override
-    public Comparator<BytesRef> getComparator() {
-      return null;
-    }
-
-    @Override
     public BytesRef payload() {
       return (hasPayloads) ? curPayload.get() : null;
     }
@@ -229,5 +221,4 @@ public class FileDictionary implements Dictionary {
       return false;
     }
   }
-
 }

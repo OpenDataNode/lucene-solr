@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,13 @@ package org.apache.lucene.analysis.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.core;
+
+
+import java.io.IOException;
+import java.io.StringReader;
+import java.util.Collections;
+import java.util.Set;
 
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.TokenStream;
@@ -24,12 +29,6 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
 import org.apache.lucene.util.English;
-import org.apache.lucene.util.Version;
-
-import java.io.IOException;
-import java.io.StringReader;
-import java.util.Collections;
-import java.util.Set;
 
 
 public class TestTypeTokenFilter extends BaseTokenStreamTestCase {
@@ -37,7 +36,9 @@ public class TestTypeTokenFilter extends BaseTokenStreamTestCase {
   public void testTypeFilter() throws IOException {
     StringReader reader = new StringReader("121 is palindrome, while 123 is not");
     Set<String> stopTypes = asSet("<NUM>");
-    TokenStream stream = new TypeTokenFilter(Version.LATEST, true, new StandardTokenizer(newAttributeFactory(), reader), stopTypes);
+    final StandardTokenizer input = new StandardTokenizer(newAttributeFactory());
+    input.setReader(reader);
+    TokenStream stream = new TypeTokenFilter(input, stopTypes);
     assertTokenStreamContents(stream, new String[]{"is", "palindrome", "while", "is", "not"});
   }
 
@@ -60,12 +61,9 @@ public class TestTypeTokenFilter extends BaseTokenStreamTestCase {
 
     // with increments
     StringReader reader = new StringReader(sb.toString());
-    TypeTokenFilter typeTokenFilter = new TypeTokenFilter(Version.LATEST, new StandardTokenizer(reader), stopSet);
-    testPositons(typeTokenFilter);
-
-    // without increments
-    reader = new StringReader(sb.toString());
-    typeTokenFilter = new TypeTokenFilter(Version.LUCENE_4_3, false, new StandardTokenizer(TEST_VERSION_CURRENT, reader), stopSet);
+    final StandardTokenizer input = new StandardTokenizer();
+    input.setReader(reader);
+    TypeTokenFilter typeTokenFilter = new TypeTokenFilter(input, stopSet);
     testPositons(typeTokenFilter);
 
   }
@@ -75,11 +73,10 @@ public class TestTypeTokenFilter extends BaseTokenStreamTestCase {
     CharTermAttribute termAttribute = stpf.getAttribute(CharTermAttribute.class);
     PositionIncrementAttribute posIncrAtt = stpf.getAttribute(PositionIncrementAttribute.class);
     stpf.reset();
-    boolean enablePositionIncrements = stpf.getEnablePositionIncrements();
     while (stpf.incrementToken()) {
       log("Token: " + termAttribute.toString() + ": " + typeAtt.type() + " - " + posIncrAtt.getPositionIncrement());
       assertEquals("if position increment is enabled the positionIncrementAttribute value should be 3, otherwise 1",
-          posIncrAtt.getPositionIncrement(), enablePositionIncrements ? 3 : 1);
+          posIncrAtt.getPositionIncrement(), 3);
     }
     stpf.end();
     stpf.close();
@@ -88,7 +85,9 @@ public class TestTypeTokenFilter extends BaseTokenStreamTestCase {
   public void testTypeFilterWhitelist() throws IOException {
     StringReader reader = new StringReader("121 is palindrome, while 123 is not");
     Set<String> stopTypes = Collections.singleton("<NUM>");
-    TokenStream stream = new TypeTokenFilter(Version.LATEST, new StandardTokenizer(newAttributeFactory(), reader), stopTypes, true);
+    final StandardTokenizer input = new StandardTokenizer(newAttributeFactory());
+    input.setReader(reader);
+    TokenStream stream = new TypeTokenFilter(input, stopTypes, true);
     assertTokenStreamContents(stream, new String[]{"121", "123"});
   }
 

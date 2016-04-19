@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.schema;
 
 import org.apache.solr.core.AbstractBadConfigTestBase;
@@ -56,7 +55,7 @@ public class BadIndexSchemaTest extends AbstractBadConfigTestBase {
 
   public void testBadExternalFileField() throws Exception {
     doTest("bad-schema-external-filefield.xml",
-           "Only float and pfloat");
+           "Only float (TrieFloatField) is currently supported as external field type.");
   }
 
   public void testUniqueKeyRules() throws Exception {
@@ -119,4 +118,14 @@ public class BadIndexSchemaTest extends AbstractBadConfigTestBase {
     doTest("bad-schema-bogus-analysis-parameters.xml", "Unknown parameters");
   }
 
+  public void testSimDefaultFieldTypeHasNoExplicitSim() throws Exception {
+    doTest("bad-schema-sim-default-has-no-explicit-sim.xml",
+           "ft-has-no-sim");
+  }
+  
+  public void testSimDefaultFieldTypeDoesNotExist() throws Exception {
+    doTest("bad-schema-sim-default-does-not-exist.xml",
+           "ft-does-not-exist");
+  }
+  
 }

@@ -1,5 +1,3 @@
-package org.apache.solr.store.hdfs;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,11 @@ package org.apache.solr.store.hdfs;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.store.hdfs;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileStatus;
@@ -33,7 +33,7 @@ import org.slf4j.LoggerFactory;
  */
 public class HdfsFileReader extends DataInput {
   
-  public static Logger LOG = LoggerFactory.getLogger(HdfsFileReader.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   private final Path path;
   private FSDataInputStream inputStream;

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.miscellaneous;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,13 @@ package org.apache.lucene.analysis.miscellaneous;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.miscellaneous;
+
 
 import java.util.Map;
 
+import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.analysis.miscellaneous.TrimFilter;
 import org.apache.lucene.analysis.util.TokenFilterFactory;
 import org.apache.lucene.util.Version;
 
@@ -38,28 +38,34 @@ import org.apache.lucene.util.Version;
  */
 public class TrimFilterFactory extends TokenFilterFactory {
   
-  protected final boolean updateOffsets;
+  private boolean updateOffsets;
   
   /** Creates a new TrimFilterFactory */
   public TrimFilterFactory(Map<String,String> args) {
     super(args);
-    updateOffsets = getBoolean(args, "updateOffsets", false);
-    if (updateOffsets &&
-        (luceneMatchVersion == null || luceneMatchVersion.onOrAfter(Version.LUCENE_4_4_0))) {
-      throw new IllegalArgumentException("updateOffsets=true is not supported anymore as of Lucene 4.4");
+    
+    if (luceneMatchVersion.onOrAfter(Version.LUCENE_5_0_0) == false) {
+      updateOffsets = getBoolean(args, "updateOffsets", false);
+      if (updateOffsets && luceneMatchVersion.onOrAfter(Version.LUCENE_4_4_0)) {
+        throw new IllegalArgumentException("updateOffsets=true is not supported anymore as of Lucene 4.4");
+      }
+    } else if (args.containsKey("updateOffsets")) {
+      throw new IllegalArgumentException("updateOffsets is not a valid option as of Lucene 5.0");
     }
+    
     if (!args.isEmpty()) {
       throw new IllegalArgumentException("Unknown parameters: " + args);
     }
   }
   
   @Override
-  public TrimFilter create(TokenStream input) {
-    if (luceneMatchVersion == null) {
+  public TokenFilter create(TokenStream input) {
+    if (luceneMatchVersion.onOrAfter(Version.LUCENE_4_4_0)) {
       return new TrimFilter(input);
+    } else {
+      @SuppressWarnings("deprecation")
+      final Lucene43TrimFilter filter = new Lucene43TrimFilter(input, updateOffsets);
+      return filter;
     }
-    @SuppressWarnings("deprecation")
-    final TrimFilter filter = new TrimFilter(luceneMatchVersion, input, updateOffsets);
-    return filter;
   }
 }

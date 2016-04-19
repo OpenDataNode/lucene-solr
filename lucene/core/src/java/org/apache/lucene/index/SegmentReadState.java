@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import org.apache.lucene.codecs.PostingsFormat; // javadocs
 import org.apache.lucene.codecs.perfield.PerFieldPostingsFormat; // javadocs
@@ -41,17 +41,6 @@ public class SegmentReadState {
    *  Directory#openInput(String,IOContext)}. */
   public final IOContext context;
 
-  /** The {@code termInfosIndexDivisor} to use, if
-   *  appropriate (not all {@link PostingsFormat}s support
-   *  it; in particular the current default does not).
-   *
-   * <p>  NOTE: if this is &lt; 0, that means "defer terms index
-   *  load until needed".  But if the codec must load the
-   *  terms index on init (preflex is the only once currently
-   *  that must do so), then it should negate this value to
-   *  get the app's terms divisor */
-  public int termsIndexDivisor;
-
   /** Unique suffix for any postings files read for this
    *  segment.  {@link PerFieldPostingsFormat} sets this for
    *  each of the postings formats it wraps.  If you create
@@ -62,8 +51,8 @@ public class SegmentReadState {
 
   /** Create a {@code SegmentReadState}. */
   public SegmentReadState(Directory dir, SegmentInfo info,
-      FieldInfos fieldInfos, IOContext context, int termsIndexDivisor) {
-    this(dir, info, fieldInfos,  context, termsIndexDivisor, "");
+      FieldInfos fieldInfos, IOContext context) {
+    this(dir, info, fieldInfos,  context, "");
   }
   
   /** Create a {@code SegmentReadState}. */
@@ -71,13 +60,11 @@ public class SegmentReadState {
                           SegmentInfo info,
                           FieldInfos fieldInfos,
                           IOContext context,
-                          int termsIndexDivisor,
                           String segmentSuffix) {
     this.directory = dir;
     this.segmentInfo = info;
     this.fieldInfos = fieldInfos;
     this.context = context;
-    this.termsIndexDivisor = termsIndexDivisor;
     this.segmentSuffix = segmentSuffix;
   }
 
@@ -88,7 +75,6 @@ public class SegmentReadState {
     this.segmentInfo = other.segmentInfo;
     this.fieldInfos = other.fieldInfos;
     this.context = other.context;
-    this.termsIndexDivisor = other.termsIndexDivisor;
     this.segmentSuffix = newSegmentSuffix;
   }
 }

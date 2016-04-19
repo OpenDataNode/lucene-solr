@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,11 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import org.apache.lucene.util.AttributeImpl;
+import org.apache.lucene.util.AttributeReflector;
 
 /** Implementation class for {@link BoostAttribute}.
  * @lucene.internal
@@ -43,5 +44,10 @@ public final class BoostAttributeImpl extends AttributeImpl implements BoostAttr
   @Override
   public void copyTo(AttributeImpl target) {
     ((BoostAttribute) target).setBoost(boost);
+  }
+
+  @Override
+  public void reflectWith(AttributeReflector reflector) {
+    reflector.reflect(BoostAttribute.class, "boost", boost);
   }
 }

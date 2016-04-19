@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.id;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,18 +14,21 @@ package org.apache.lucene.analysis.id;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.id;
+
 
 import java.io.IOException;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.util.CharArraySet;
+import org.apache.lucene.util.Version;
 
 public class TestIndonesianAnalyzer extends BaseTokenStreamTestCase {
   /** This test fails with NPE when the 
    * stopwords file is missing in classpath */
   public void testResourcesAvailable() {
-    new IndonesianAnalyzer();
+    new IndonesianAnalyzer().close();
   }
   
   /** test stopwords and stemming */
@@ -38,6 +39,7 @@ public class TestIndonesianAnalyzer extends BaseTokenStreamTestCase {
     checkOneTerm(a, "pembunuhan", "bunuh");
     // stopword
     assertAnalyzesTo(a, "bahwa", new String[] {});
+    a.close();
   }
   
   /** test use of exclusion set */
@@ -47,10 +49,20 @@ public class TestIndonesianAnalyzer extends BaseTokenStreamTestCase {
         IndonesianAnalyzer.getDefaultStopSet(), exclusionSet);
     checkOneTerm(a, "peledakan", "peledakan");
     checkOneTerm(a, "pembunuhan", "bunuh");
+    a.close();
   }
   
   /** blast some random strings through the analyzer */
   public void testRandomStrings() throws Exception {
-    checkRandomData(random(), new IndonesianAnalyzer(), 1000*RANDOM_MULTIPLIER);
+    Analyzer analyzer = new IndonesianAnalyzer();
+    checkRandomData(random(), analyzer, 1000*RANDOM_MULTIPLIER);
+    analyzer.close();
+  }
+
+  public void testBackcompat40() throws IOException {
+    IndonesianAnalyzer a = new IndonesianAnalyzer();
+    a.setVersion(Version.LUCENE_4_6_1);
+    // this is just a test to see the correct unicode version is being used, not actually testing hebrew
+    assertAnalyzesTo(a, "א\"א", new String[] {"א", "א"});
   }
 }

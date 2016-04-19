@@ -1,5 +1,3 @@
-package org.apache.lucene.search.grouping;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,17 @@ package org.apache.lucene.search.grouping;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import java.io.IOException;
-import java.util.*;
+package org.apache.lucene.search.grouping;
 
 import org.apache.lucene.queries.function.ValueSource;
-import org.apache.lucene.search.*;
+import org.apache.lucene.search.CachingCollector;
+import org.apache.lucene.search.Collector;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.MultiCollector;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.SortField;
+import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.grouping.function.FunctionAllGroupHeadsCollector;
 import org.apache.lucene.search.grouping.function.FunctionAllGroupsCollector;
 import org.apache.lucene.search.grouping.function.FunctionFirstPassGroupingCollector;
@@ -34,6 +37,13 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.mutable.MutableValue;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
 /**
  * Convenience class to perform grouping in a non distributed environment.
  *
@@ -44,10 +54,10 @@ public class GroupingSearch {
   private final String groupField;
   private final ValueSource groupFunction;
   private final Map<?, ?> valueSourceContext;
-  private final Filter groupEndDocs;
+  private final Query groupEndDocs;
 
   private Sort groupSort = Sort.RELEVANCE;
-  private Sort sortWithinGroup;
+  private Sort sortWithinGroup = Sort.RELEVANCE;
 
   private int groupDocsOffset;
   private int groupDocsLimit = 1;
@@ -66,7 +76,7 @@ public class GroupingSearch {
   private Bits matchingGroupHeads;
 
   /**
-   * Constructs a <code>GroupingSearch</code> instance that groups documents by index terms using the {@link FieldCache}.
+   * Constructs a <code>GroupingSearch</code> instance that groups documents by index terms using DocValues.
    * The group field can only have one token per document. This means that the field must not be analysed.
    *
    * @param groupField The name of the field to group by.
@@ -90,13 +100,13 @@ public class GroupingSearch {
    * Constructor for grouping documents by doc block.
    * This constructor can only be used when documents belonging in a group are indexed in one block.
    *
-   * @param groupEndDocs The filter that marks the last document in all doc blocks
+   * @param groupEndDocs The query that marks the last document in all doc blocks
    */
-  public GroupingSearch(Filter groupEndDocs) {
+  public GroupingSearch(Query groupEndDocs) {
     this(null, null, null, groupEndDocs);
   }
 
-  private GroupingSearch(String groupField, ValueSource groupFunction, Map<?, ?> valueSourceContext, Filter groupEndDocs) {
+  private GroupingSearch(String groupField, ValueSource groupFunction, Map<?, ?> valueSourceContext, Query groupEndDocs) {
     this.groupField = groupField;
     this.groupFunction = groupFunction;
     this.valueSourceContext = valueSourceContext;
@@ -113,34 +123,19 @@ public class GroupingSearch {
    * @return the grouped result as a {@link TopGroups} instance
    * @throws IOException If any I/O related errors occur
    */
-  public <T> TopGroups<T> search(IndexSearcher searcher, Query query, int groupOffset, int groupLimit) throws IOException {
-    return search(searcher, null, query, groupOffset, groupLimit);
-  }
-
-  /**
-   * Executes a grouped search. Both the first pass and second pass are executed on the specified searcher.
-   *
-   * @param searcher    The {@link org.apache.lucene.search.IndexSearcher} instance to execute the grouped search on.
-   * @param filter      The filter to execute with the grouping
-   * @param query       The query to execute with the grouping
-   * @param groupOffset The group offset
-   * @param groupLimit  The number of groups to return from the specified group offset
-   * @return the grouped result as a {@link TopGroups} instance
-   * @throws IOException If any I/O related errors occur
-   */
   @SuppressWarnings("unchecked")
-  public <T> TopGroups<T> search(IndexSearcher searcher, Filter filter, Query query, int groupOffset, int groupLimit) throws IOException {
+  public <T> TopGroups<T> search(IndexSearcher searcher, Query query, int groupOffset, int groupLimit) throws IOException {
     if (groupField != null || groupFunction != null) {
-      return groupByFieldOrFunction(searcher, filter, query, groupOffset, groupLimit);
+      return groupByFieldOrFunction(searcher, query, groupOffset, groupLimit);
     } else if (groupEndDocs != null) {
-      return (TopGroups<T>) groupByDocBlock(searcher, filter, query, groupOffset, groupLimit);
+      return (TopGroups<T>) groupByDocBlock(searcher, query, groupOffset, groupLimit);
     } else {
       throw new IllegalStateException("Either groupField, groupFunction or groupEndDocs must be set."); // This can't happen...
     }
   }
 
   @SuppressWarnings({"unchecked", "rawtypes"})
-  protected TopGroups groupByFieldOrFunction(IndexSearcher searcher, Filter filter, Query query, int groupOffset, int groupLimit) throws IOException {
+  protected TopGroups groupByFieldOrFunction(IndexSearcher searcher, Query query, int groupOffset, int groupLimit) throws IOException {
     int topN = groupOffset + groupLimit;
     final AbstractFirstPassGroupingCollector firstPassCollector;
     final AbstractAllGroupsCollector allGroupsCollector;
@@ -193,9 +188,9 @@ public class GroupingSearch {
       } else {
         cachedCollector = CachingCollector.create(firstRound, cacheScores, maxDocsToCache);
       }
-      searcher.search(query, filter, cachedCollector);
+      searcher.search(query, cachedCollector);
     } else {
-      searcher.search(query, filter, firstRound);
+      searcher.search(query, firstRound);
     }
 
     if (allGroups) {
@@ -225,7 +220,7 @@ public class GroupingSearch {
     if (cachedCollector != null && cachedCollector.isCached()) {
       cachedCollector.replay(secondPassCollector);
     } else {
-      searcher.search(query, filter, secondPassCollector);
+      searcher.search(query, secondPassCollector);
     }
 
     if (allGroups) {
@@ -235,10 +230,11 @@ public class GroupingSearch {
     }
   }
 
-  protected TopGroups<?> groupByDocBlock(IndexSearcher searcher, Filter filter, Query query, int groupOffset, int groupLimit) throws IOException {
+  protected TopGroups<?> groupByDocBlock(IndexSearcher searcher, Query query, int groupOffset, int groupLimit) throws IOException {
     int topN = groupOffset + groupLimit;
+    final Weight groupEndDocs = searcher.createNormalizedWeight(this.groupEndDocs, false);
     BlockGroupingCollector c = new BlockGroupingCollector(groupSort, topN, includeScores, groupEndDocs);
-    searcher.search(query, filter, c);
+    searcher.search(query, c);
     int topNInsideGroup = groupDocsOffset + groupDocsLimit;
     return c.getTopGroups(sortWithinGroup, groupOffset, groupDocsOffset, topNInsideGroup, fillSortFields);
   }
@@ -368,7 +364,7 @@ public class GroupingSearch {
   /**
    * Whether to also compute all groups matching the query.
    * This can be used to determine the number of groups, which can be used for accurate pagination.
-   * <p/>
+   * <p>
    * When grouping by doc block the number of groups are automatically included in the {@link TopGroups} and this
    * option doesn't have any influence.
    *
@@ -395,7 +391,7 @@ public class GroupingSearch {
 
   /**
    * Whether to compute all group heads (most relevant document per group) matching the query.
-   * <p/>
+   * <p>
    * This feature isn't enabled when grouping by doc block.
    *
    * @param allGroupHeads Whether to compute all group heads (most relevant document per group) matching the query
@@ -419,7 +415,7 @@ public class GroupingSearch {
    * Sets the initial size of some internal used data structures.
    * This prevents growing data structures many times. This can improve the performance of the grouping at the cost of
    * more initial RAM.
-   * <p/>
+   * <p>
    * The {@link #setAllGroups} and {@link #setAllGroupHeads} features use this option.
    * Defaults to 128.
    *

@@ -1,5 +1,3 @@
-package org.apache.lucene.search.spell;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,7 +14,9 @@ package org.apache.lucene.search.spell;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.spell;
 
+import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
@@ -26,6 +26,7 @@ import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.English;
+import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LuceneTestCase;
 
 public class TestDirectSpellChecker extends LuceneTestCase {
@@ -33,8 +34,8 @@ public class TestDirectSpellChecker extends LuceneTestCase {
   public void testInternalLevenshteinDistance() throws Exception {
     DirectSpellChecker spellchecker = new DirectSpellChecker();
     Directory dir = newDirectory();
-    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, 
-        new MockAnalyzer(random(), MockTokenizer.KEYWORD, true));
+    Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.KEYWORD, true);
+    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, analyzer);
 
     String[] termsToAdd = { "metanoia", "metanoian", "metanoiai", "metanoias", "metanoi𐑍" };
     for (int i = 0; i < termsToAdd.length; i++) {
@@ -55,16 +56,15 @@ public class TestDirectSpellChecker extends LuceneTestCase {
       assertTrue(word.score==sd.getDistance(misspelled, word.string));
     }
     
-    ir.close();
-    writer.close();
-    dir.close();
+    IOUtils.close(ir, writer, dir, analyzer);
   }
+  
   public void testSimpleExamples() throws Exception {
     DirectSpellChecker spellChecker = new DirectSpellChecker();
     spellChecker.setMinQueryLength(0);
     Directory dir = newDirectory();
-    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, 
-        new MockAnalyzer(random(), MockTokenizer.SIMPLE, true));
+    Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
+    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, analyzer);
 
     for (int i = 0; i < 20; i++) {
       Document doc = new Document();
@@ -121,15 +121,13 @@ public class TestDirectSpellChecker extends LuceneTestCase {
     assertTrue(similar.length > 0); 
     assertEquals("thousand", similar[0].string);
 
-    ir.close();
-    writer.close();
-    dir.close();
+    IOUtils.close(ir, writer, dir, analyzer);
   }
   
   public void testOptions() throws Exception {
     Directory dir = newDirectory();
-    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, 
-        new MockAnalyzer(random(), MockTokenizer.SIMPLE, true));
+    Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
+    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, analyzer);
 
     Document doc = new Document();
     doc.add(newTextField("text", "foobar", Field.Store.NO));
@@ -187,16 +185,14 @@ public class TestDirectSpellChecker extends LuceneTestCase {
         SuggestMode.SUGGEST_ALWAYS);
     assertEquals(2, similar.length);
 
-    ir.close();
-    writer.close();
-    dir.close();
+    IOUtils.close(ir, writer, dir, analyzer);;
   }
   
   public void testBogusField() throws Exception {
     DirectSpellChecker spellChecker = new DirectSpellChecker();
     Directory dir = newDirectory();
-    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, 
-        new MockAnalyzer(random(), MockTokenizer.SIMPLE, true));
+    Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
+    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, analyzer);
 
     for (int i = 0; i < 20; i++) {
       Document doc = new Document();
@@ -210,17 +206,16 @@ public class TestDirectSpellChecker extends LuceneTestCase {
         "bogusFieldBogusField", "fvie"), 2, ir,
         SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX);
     assertEquals(0, similar.length);
-    ir.close();
-    writer.close();
-    dir.close();
+    
+    IOUtils.close(ir, writer, dir, analyzer);
   }
   
   // simple test that transpositions work, we suggest five for fvie with ed=1
   public void testTransposition() throws Exception {
     DirectSpellChecker spellChecker = new DirectSpellChecker();
     Directory dir = newDirectory();
-    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, 
-        new MockAnalyzer(random(), MockTokenizer.SIMPLE, true));
+    Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
+    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, analyzer);
 
     for (int i = 0; i < 20; i++) {
       Document doc = new Document();
@@ -235,17 +230,16 @@ public class TestDirectSpellChecker extends LuceneTestCase {
         SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX);
     assertEquals(1, similar.length);
     assertEquals("five", similar[0].string);
-    ir.close();
-    writer.close();
-    dir.close();
+    
+    IOUtils.close(ir, writer, dir, analyzer);
   }
   
   // simple test that transpositions work, we suggest seventeen for seevntene with ed=2
   public void testTransposition2() throws Exception {
     DirectSpellChecker spellChecker = new DirectSpellChecker();
     Directory dir = newDirectory();
-    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, 
-        new MockAnalyzer(random(), MockTokenizer.SIMPLE, true));
+    Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.SIMPLE, true);
+    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, analyzer);
 
     for (int i = 0; i < 20; i++) {
       Document doc = new Document();
@@ -260,8 +254,7 @@ public class TestDirectSpellChecker extends LuceneTestCase {
         SuggestMode.SUGGEST_WHEN_NOT_IN_INDEX);
     assertEquals(1, similar.length);
     assertEquals("seventeen", similar[0].string);
-    ir.close();
-    writer.close();
-    dir.close();
+    
+    IOUtils.close(ir, writer, dir, analyzer);
   }
 }

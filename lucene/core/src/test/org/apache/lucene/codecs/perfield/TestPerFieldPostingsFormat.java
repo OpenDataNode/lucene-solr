@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.perfield;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.codecs.perfield;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.perfield;
+
 
 import java.util.Collections;
 import java.util.Random;
@@ -39,4 +39,8 @@ public class TestPerFieldPostingsFormat extends BasePostingsFormatTestCase {
     assumeTrue("The MockRandom PF randomizes content on the fly, so we can't check it", false);
   }
 
+  @Override
+  public void testPostingsEnumReuse() throws Exception {
+    assumeTrue("The MockRandom PF randomizes content on the fly, so we can't check it", false);
+  }
 }

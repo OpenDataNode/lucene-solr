@@ -1,5 +1,3 @@
-package org.apache.lucene.search.vectorhighlight;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.vectorhighlight;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.vectorhighlight;
 
 import java.text.BreakIterator;
 import java.util.Locale;
@@ -57,7 +56,7 @@ public class BreakIteratorBoundaryScannerTest extends LuceneTestCase {
 
   public void testSentenceBoundary() throws Exception {
     StringBuilder text = new StringBuilder(TEXT);
-    // we test this with default locale, its randomized by LuceneTestCase
+    // we test this with default locale, it's randomized by LuceneTestCase
     BreakIterator bi = BreakIterator.getSentenceInstance(Locale.getDefault());
     BoundaryScanner scanner = new BreakIteratorBoundaryScanner(bi);
     
@@ -71,7 +70,7 @@ public class BreakIteratorBoundaryScannerTest extends LuceneTestCase {
 
   public void testLineBoundary() throws Exception {
     StringBuilder text = new StringBuilder(TEXT);
-    // we test this with default locale, its randomized by LuceneTestCase
+    // we test this with default locale, it's randomized by LuceneTestCase
     BreakIterator bi = BreakIterator.getLineInstance(Locale.getDefault());
     BoundaryScanner scanner = new BreakIteratorBoundaryScanner(bi);
     

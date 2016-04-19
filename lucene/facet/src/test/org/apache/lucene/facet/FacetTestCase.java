@@ -1,5 +1,3 @@
-package org.apache.lucene.facet;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.facet;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -33,11 +32,9 @@ import org.apache.lucene.facet.taxonomy.OrdinalsReader;
 import org.apache.lucene.facet.taxonomy.TaxonomyFacetCounts;
 import org.apache.lucene.facet.taxonomy.TaxonomyReader;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
 
-@SuppressCodecs("Lucene3x")
 public abstract class FacetTestCase extends LuceneTestCase {
   
   public Facets getTaxonomyFacetCounts(TaxonomyReader taxoReader, FacetsConfig config, FacetsCollector c) throws IOException {
@@ -63,7 +60,7 @@ public abstract class FacetTestCase extends LuceneTestCase {
     String[] tokens = new String[count];
     for(int i=0;i<tokens.length;i++) {
       tokens[i] = TestUtil.randomRealisticUnicodeString(random(), 1, 10);
-      //tokens[i] = TestUtil.randomSimpleString(random(), 1, 10);
+      //tokens[i] = _TestUtil.randomSimpleString(random(), 1, 10);
     }
     return tokens;
   }

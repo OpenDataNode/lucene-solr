@@ -1,5 +1,3 @@
-package org.apache.lucene.util.fst;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.util.fst;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util.fst;
+
 
 import java.util.Arrays;
 
@@ -31,8 +31,9 @@ public class TestBytesStore extends LuceneTestCase {
   public void testRandom() throws Exception {
 
     final int iters = atLeast(10);
+    final int maxBytes = TEST_NIGHTLY ? 200000 : 20000;
     for(int iter=0;iter<iters;iter++) {
-      final int numBytes = TestUtil.nextInt(random(), 1, 200000);
+      final int numBytes = TestUtil.nextInt(random(), 1, maxBytes);
       final byte[] expected = new byte[numBytes];
       final int blockBits = TestUtil.nextInt(random(), 8, 15);
       final BytesStore bytes = new BytesStore(blockBits);

@@ -1,4 +1,3 @@
-package org.apache.lucene.analysis.query;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,6 +14,7 @@ package org.apache.lucene.analysis.query;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.query;
 
 import java.io.IOException;
 import java.util.*;
@@ -144,7 +144,7 @@ public final class QueryAutoStopWordAnalyzer extends AnalyzerWrapper {
       Terms terms = MultiFields.getTerms(indexReader, field);
       CharsRefBuilder spare = new CharsRefBuilder();
       if (terms != null) {
-        TermsEnum te = terms.iterator(null);
+        TermsEnum te = terms.iterator();
         BytesRef text;
         while ((text = te.next()) != null) {
           if (te.docFreq() > maxDocFreq) {

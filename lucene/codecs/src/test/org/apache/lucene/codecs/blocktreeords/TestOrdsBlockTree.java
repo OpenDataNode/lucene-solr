@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.blocktreeords;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.codecs.blocktreeords;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.blocktreeords;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -39,7 +39,7 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.TestUtil;
 
 public class TestOrdsBlockTree extends BasePostingsFormatTestCase {
-  private final Codec codec = TestUtil.alwaysPostingsFormat(new Ords41PostingsFormat());
+  private final Codec codec = TestUtil.alwaysPostingsFormat(new BlockTreeOrdsPostingsFormat());
 
   @Override
   protected Codec getCodec() {
@@ -53,7 +53,7 @@ public class TestOrdsBlockTree extends BasePostingsFormatTestCase {
     doc.add(newTextField("field", "a b c", Field.Store.NO));
     w.addDocument(doc);
     IndexReader r = w.getReader();
-    TermsEnum te = MultiFields.getTerms(r, "field").iterator(null);
+    TermsEnum te = MultiFields.getTerms(r, "field").iterator();
 
     // Test next()
     assertEquals(new BytesRef("a"), te.next());
@@ -114,7 +114,7 @@ public class TestOrdsBlockTree extends BasePostingsFormatTestCase {
     }
     w.forceMerge(1);
     IndexReader r = w.getReader();
-    TermsEnum te = MultiFields.getTerms(r, "field").iterator(null);
+    TermsEnum te = MultiFields.getTerms(r, "field").iterator();
 
     assertTrue(te.seekExact(new BytesRef("mo")));
     assertEquals(27, te.ord());
@@ -149,33 +149,6 @@ public class TestOrdsBlockTree extends BasePostingsFormatTestCase {
       assertEquals(term, te.term());
     }
 
-    r.close();
-    w.close();
-    dir.close();
-  }
-
-  public void testSeekCeilNotFound() throws Exception {
-    Directory dir = newDirectory();
-    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
-    Document doc = new Document();
-    // Get empty string in there!
-    doc.add(newStringField("field", "", Field.Store.NO));
-    w.addDocument(doc);
-    
-    for(int i=0;i<36;i++) {
-      doc = new Document();
-      String term = "" + (char) (97+i);
-      String term2 = "a" + (char) (97+i);
-      doc.add(newTextField("field", term + " " + term2, Field.Store.NO));
-      w.addDocument(doc);
-    }
-
-    w.forceMerge(1);
-    IndexReader r = w.getReader();
-    TermsEnum te = MultiFields.getTerms(r, "field").iterator(null);
-    assertEquals(TermsEnum.SeekStatus.NOT_FOUND, te.seekCeil(new BytesRef(new byte[] {0x22})));
-    assertEquals("a", te.term().utf8ToString());
-    assertEquals(1L, te.ord());
     r.close();
     w.close();
     dir.close();
@@ -217,7 +190,7 @@ public class TestOrdsBlockTree extends BasePostingsFormatTestCase {
     }
     w.forceMerge(1);
     IndexReader r = w.getReader();
-    TermsEnum te = MultiFields.getTerms(r, "field").iterator(null);
+    TermsEnum te = MultiFields.getTerms(r, "field").iterator();
 
     if (VERBOSE) {
       while (te.next() != null) {
@@ -264,7 +237,7 @@ public class TestOrdsBlockTree extends BasePostingsFormatTestCase {
 
   public void testFloorBlocks() throws Exception {
     Directory dir = newDirectory();
-    IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig iwc = new IndexWriterConfig(new MockAnalyzer(random()));
     IndexWriter w = new IndexWriter(dir, iwc);
     for(int i=0;i<128;i++) {
       Document doc = new Document();
@@ -276,8 +249,8 @@ public class TestOrdsBlockTree extends BasePostingsFormatTestCase {
       w.addDocument(doc);
     }
     w.forceMerge(1);
-    IndexReader r = DirectoryReader.open(w, true);
-    TermsEnum te = MultiFields.getTerms(r, "field").iterator(null);
+    IndexReader r = DirectoryReader.open(w);
+    TermsEnum te = MultiFields.getTerms(r, "field").iterator();
 
     if (VERBOSE) {
       BytesRef term;
@@ -302,7 +275,7 @@ public class TestOrdsBlockTree extends BasePostingsFormatTestCase {
 
   public void testNonRootFloorBlocks() throws Exception {
     Directory dir = newDirectory();
-    IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig iwc = new IndexWriterConfig(new MockAnalyzer(random()));
     IndexWriter w = new IndexWriter(dir, iwc);
     List<String> terms = new ArrayList<>();
     for(int i=0;i<36;i++) {
@@ -326,8 +299,8 @@ public class TestOrdsBlockTree extends BasePostingsFormatTestCase {
       w.addDocument(doc);
     }
     w.forceMerge(1);
-    IndexReader r = DirectoryReader.open(w, true);
-    TermsEnum te = MultiFields.getTerms(r, "field").iterator(null);
+    IndexReader r = DirectoryReader.open(w);
+    TermsEnum te = MultiFields.getTerms(r, "field").iterator();
 
     BytesRef term;
     int ord = 0;
@@ -348,7 +321,7 @@ public class TestOrdsBlockTree extends BasePostingsFormatTestCase {
 
   public void testSeveralNonRootBlocks() throws Exception {
     Directory dir = newDirectory();
-    IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig iwc = new IndexWriterConfig(new MockAnalyzer(random()));
     IndexWriter w = new IndexWriter(dir, iwc);
     List<String> terms = new ArrayList<>();
     for(int i=0;i<30;i++) {
@@ -364,8 +337,8 @@ public class TestOrdsBlockTree extends BasePostingsFormatTestCase {
       }
     }
     w.forceMerge(1);
-    IndexReader r = DirectoryReader.open(w, true);
-    TermsEnum te = MultiFields.getTerms(r, "body").iterator(null);
+    IndexReader r = DirectoryReader.open(w);
+    TermsEnum te = MultiFields.getTerms(r, "body").iterator();
 
     for(int i=0;i<30;i++) {
       for(int j=0;j<30;j++) {
@@ -383,6 +356,33 @@ public class TestOrdsBlockTree extends BasePostingsFormatTestCase {
     te.seekExact(0);
     assertEquals("aa", te.term().utf8ToString());
 
+    r.close();
+    w.close();
+    dir.close();
+  }
+
+  public void testSeekCeilNotFound() throws Exception {
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    Document doc = new Document();
+    // Get empty string in there!
+    doc.add(newStringField("field", "", Field.Store.NO));
+    w.addDocument(doc);
+    
+    for(int i=0;i<36;i++) {
+      doc = new Document();
+      String term = "" + (char) (97+i);
+      String term2 = "a" + (char) (97+i);
+      doc.add(newTextField("field", term + " " + term2, Field.Store.NO));
+      w.addDocument(doc);
+    }
+
+    w.forceMerge(1);
+    IndexReader r = w.getReader();
+    TermsEnum te = MultiFields.getTerms(r, "field").iterator();
+    assertEquals(TermsEnum.SeekStatus.NOT_FOUND, te.seekCeil(new BytesRef(new byte[] {0x22})));
+    assertEquals("a", te.term().utf8ToString());
+    assertEquals(1L, te.ord());
     r.close();
     w.close();
     dir.close();

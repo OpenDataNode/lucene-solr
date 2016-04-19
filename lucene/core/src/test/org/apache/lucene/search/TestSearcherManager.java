@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -31,16 +31,20 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.ConcurrentMergeScheduler;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.FilterDirectoryReader;
+import org.apache.lucene.index.FilterLeafReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.ThreadedIndexingAndSearchingTestCase;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
+import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.NamedThreadFactory;
 import org.apache.lucene.util.TestUtil;
 
@@ -74,7 +78,7 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
   protected void doAfterWriter(final ExecutorService es) throws Exception {
     final SearcherFactory factory = new SearcherFactory() {
       @Override
-      public IndexSearcher newSearcher(IndexReader r) throws IOException {
+      public IndexSearcher newSearcher(IndexReader r, IndexReader previous) throws IOException {
         IndexSearcher s = new IndexSearcher(r, es);
         TestSearcherManager.this.warmCalled = true;
         s.search(new TermQuery(new Term("body", "united")), 10);
@@ -85,7 +89,7 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
       // TODO: can we randomize the applyAllDeletes?  But
       // somehow for final searcher we must apply
       // deletes...
-      mgr = new SearcherManager(writer, true, factory);
+      mgr = new SearcherManager(writer, factory);
       isNRT = true;
     } else {
       // SearcherManager needs to see empty commit:
@@ -142,7 +146,7 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
   @Override
   protected IndexSearcher getCurrentSearcher() throws Exception {
     if (random().nextInt(10) == 7) {
-      // NOTE: not best practice to call maybeReopen
+      // NOTE: not best practice to call maybeRefresh
       // synchronous to your search threads, but still we
       // test as apps will presumably do this for
       // simplicity:
@@ -213,7 +217,7 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
     final ExecutorService es = random().nextBoolean() ? null : Executors.newCachedThreadPool(new NamedThreadFactory("testIntermediateClose"));
     final SearcherFactory factory = new SearcherFactory() {
       @Override
-      public IndexSearcher newSearcher(IndexReader r) {
+      public IndexSearcher newSearcher(IndexReader r, IndexReader previous) {
         try {
           if (triedReopen.get()) {
             awaitEnterWarm.countDown();
@@ -247,7 +251,7 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
         try {
           triedReopen.set(true);
           if (VERBOSE) {
-            System.out.println("NOW call maybeReopen");
+            System.out.println("NOW call maybeRefresh");
           }
           searcherManager.maybeRefresh();
           success.set(true);
@@ -296,7 +300,7 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
   public void testCloseTwice() throws Exception {
     // test that we can close SM twice (per Closeable's contract).
     Directory dir = newDirectory();
-    new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, null)).close();
+    new IndexWriter(dir, new IndexWriterConfig(null)).close();
     SearcherManager sm = new SearcherManager(dir, null);
     sm.close();
     sm.close();
@@ -336,7 +340,7 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
 
   public void testEnsureOpen() throws Exception {
     Directory dir = newDirectory();
-    new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, null)).close();
+    new IndexWriter(dir, new IndexWriterConfig(null)).close();
     SearcherManager sm = new SearcherManager(dir, null);
     IndexSearcher s = sm.acquire();
     sm.close();
@@ -362,7 +366,7 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
 
   public void testListenerCalled() throws Exception {
     Directory dir = newDirectory();
-    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, null));
+    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(null));
     final AtomicBoolean afterRefreshCalled = new AtomicBoolean(false);
     SearcherManager sm = new SearcherManager(iw, false, new SearcherFactory());
     sm.addListener(new ReferenceManager.RefreshListener() {
@@ -396,7 +400,7 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
 
     final SearcherFactory theEvilOne = new SearcherFactory() {
       @Override
-      public IndexSearcher newSearcher(IndexReader ignored) {
+      public IndexSearcher newSearcher(IndexReader ignored, IndexReader previous) {
         return LuceneTestCase.newSearcher(other);
       }
       };
@@ -445,5 +449,101 @@ public class TestSearcherManager extends ThreadedIndexingAndSearchingTestCase {
     sm.close();
     dir.close();
   }
-  
+
+  private static class MyFilterLeafReader extends FilterLeafReader {
+    public MyFilterLeafReader(LeafReader in) {
+      super(in);
+    }
+  }
+
+  private static class MyFilterDirectoryReader extends FilterDirectoryReader {
+    public MyFilterDirectoryReader(DirectoryReader in) throws IOException {
+      super(in, 
+            new FilterDirectoryReader.SubReaderWrapper() {
+              @Override
+              public LeafReader wrap(LeafReader reader) {
+                FilterLeafReader wrapped = new MyFilterLeafReader(reader);
+                assertEquals(reader, wrapped.getDelegate());
+                return wrapped;
+              }
+            });
+    }
+
+    @Override
+    protected DirectoryReader doWrapDirectoryReader(DirectoryReader in) throws IOException {
+      return new MyFilterDirectoryReader(in);
+    }
+  }
+
+  // LUCENE-6087
+  public void testCustomDirectoryReader() throws Exception {
+    Directory dir = newDirectory();
+    RandomIndexWriter w = new RandomIndexWriter(random(), dir);
+    DirectoryReader nrtReader = w.getReader();
+
+    FilterDirectoryReader reader = new MyFilterDirectoryReader(nrtReader);
+    assertEquals(nrtReader, reader.getDelegate());
+    assertEquals(nrtReader, FilterDirectoryReader.unwrap(reader));
+
+    SearcherManager mgr = new SearcherManager(reader, null);
+    for(int i=0;i<10;i++) {
+      w.addDocument(new Document());
+      mgr.maybeRefresh();
+      IndexSearcher s = mgr.acquire();
+      try {
+        assertTrue(s.getIndexReader() instanceof MyFilterDirectoryReader);
+        for (LeafReaderContext ctx : s.getIndexReader().leaves()) {
+          assertTrue(ctx.reader() instanceof MyFilterLeafReader);
+        }
+      } finally {
+        mgr.release(s);
+      }
+    }
+    mgr.close();
+    w.close();
+    dir.close();
+  }
+
+  public void testPreviousReaderIsPassed() throws IOException {
+    final Directory dir = newDirectory();
+    final IndexWriter w = new IndexWriter(dir, newIndexWriterConfig());
+    w.addDocument(new Document());
+    class MySearcherFactory extends SearcherFactory {
+      IndexReader lastReader = null;
+      IndexReader lastPreviousReader = null;
+      int called = 0;
+      @Override
+      public IndexSearcher newSearcher(IndexReader reader, IndexReader previousReader) throws IOException {
+        called++;
+        lastReader = reader;
+        lastPreviousReader = previousReader;
+        return super.newSearcher(reader, previousReader);
+      }
+    }
+
+    MySearcherFactory factory = new MySearcherFactory();
+    final SearcherManager sm = new SearcherManager(w, random().nextBoolean(), factory);
+    assertEquals(1, factory.called);
+    assertNull(factory.lastPreviousReader);
+    assertNotNull(factory.lastReader);
+    IndexSearcher acquire = sm.acquire();
+    assertSame(factory.lastReader, acquire.getIndexReader());
+    sm.release(acquire);
+
+    final IndexReader lastReader = factory.lastReader;
+    // refresh
+    w.addDocument(new Document());
+    assertTrue(sm.maybeRefresh());
+
+    acquire = sm.acquire();
+    assertSame(factory.lastReader, acquire.getIndexReader());
+    sm.release(acquire);
+    assertNotNull(factory.lastPreviousReader);
+    assertSame(lastReader, factory.lastPreviousReader);
+    assertNotSame(factory.lastReader, lastReader);
+    assertEquals(2, factory.called);
+    w.close();
+    sm.close();
+    dir.close();
+  }
 }

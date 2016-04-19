@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis;
+
 
 import java.io.Reader;
 
@@ -42,18 +42,6 @@ import java.io.Reader;
  * @see DelegatingAnalyzerWrapper
  */
 public abstract class AnalyzerWrapper extends Analyzer {
-
-  /**
-   * Creates a new AnalyzerWrapper.  Since the {@link Analyzer.ReuseStrategy} of
-   * the wrapped Analyzers are unknown, {@link #PER_FIELD_REUSE_STRATEGY} is assumed.
-   * @deprecated Use {@link #AnalyzerWrapper(Analyzer.ReuseStrategy)}
-   * and specify a valid {@link Analyzer.ReuseStrategy}, probably retrieved from the
-   * wrapped analyzer using {@link #getReuseStrategy()}.
-   */
-  @Deprecated
-  protected AnalyzerWrapper() {
-    this(PER_FIELD_REUSE_STRATEGY);
-  }
 
   /**
    * Creates a new AnalyzerWrapper with the given reuse strategy.
@@ -109,8 +97,8 @@ public abstract class AnalyzerWrapper extends Analyzer {
   }
   
   @Override
-  protected final TokenStreamComponents createComponents(String fieldName, Reader aReader) {
-    return wrapComponents(fieldName, getWrappedAnalyzer(fieldName).createComponents(fieldName, aReader));
+  protected final TokenStreamComponents createComponents(String fieldName) {
+    return wrapComponents(fieldName, getWrappedAnalyzer(fieldName).createComponents(fieldName));
   }
 
   @Override

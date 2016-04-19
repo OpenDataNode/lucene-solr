@@ -1,5 +1,3 @@
-package org.apache.lucene.search.join;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.join;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.join;
 
 import org.apache.lucene.index.FilteredTermsEnum;
 import org.apache.lucene.index.Terms;
@@ -25,6 +24,7 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefHash;
+import org.apache.lucene.util.ToStringUtils;
 
 import java.io.IOException;
 import java.util.Comparator;
@@ -58,14 +58,14 @@ class TermsQuery extends MultiTermQuery {
       return TermsEnum.EMPTY;
     }
 
-    return new SeekingTermSetTermsEnum(terms.iterator(null), this.terms, ords);
+    return new SeekingTermSetTermsEnum(terms.iterator(), this.terms, ords);
   }
 
   @Override
   public String toString(String string) {
     return "TermsQuery{" +
         "field=" + field +
-        '}';
+        '}' + ToStringUtils.boost(getBoost());
   }
 
   @Override

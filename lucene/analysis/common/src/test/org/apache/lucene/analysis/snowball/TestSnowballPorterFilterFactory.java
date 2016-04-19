@@ -1,11 +1,10 @@
-package org.apache.lucene.analysis.snowball;
-
-/**
- * Copyright 2004 The Apache Software Foundation
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
@@ -15,11 +14,12 @@ package org.apache.lucene.analysis.snowball;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.snowball;
 
-import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.util.BaseTokenStreamFactoryTestCase;
 import org.apache.lucene.analysis.util.StringMockResourceLoader;
+import org.apache.lucene.util.Version;
 import org.tartarus.snowball.ext.EnglishStemmer;
 
 import java.io.Reader;
@@ -39,7 +39,7 @@ public class TestSnowballPorterFilterFactory extends BaseTokenStreamFactoryTestC
     }
     
     Reader reader = new StringReader(text);
-    TokenStream stream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream stream = whitespaceMockTokenizer(reader);
     stream = tokenFilterFactory("SnowballPorter", "language", "English").create(stream);
     assertTokenStreamContents(stream, gold);
   }
@@ -49,8 +49,8 @@ public class TestSnowballPorterFilterFactory extends BaseTokenStreamFactoryTestC
    */
   public void testProtected() throws Exception {
     Reader reader = new StringReader("ridding of some stemming");
-    TokenStream stream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
-    stream = tokenFilterFactory("SnowballPorter", TEST_VERSION_CURRENT,
+    TokenStream stream = whitespaceMockTokenizer(reader);
+    stream = tokenFilterFactory("SnowballPorter", Version.LATEST,
         new StringMockResourceLoader("ridding"),
         "protected", "protwords.txt",
         "language", "English").create(stream);

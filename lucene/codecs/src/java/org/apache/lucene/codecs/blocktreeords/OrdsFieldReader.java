@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.blocktreeords;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,18 +14,22 @@ package org.apache.lucene.codecs.blocktreeords;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.blocktreeords;
+
 
 import java.io.IOException;
-import java.util.Comparator;
+import java.util.Collection;
+import java.util.Collections;
 
 import org.apache.lucene.codecs.blocktreeords.FSTOrdsOutputs.Output;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.store.ByteArrayDataInput;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.Accountable;
+import org.apache.lucene.util.Accountables;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.automaton.CompiledAutomaton;
 import org.apache.lucene.util.fst.FST;
@@ -115,11 +117,6 @@ final class OrdsFieldReader extends Terms implements Accountable {
   }
 
   @Override
-  public Comparator<BytesRef> getComparator() {
-    return BytesRef.getUTF8SortedAsUnicodeComparator();
-  }
-
-  @Override
   public boolean hasFreqs() {
     return fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS) >= 0;
   }
@@ -140,7 +137,7 @@ final class OrdsFieldReader extends Terms implements Accountable {
   }
 
   @Override
-  public TermsEnum iterator(TermsEnum reuse) throws IOException {
+  public TermsEnum iterator() throws IOException {
     return new OrdsSegmentTermsEnum(this);
   }
 
@@ -175,5 +172,19 @@ final class OrdsFieldReader extends Terms implements Accountable {
   @Override
   public long ramBytesUsed() {
     return ((index!=null)? index.ramBytesUsed() : 0);
+  }
+
+  @Override
+  public Collection<Accountable> getChildResources() {
+    if (index == null) {
+      return Collections.emptyList();
+    } else {
+      return Collections.singleton(Accountables.namedAccountable("term index", index));
+    }
+  }
+  
+  @Override
+  public String toString() {
+    return "OrdsBlockTreeTerms(terms=" + numTerms + ",postings=" + sumDocFreq + ",positions=" + sumTotalTermFreq + ",docs=" + docCount + ")";
   }
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.tokenattributes;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.tokenattributes;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.tokenattributes;
+
 
 import java.nio.CharBuffer;
 
@@ -32,6 +32,9 @@ public class CharTermAttributeImpl extends AttributeImpl implements CharTermAttr
   
   private char[] termBuffer = new char[ArrayUtil.oversize(MIN_BUFFER_SIZE, RamUsageEstimator.NUM_BYTES_CHAR)];
   private int termLength = 0;
+  
+  /** May be used by subclasses to convert to different charsets / encodings for implementing {@link #getBytesRef()}. */
+  protected BytesRefBuilder builder = new BytesRefBuilder();
   
   /** Initialize this attribute with empty term text */
   public CharTermAttributeImpl() {}
@@ -83,17 +86,11 @@ public class CharTermAttributeImpl extends AttributeImpl implements CharTermAttr
   }
   
   // *** TermToBytesRefAttribute interface ***
-  private BytesRefBuilder bytes = new BytesRefBuilder();
-
-  @Override
-  public void fillBytesRef() {
-    bytes.copyChars(termBuffer, 0, termLength);
-    bytes.get();
-  }
 
   @Override
   public BytesRef getBytesRef() {
-    return bytes.get();
+    builder.copyChars(termBuffer, 0, termLength);
+    return builder.get();
   }
   
   // *** CharSequence interface ***
@@ -229,8 +226,8 @@ public class CharTermAttributeImpl extends AttributeImpl implements CharTermAttr
     // Do a deep clone
     t.termBuffer = new char[this.termLength];
     System.arraycopy(this.termBuffer, 0, t.termBuffer, 0, this.termLength);
-    t.bytes = new BytesRefBuilder();
-    t.bytes.copyBytes(bytes.get());
+    t.builder = new BytesRefBuilder();
+    t.builder.copyBytes(builder.get());
     return t;
   }
   
@@ -272,8 +269,7 @@ public class CharTermAttributeImpl extends AttributeImpl implements CharTermAttr
   @Override
   public void reflectWith(AttributeReflector reflector) {
     reflector.reflect(CharTermAttribute.class, "term", toString());
-    fillBytesRef();
-    reflector.reflect(TermToBytesRefAttribute.class, "bytes", bytes.toBytesRef());
+    reflector.reflect(TermToBytesRefAttribute.class, "bytes", getBytesRef());
   }
   
   @Override

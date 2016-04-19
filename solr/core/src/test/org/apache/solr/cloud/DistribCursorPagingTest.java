@@ -16,52 +16,54 @@
  */
 package org.apache.solr.cloud;
 
+import com.carrotsearch.randomizedtesting.annotations.Seed;
+
 import org.apache.lucene.util.LuceneTestCase.Slow;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
-import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.SentinelIntSet;
+import org.apache.lucene.util.TestUtil;
 import org.apache.solr.CursorPagingTest;
-import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.request.LukeRequest;
 import org.apache.solr.client.solrj.response.QueryResponse;
-import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
-import org.apache.solr.common.SolrInputField;
-import org.apache.solr.common.util.NamedList;
-import org.apache.solr.common.params.SolrParams;
+import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.params.CommonParams;
+import org.apache.solr.common.params.CursorMarkParams;
 import org.apache.solr.common.params.GroupParams;
+import org.apache.solr.common.params.SolrParams;
+import org.apache.solr.common.util.NamedList;
+import org.apache.solr.search.CursorMark;
+
 import static org.apache.solr.common.params.CursorMarkParams.CURSOR_MARK_PARAM;
 import static org.apache.solr.common.params.CursorMarkParams.CURSOR_MARK_NEXT;
 import static org.apache.solr.common.params.CursorMarkParams.CURSOR_MARK_START;
-import org.apache.solr.search.CursorMark; //jdoc
 
+import org.apache.solr.search.CursorMark; //jdoc
+import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.List;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Distributed tests of deep paging using {@link CursorMark} and {@link #CURSOR_MARK_PARAM}.
+ * Distributed tests of deep paging using {@link CursorMark} and {@link CursorMarkParams#CURSOR_MARK_PARAM}.
  * 
  * NOTE: this class Reuses some utilities from {@link CursorPagingTest} that assume the same schema and configs.
  *
  * @see CursorPagingTest 
  */
 @Slow
-@SuppressCodecs("Lucene3x")
 public class DistribCursorPagingTest extends AbstractFullDistribZkTestBase {
 
-  public static Logger log = LoggerFactory.getLogger(DistribCursorPagingTest.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   public DistribCursorPagingTest() {
     System.setProperty("solr.test.useFilterForSortedQuery", Boolean.toString(random().nextBoolean()));
@@ -74,8 +76,8 @@ public class DistribCursorPagingTest extends AbstractFullDistribZkTestBase {
     return configString;
   }
 
-  @Override
-  public void doTest() throws Exception {
+  @Test
+  public void test() throws Exception {
     boolean testFinished = false;
     try {
       handle.clear();
@@ -152,7 +154,7 @@ public class DistribCursorPagingTest extends AbstractFullDistribZkTestBase {
     QueryResponse rsp = null;
 
     final String intsort = "int" + (random().nextBoolean() ? "" : "_dv");
-    final String intmissingsort = defaultCodecSupportsMissingDocValues() ? intsort : "int";
+    final String intmissingsort = intsort;
 
     // trivial base case: ensure cursorMark against an empty index doesn't blow up
     cursorMark = CURSOR_MARK_START;
@@ -375,50 +377,54 @@ public class DistribCursorPagingTest extends AbstractFullDistribZkTestBase {
     assertEquals("no more docs, but cursorMark has changed", 
                  cursorMark, assertHashNextCursorMark(rsp));
 
-    // tri-level sort with more dups of primary then fit on a page
-    cursorMark = CURSOR_MARK_START;
-    params = params("q", "*:*", 
-                    "rows","2",
-                    "fl", "id",
-                    "sort", "float asc, "+intsort+" desc, id desc");
-    rsp = query(p(params, CURSOR_MARK_PARAM, cursorMark));
-    assertNumFound(10, rsp);
-    assertStartsAt(0, rsp);
-    assertDocList(rsp, 2, 9);
-    cursorMark = assertHashNextCursorMark(rsp);
-    //
-    rsp = query(p(params, CURSOR_MARK_PARAM, cursorMark));
-    assertNumFound(10, rsp); 
-    assertStartsAt(0, rsp);
-    assertDocList(rsp, 7, 4);
-    cursorMark = assertHashNextCursorMark(rsp);
-    //
-    rsp = query(p(params, CURSOR_MARK_PARAM, cursorMark));
-    assertNumFound(10, rsp); 
-    assertStartsAt(0, rsp);
-    assertDocList(rsp, 3, 8);
-    cursorMark = assertHashNextCursorMark(rsp);
-    //
-    rsp = query(p(params, CURSOR_MARK_PARAM, cursorMark));
-    assertNumFound(10, rsp); 
-    assertStartsAt(0, rsp);
-    assertDocList(rsp, 5, 6);
-    cursorMark = assertHashNextCursorMark(rsp);
-    //
-    rsp = query(p(params, CURSOR_MARK_PARAM, cursorMark));
-    assertNumFound(10, rsp);
-    assertStartsAt(0, rsp);
-    assertDocList(rsp, 1, 0);
-    cursorMark = assertHashNextCursorMark(rsp);
-    // we've exactly exhausted all the results, but solr had no way of know that
-    //
-    rsp = query(p(params, CURSOR_MARK_PARAM, cursorMark));
-    assertNumFound(10, rsp); 
-    assertStartsAt(0, rsp);
-    assertDocList(rsp);
-    assertEquals("no more docs, but cursorMark has changed", 
-                 cursorMark, assertHashNextCursorMark(rsp));
-
+    // tri-level sort with more dups of primary then fit on a page.
+    // also a function based sort using a simple function(s) on same field
+    // (order should be the same in all cases)
+    for (String primarysort : new String[] { "float", "field('float')", "sum(float,42)" }) {
+      cursorMark = CURSOR_MARK_START;
+      params = params("q", "*:*", 
+                      "rows","2",
+                      "fl", "id",
+                      "sort", primarysort + " asc, "+intsort+" desc, id desc");
+      rsp = query(p(params, CURSOR_MARK_PARAM, cursorMark));
+      assertNumFound(10, rsp);
+      assertStartsAt(0, rsp);
+      assertDocList(rsp, 2, 9);
+      cursorMark = assertHashNextCursorMark(rsp);
+      //
+      rsp = query(p(params, CURSOR_MARK_PARAM, cursorMark));
+      assertNumFound(10, rsp); 
+      assertStartsAt(0, rsp);
+      assertDocList(rsp, 7, 4);
+      cursorMark = assertHashNextCursorMark(rsp);
+      //
+      rsp = query(p(params, CURSOR_MARK_PARAM, cursorMark));
+      assertNumFound(10, rsp); 
+      assertStartsAt(0, rsp);
+      assertDocList(rsp, 3, 8);
+      cursorMark = assertHashNextCursorMark(rsp);
+      //
+      rsp = query(p(params, CURSOR_MARK_PARAM, cursorMark));
+      assertNumFound(10, rsp); 
+      assertStartsAt(0, rsp);
+      assertDocList(rsp, 5, 6);
+      cursorMark = assertHashNextCursorMark(rsp);
+      //
+      rsp = query(p(params, CURSOR_MARK_PARAM, cursorMark));
+      assertNumFound(10, rsp);
+      assertStartsAt(0, rsp);
+      assertDocList(rsp, 1, 0);
+      cursorMark = assertHashNextCursorMark(rsp);
+      // we've exactly exhausted all the results, but solr had no way of know that
+      //
+      rsp = query(p(params, CURSOR_MARK_PARAM, cursorMark));
+      assertNumFound(10, rsp); 
+      assertStartsAt(0, rsp);
+      assertDocList(rsp);
+      assertEquals("no more docs, but cursorMark has changed", 
+                   cursorMark, assertHashNextCursorMark(rsp));
+    }
+    
     // trivial base case: rows bigger then number of matches
     cursorMark = CURSOR_MARK_START;
     params = params("q", "id:3 id:7", 
@@ -519,7 +525,7 @@ public class DistribCursorPagingTest extends AbstractFullDistribZkTestBase {
   public void doRandomSortsOnLargeIndex() throws Exception {
     final Collection<String> allFieldNames = getAllSortFieldNames();
 
-    final int numInitialDocs = TestUtil.nextInt(random(),100,200);
+    final int numInitialDocs = TestUtil.nextInt(random(), 100, 200);
     final int totalDocs = atLeast(500);
 
     // start with a smallish number of documents, and test that we can do a full walk using a 
@@ -536,7 +542,7 @@ public class DistribCursorPagingTest extends AbstractFullDistribZkTestBase {
     for (String f : allFieldNames) {
       for (String order : new String[] {" asc", " desc"}) {
         String sort = f + order + ("id".equals(f) ? "" : ", id" + order);
-        String rows = "" + TestUtil.nextInt(random(),13,50);
+        String rows = "" + TestUtil.nextInt(random(), 13, 50);
         SentinelIntSet ids = assertFullWalkNoDups(numInitialDocs,
                                                   params("q", "*:*",
                                                          "fl","id,"+f,
@@ -580,7 +586,7 @@ public class DistribCursorPagingTest extends AbstractFullDistribZkTestBase {
     final int numRandomSorts = atLeast(3);
     for (int i = 0; i < numRandomSorts; i++) {
       final String sort = CursorPagingTest.buildRandomSort(allFieldNames);
-      final String rows = "" + TestUtil.nextInt(random(),63,113);
+      final String rows = "" + TestUtil.nextInt(random(), 63, 113);
       final String fl = random().nextBoolean() ? "id" : "id,score";
       final boolean matchAll = random().nextBoolean();
       final String q = matchAll ? "*:*" : CursorPagingTest.buildRandomQuery();
@@ -639,7 +645,7 @@ public class DistribCursorPagingTest extends AbstractFullDistribZkTestBase {
   /**
    * Given a QueryResponse returned by SolrServer.query, asserts that the
    * numFound on the doc list matches the expectation
-   * @see SolrServer#query
+   * @see org.apache.solr.client.solrj.SolrClient#query
    */
   private void assertNumFound(int expected, QueryResponse rsp) {
     assertEquals(expected, extractDocList(rsp).getNumFound());
@@ -648,7 +654,7 @@ public class DistribCursorPagingTest extends AbstractFullDistribZkTestBase {
   /**
    * Given a QueryResponse returned by SolrServer.query, asserts that the
    * start on the doc list matches the expectation
-   * @see SolrServer#query
+   * @see org.apache.solr.client.solrj.SolrClient#query
    */
   private void assertStartsAt(int expected, QueryResponse rsp) {
     assertEquals(expected, extractDocList(rsp).getStart());
@@ -657,7 +663,7 @@ public class DistribCursorPagingTest extends AbstractFullDistribZkTestBase {
   /**
    * Given a QueryResponse returned by SolrServer.query, asserts that the
    * "id" of the list of documents returned matches the expected list
-   * @see SolrServer#query
+   * @see org.apache.solr.client.solrj.SolrClient#query
    */
   private void assertDocList(QueryResponse rsp, Object... ids) {
     SolrDocumentList docs = extractDocList(rsp);
@@ -671,8 +677,8 @@ public class DistribCursorPagingTest extends AbstractFullDistribZkTestBase {
 
   /**
    * Given a QueryResponse returned by SolrServer.query, asserts that the
-   * response does include {@link #CURSOR_MARK_NEXT} key and returns it
-   * @see SolrServer#query
+   * response does include {@link CursorMarkParams#CURSOR_MARK_NEXT} key and returns it
+   * @see org.apache.solr.client.solrj.SolrClient#query
    */
   private String assertHashNextCursorMark(QueryResponse rsp) {
     String r = rsp.getNextCursorMark();
@@ -688,8 +694,8 @@ public class DistribCursorPagingTest extends AbstractFullDistribZkTestBase {
 
   /**
    * <p>
-   * Given a set of params, executes a cursor query using {@link #CURSOR_MARK_START} 
-   * and then continuously walks the results using {@link #CURSOR_MARK_START} as long 
+   * Given a set of params, executes a cursor query using {@link CursorMarkParams#CURSOR_MARK_START} 
+   * and then continuously walks the results using {@link CursorMarkParams#CURSOR_MARK_START} as long 
    * as a non-0 number of docs ar returned.  This method records the the set of all id's
    * (must be postive ints) encountered and throws an assertion failure if any id is 
    * encountered more then once, or if the set grows above maxSize
@@ -732,7 +738,7 @@ public class DistribCursorPagingTest extends AbstractFullDistribZkTestBase {
             queryAndCompareShards(params("distrib","false",
                                          "q","id:"+id));
           } catch (AssertionError ae) {
-            throw (AssertionError) new AssertionError(msg + ", found shard inconsistency that would explain it...").initCause(ae);
+            throw new AssertionError(msg + ", found shard inconsistency that would explain it...", ae);
           }
           rsp = cloudClient.query(params("q","id:"+id));
           throw new AssertionError(msg + ", don't know why; q=id:"+id+" gives: " + rsp.toString());

@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.cranky;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,9 @@ package org.apache.lucene.codecs.cranky;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.cranky;
 
 import java.io.IOException;
-import java.util.Comparator;
 import java.util.Random;
 
 import org.apache.lucene.codecs.TermVectorsFormat;
@@ -62,14 +60,6 @@ class CrankyTermVectorsFormat extends TermVectorsFormat {
     CrankyTermVectorsWriter(TermVectorsWriter delegate, Random random) {
       this.delegate = delegate;
       this.random = random;
-    }
-    
-    @Override
-    public void abort() {
-      delegate.abort();
-      if (random.nextInt(100) == 0) {
-        throw new RuntimeException(new IOException("Fake IOException from TermVectorsWriter.abort()"));
-      }
     }
     
     @Override
@@ -160,14 +150,6 @@ class CrankyTermVectorsFormat extends TermVectorsFormat {
         throw new IOException("Fake IOException from TermVectorsWriter.addProx()");
       }
       super.addProx(numProx, positions, offsets);
-    }
-
-    @Override
-    public Comparator<BytesRef> getComparator() throws IOException {
-      if (random.nextInt(10000) == 0) {
-        throw new IOException("Fake IOException from TermVectorsWriter.getComparator()");
-      }
-      return delegate.getComparator();
     }
   }
 }

@@ -1,4 +1,3 @@
-package org.apache.solr.handler.component;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.handler.component;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.handler.component;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Set;
@@ -70,7 +69,7 @@ public class ResponseLogComponent extends SearchComponent {
     IndexSchema schema = searcher.getSchema();
     if (schema.getUniqueKeyField() == null) return;
 
-    ResultContext rc = (ResultContext) rb.rsp.getValues().get("response");
+    ResultContext rc = (ResultContext) rb.rsp.getResponse();
     
     if (rc.docs.hasScores()) {
       processScores(rb, rc.docs, schema, searcher);
@@ -114,10 +113,5 @@ public class ResponseLogComponent extends SearchComponent {
   @Override
   public String getDescription() {
     return "A component that inserts the retrieved documents (and optionally scores) into the response log entry";
-  }
-
-  @Override
-  public String getSource() {
-    return null;
   }
 }

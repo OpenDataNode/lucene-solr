@@ -1,4 +1,3 @@
-package org.apache.solr.update.processor;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.update.processor;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.update.processor;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -134,7 +133,7 @@ public class SignatureUpdateProcessorFactory
       if (enabled) {
         SolrInputDocument doc = cmd.getSolrInputDocument();
         List<String> currDocSigFields = null;
-        boolean isPartialUpdate = DistributedUpdateProcessor.isAtomicUpdate(cmd);
+        boolean isPartialUpdate = AtomicUpdateDocumentMerger.isAtomicUpdate(cmd);
         if (sigFields == null || sigFields.size() == 0) {
           if (isPartialUpdate)  {
             throw new SolrException

@@ -1,5 +1,3 @@
-package org.apache.lucene.facet.taxonomy;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,12 @@ package org.apache.lucene.facet.taxonomy;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet.taxonomy;
 
 import java.io.IOException;
 
 import org.apache.lucene.facet.FacetsConfig;
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.DocValues;
 import org.apache.lucene.util.ArrayUtil;
@@ -28,7 +27,6 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IntsRef;
 
 /** Decodes ordinals previously indexed into a BinaryDocValues field */
-
 public class DocValuesOrdinalsReader extends OrdinalsReader {
   private final String field;
 
@@ -43,7 +41,7 @@ public class DocValuesOrdinalsReader extends OrdinalsReader {
   }
 
   @Override
-  public OrdinalsSegmentReader getReader(AtomicReaderContext context) throws IOException {
+  public OrdinalsSegmentReader getReader(LeafReaderContext context) throws IOException {
     BinaryDocValues values0 = context.reader().getBinaryDocValues(field);
     if (values0 == null) {
       values0 = DocValues.emptyBinary();
@@ -65,7 +63,7 @@ public class DocValuesOrdinalsReader extends OrdinalsReader {
     return field;
   }
 
-  /** Subclass & override if you change the encoding. */
+  /** Subclass and override if you change the encoding. */
   protected void decode(BytesRef buf, IntsRef ordinals) {
 
     // grow the buffer up front, even if by a large number of values (buf.length)

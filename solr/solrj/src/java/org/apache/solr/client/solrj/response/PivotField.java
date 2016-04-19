@@ -14,12 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.client.solrj.response;
 
 import java.io.PrintStream;
 import java.io.Serializable;
 import java.util.List;
+import java.util.Map;
+
+import org.apache.solr.common.util.NamedList;
 
 public class PivotField implements Serializable
 {
@@ -27,13 +29,27 @@ public class PivotField implements Serializable
   final Object  _value;
   final int     _count;
   final List<PivotField> _pivot;
-   
-  public PivotField( String f, Object v, int count, List<PivotField> pivot )
+  final Map<String,FieldStatsInfo> _statsInfo;
+  final Map<String,Integer> _querycounts;
+  final List<RangeFacet> _ranges;
+
+  /**
+   * @deprecated Use {@link #PivotField(String,Object,int,List,Map,Map,List)} with null <code>statsInfo</code>, queryCounts and ranges
+   */
+  @Deprecated
+  public PivotField( String f, Object v, int count, List<PivotField> pivot) {
+    this(f, v, count, pivot, null, null, null);
+  }
+
+  public PivotField( String f, Object v, int count, List<PivotField> pivot, Map<String,FieldStatsInfo> statsInfo, Map<String,Integer> queryCounts, List<RangeFacet> ranges)
   {
     _field = f;
     _value = v;
     _count = count;
     _pivot = pivot;
+    _statsInfo = statsInfo;
+    _querycounts= queryCounts;
+    _ranges= ranges;
   }
    
   public String getField() {
@@ -52,6 +68,18 @@ public class PivotField implements Serializable
     return _pivot;
   }
    
+  public Map<String,FieldStatsInfo> getFieldStatsInfo() {
+    return _statsInfo;
+  }
+
+  public Map<String,Integer> getFacetQuery() {
+    return _querycounts;
+  }
+
+  public List<RangeFacet> getFacetRanges() {
+    return _ranges;
+  }
+
   @Override
   public String toString()
   {
@@ -63,7 +91,22 @@ public class PivotField implements Serializable
     for( int i=0; i<indent; i++ ) {
       out.print( "  " );
     }
-    out.println( _field + "=" + _value + " ("+_count+")" );
+    out.print( _field + "=" + _value + " ("+_count+")" );
+    if (null != _statsInfo) {
+      out.print( "->stats:[" ); 
+      for( FieldStatsInfo fieldStatsInfo : _statsInfo.values() ) {
+        out.print(fieldStatsInfo.toString());
+        out.print(",");
+      }
+      out.print("]");
+    }
+    out.println();
+    if(_querycounts != null) {
+      out.println(_querycounts.toString());
+    }
+    if(_ranges != null) {
+      out.println(_ranges.toString());
+    }
     if( _pivot != null ) {
       for( PivotField p : _pivot ) {
         p.write( out, indent+1 );

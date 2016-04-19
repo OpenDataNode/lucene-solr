@@ -1,5 +1,3 @@
-package org.apache.lucene.search.similarities;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,15 @@ package org.apache.lucene.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.similarities;
+
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.FieldInvertState;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.search.CollectionStatistics;
 import org.apache.lucene.search.Explanation;
@@ -32,7 +34,7 @@ import org.apache.lucene.util.SmallFloat;
  * A subclass of {@code Similarity} that provides a simplified API for its
  * descendants. Subclasses are only required to implement the {@link #score}
  * and {@link #toString()} methods. Implementing
- * {@link #explain(Explanation, BasicStats, int, float, float)} is optional,
+ * {@link #explain(List, BasicStats, int, float, float)} is optional,
  * inasmuch as SimilarityBase already provides a basic explanation of the score
  * and the term frequency. However, implementers of a subclass are encouraged to
  * include as much detail about the scoring method as possible.
@@ -81,18 +83,18 @@ public abstract class SimilarityBase extends Similarity {
   }
   
   @Override
-  public final SimWeight computeWeight(float queryBoost, CollectionStatistics collectionStats, TermStatistics... termStats) {
+  public final SimWeight computeWeight(CollectionStatistics collectionStats, TermStatistics... termStats) {
     BasicStats stats[] = new BasicStats[termStats.length];
     for (int i = 0; i < termStats.length; i++) {
-      stats[i] = newStats(collectionStats.field(), queryBoost);
+      stats[i] = newStats(collectionStats.field());
       fillBasicStats(stats[i], collectionStats, termStats[i]);
     }
     return stats.length == 1 ? stats[0] : new MultiSimilarity.MultiStats(stats);
   }
   
   /** Factory method to return a custom stats object */
-  protected BasicStats newStats(String field, float queryBoost) {
-    return new BasicStats(field, queryBoost);
+  protected BasicStats newStats(String field) {
+    return new BasicStats(field);
   }
   
   /** Fills all member fields defined in {@code BasicStats} in {@code stats}. 
@@ -152,14 +154,14 @@ public abstract class SimilarityBase extends Similarity {
    * clauses to explain details of their scoring formulae.
    * <p>The default implementation does nothing.</p>
    * 
-   * @param expl the explanation to extend with details.
+   * @param subExpls the list of details of the explanation to extend
    * @param stats the corpus level statistics.
    * @param doc the document id.
    * @param freq the term frequency.
    * @param docLen the document length.
    */
   protected void explain(
-      Explanation expl, BasicStats stats, int doc, float freq, float docLen) {}
+      List<Explanation> subExpls, BasicStats stats, int doc, float freq, float docLen) {}
   
   /**
    * Explains the score. The implementation here provides a basic explanation
@@ -168,7 +170,7 @@ public abstract class SimilarityBase extends Similarity {
    * attaches the score (computed via the {@link #score(BasicStats, float, float)}
    * method) and the explanation for the term frequency. Subclasses content with
    * this format may add additional details in
-   * {@link #explain(Explanation, BasicStats, int, float, float)}.
+   * {@link #explain(List, BasicStats, int, float, float)}.
    *  
    * @param stats the corpus level statistics.
    * @param doc the document id.
@@ -178,19 +180,17 @@ public abstract class SimilarityBase extends Similarity {
    */
   protected Explanation explain(
       BasicStats stats, int doc, Explanation freq, float docLen) {
-    Explanation result = new Explanation(); 
-    result.setValue(score(stats, freq.getValue(), docLen));
-    result.setDescription("score(" + getClass().getSimpleName() +
-        ", doc=" + doc + ", freq=" + freq.getValue() +"), computed from:");
-    result.addDetail(freq);
+    List<Explanation> subs = new ArrayList<>();
+    explain(subs, stats, doc, freq.getValue(), docLen);
     
-    explain(result, stats, doc, freq.getValue(), docLen);
-    
-    return result;
+    return Explanation.match(
+        score(stats, freq.getValue(), docLen),
+        "score(" + getClass().getSimpleName() + ", doc=" + doc + ", freq=" + freq.getValue() +"), computed from:",
+        subs);
   }
   
   @Override
-  public SimScorer simScorer(SimWeight stats, AtomicReaderContext context) throws IOException {
+  public SimScorer simScorer(SimWeight stats, LeafReaderContext context) throws IOException {
     if (stats instanceof MultiSimilarity.MultiStats) {
       // a multi term query (e.g. phrase). return the summation, 
       // scoring almost as if it were boolean query
@@ -216,14 +216,15 @@ public abstract class SimilarityBase extends Similarity {
 
   // ------------------------------ Norm handling ------------------------------
   
-  /** Norm -> document length map. */
+  /** Norm to document length map. */
   private static final float[] NORM_TABLE = new float[256];
 
   static {
-    for (int i = 0; i < 256; i++) {
+    for (int i = 1; i < 256; i++) {
       float floatNorm = SmallFloat.byte315ToFloat((byte)i);
       NORM_TABLE[i] = 1.0f / (floatNorm * floatNorm);
     }
+    NORM_TABLE[0] = 1.0f / NORM_TABLE[255]; // otherwise inf
   }
 
   /** Encodes the document length in the same way as {@link TFIDFSimilarity}. */

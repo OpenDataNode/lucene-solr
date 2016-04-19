@@ -1,5 +1,3 @@
-package org.apache.solr.store.blockcache;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,11 @@ package org.apache.solr.store.blockcache;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.store.blockcache;
 
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.apache.solr.common.util.SuppressForbidden;
 
 /**
  * @lucene.experimental
@@ -26,10 +27,14 @@ public class BlockCacheLocation {
   
   private int block;
   private int bankId;
-  private long lastAccess = System.currentTimeMillis();
-  private long accesses;
+  private long lastAccess;
+  private long accesses = -1;
   private AtomicBoolean removed = new AtomicBoolean(false);
-  
+
+  public BlockCacheLocation() {
+    touch();
+  }
+
   public void setBlock(int block) {
     this.block = block;
   }
@@ -45,12 +50,13 @@ public class BlockCacheLocation {
   public int getBankId() {
     return bankId;
   }
-  
+
+  @SuppressForbidden(reason = "Need currentTimeMillis, only used by unused getLastAccess")
   public void touch() {
     lastAccess = System.currentTimeMillis();
     accesses++;
   }
-  
+
   public long getLastAccess() {
     return lastAccess;
   }

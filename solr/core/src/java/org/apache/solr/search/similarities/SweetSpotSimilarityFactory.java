@@ -1,5 +1,3 @@
-package org.apache.solr.search.similarities;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,10 @@ package org.apache.solr.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search.similarities;
 
 import org.apache.lucene.misc.SweetSpotSimilarity;
-import org.apache.lucene.search.similarities.DefaultSimilarity; // jdoc
+import org.apache.lucene.search.similarities.ClassicSimilarity; // jdoc
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.schema.SimilarityFactory;
@@ -28,13 +27,13 @@ import static org.apache.solr.common.SolrException.ErrorCode.*;
  * <p>Factory for {@link SweetSpotSimilarity}.</p>
  * <p>
  * <code>SweetSpotSimilarity</code> is an extension of 
- * {@link DefaultSimilarity} that provides additional tuning options for 
+ * {@link ClassicSimilarity} that provides additional tuning options for 
  * specifying the "sweetspot" of optimal <code>tf</code> and 
  * <code>lengthNorm</code> values in the source data.
  * </p>
  * <p>
  * In addition to the <code>discountOverlaps</code> init param supported by 
- * {@link DefaultSimilarityFactory} The following sets of init params are 
+ * {@link ClassicSimilarityFactory} The following sets of init params are 
  * supported by this factory:
  * </p>
  * <ul>
@@ -61,9 +60,9 @@ import static org.apache.solr.common.SolrException.ErrorCode.*;
  *  <li>If any individual settings from one of the above mentioned sets 
  *      are specified, then all settings from that set must be specified.
  *  </li>
- *  <li>If Baseline TF settings are spcified, then Hyperbolic TF settings 
+ *  <li>If Baseline TF settings are specified, then Hyperbolic TF settings
  *      are not permitted, and vice versa. (The settings specified will 
- *      determine wether {@link SweetSpotSimilarity#baselineTf} or 
+ *      determine whether {@link SweetSpotSimilarity#baselineTf} or
  *      {@link SweetSpotSimilarity#hyperbolicTf} will be used.
  *  </li>
  * </ul>
@@ -106,7 +105,7 @@ import static org.apache.solr.common.SolrException.ErrorCode.*;
  *      <code>SweetSpotSimilarity</code> for SVG diagrams showing how the 
  *      each function behaves with various settings/inputs.
  */
-public class SweetSpotSimilarityFactory extends DefaultSimilarityFactory {
+public class SweetSpotSimilarityFactory extends ClassicSimilarityFactory {
   private SweetSpotSimilarity sim = null;
 
   @Override
@@ -139,7 +138,7 @@ public class SweetSpotSimilarityFactory extends DefaultSimilarityFactory {
       throw new SolrException(SERVER_ERROR, "Can not mix hyperbolicTf settings with baselineTf settings");
     }
 
-    // pick Similarity impl based on wether hyper tf settings are set
+    // pick Similarity impl based on whether hyper tf settings are set
     sim = (null != hyper_min) ? new HyperbolicSweetSpotSimilarity() 
       : new SweetSpotSimilarity();
     
@@ -159,7 +158,7 @@ public class SweetSpotSimilarityFactory extends DefaultSimilarityFactory {
 
   @Override
   public Similarity getSimilarity() {
-    assert sim != null : "SweetSpotSimilarityFactory was not initalized";
+    assert sim != null : "SweetSpotSimilarityFactory was not initialized";
     return sim;
   }
   
@@ -183,5 +182,5 @@ public class SweetSpotSimilarityFactory extends DefaultSimilarityFactory {
     public float tf(float freq) {
       return hyperbolicTf(freq);
     }
-  };
+  }
 }

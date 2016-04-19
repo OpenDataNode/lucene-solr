@@ -1,4 +1,3 @@
-package org.apache.lucene.queries.function.valuesource;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,12 +14,13 @@ package org.apache.lucene.queries.function.valuesource;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import org.apache.lucene.index.AtomicReaderContext;
+package org.apache.lucene.queries.function.valuesource;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.docvalues.StrDocValues;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BytesRefBuilder;
 
 import java.util.Map;
 import java.io.IOException;
@@ -45,7 +45,7 @@ public class LiteralValueSource extends ValueSource {
   }
 
   @Override
-  public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+  public FunctionValues getValues(Map context, LeafReaderContext readerContext) throws IOException {
 
     return new StrDocValues(this) {
       @Override
@@ -54,7 +54,7 @@ public class LiteralValueSource extends ValueSource {
       }
 
       @Override
-      public boolean bytesVal(int doc, BytesRef target) {
+      public boolean bytesVal(int doc, BytesRefBuilder target) {
         target.copyBytes(bytesRef);
         return true;
       }

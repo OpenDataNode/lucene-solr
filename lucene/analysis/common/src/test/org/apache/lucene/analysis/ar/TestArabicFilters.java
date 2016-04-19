@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.ar;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.ar;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.ar;
+
 
 import java.io.Reader;
 import java.io.StringReader;
@@ -28,16 +28,6 @@ import org.apache.lucene.analysis.util.BaseTokenStreamFactoryTestCase;
  * Simple tests to ensure the Arabic filter Factories are working.
  */
 public class TestArabicFilters extends BaseTokenStreamFactoryTestCase {
-  /**
-   * Test ArabicLetterTokenizerFactory
-   * @deprecated (3.1) Remove in Lucene 5.0
-   */
-  @Deprecated
-  public void testTokenizer() throws Exception {
-    Reader reader = new StringReader("الذين مَلكت أيمانكم");
-    TokenStream stream = tokenizerFactory("ArabicLetter").create(reader);
-    assertTokenStreamContents(stream, new String[] {"الذين", "مَلكت", "أيمانكم"});
-  }
   
   /**
    * Test ArabicNormalizationFilterFactory
@@ -87,13 +77,6 @@ public class TestArabicFilters extends BaseTokenStreamFactoryTestCase {
     
     try {
       charFilterFactory("Persian", "bogusArg", "bogusValue");
-      fail();
-    } catch (IllegalArgumentException expected) {
-      assertTrue(expected.getMessage().contains("Unknown parameters"));
-    }
-    
-    try {
-      tokenizerFactory("ArabicLetter", "bogusArg", "bogusValue");
       fail();
     } catch (IllegalArgumentException expected) {
       assertTrue(expected.getMessage().contains("Unknown parameters"));

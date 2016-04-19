@@ -22,8 +22,9 @@ import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.valuesource.QueryValueSource;
 import org.apache.lucene.search.Query;
 import org.apache.solr.common.SolrException;
+import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.params.CommonParams;
-import org.apache.solr.common.params.MapSolrParams;
+import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.request.SolrQueryRequest;
@@ -35,11 +36,9 @@ import org.apache.solr.response.transform.TransformerFactory;
 import org.apache.solr.response.transform.ValueSourceAugmenter;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -151,7 +150,7 @@ public class SolrReturnFields extends ReturnFields {
   }
 
   // like getId, but also accepts dashes for legacy fields
-  String getFieldName(QueryParsing.StrParser sp) {
+  public static String getFieldName(StrParser sp) {
     sp.eatws();
     int id_start = sp.pos;
     char ch;
@@ -175,7 +174,7 @@ public class SolrReturnFields extends ReturnFields {
       return;
     }
     try {
-      QueryParsing.StrParser sp = new QueryParsing.StrParser(fl);
+      StrParser sp = new StrParser(fl);
 
       for(;;) {
         sp.opt(',');
@@ -247,12 +246,13 @@ public class SolrReturnFields extends ReturnFields {
         // This is identical to localParams syntax except it uses [] instead of {!}
 
         if (funcStr.startsWith("[")) {
-          Map<String,String> augmenterArgs = new HashMap<>();
-          int end = QueryParsing.parseLocalParams(funcStr, 0, augmenterArgs, req.getParams(), "[", ']');
+          ModifiableSolrParams augmenterParams = new ModifiableSolrParams();
+          int end = QueryParsing.parseLocalParams(funcStr, 0, augmenterParams, req.getParams(), "[", ']');
           sp.pos += end;
 
           // [foo] is short for [type=foo] in localParams syntax
-          String augmenterName = augmenterArgs.remove("type");
+          String augmenterName = augmenterParams.get("type");
+          augmenterParams.remove("type");
           String disp = key;
           if( disp == null ) {
             disp = '['+augmenterName+']';
@@ -260,11 +260,21 @@ public class SolrReturnFields extends ReturnFields {
 
           TransformerFactory factory = req.getCore().getTransformerFactory( augmenterName );
           if( factory != null ) {
-            MapSolrParams augmenterParams = new MapSolrParams( augmenterArgs );
-            augmenters.addTransformer( factory.create(disp, augmenterParams, req) );
+            DocTransformer t = factory.create(disp, augmenterParams, req);
+            if(t!=null) {
+              if(!_wantsAllFields) {
+                String[] extra = t.getExtraRequestFields();
+                if(extra!=null) {
+                  for(String f : extra) {
+                    fields.add(f); // also request this field from IndexSearcher
+                  }
+                }
+              }
+              augmenters.addTransformer( t );
+            }
           }
           else {
-            // unknown transformer?
+            //throw new SolrException(ErrorCode.BAD_REQUEST, "Unknown DocTransformer: "+augmenterName);
           }
           addField(field, disp, augmenters, true);
           continue;
@@ -386,7 +396,16 @@ public class SolrReturnFields extends ReturnFields {
   @Override
   public Set<String> getLuceneFieldNames()
   {
-    return (_wantsAllFields || fields.isEmpty()) ? null : fields;
+    return getLuceneFieldNames(false);
+  }
+
+  @Override
+  public Set<String> getLuceneFieldNames(boolean ignoreWantsAll)
+  {
+    if (ignoreWantsAll)
+      return fields;
+    else
+      return (_wantsAllFields || fields.isEmpty()) ? null : fields;
   }
 
   @Override
@@ -434,5 +453,19 @@ public class SolrReturnFields extends ReturnFields {
   public DocTransformer getTransformer()
   {
     return transformer;
+  }
+
+  @Override
+  public String toString() {
+    final StringBuilder sb = new StringBuilder("SolrReturnFields=(");
+    sb.append("globs="); sb.append(globs);
+    sb.append(",fields="); sb.append(fields);
+    sb.append(",okFieldNames="); sb.append(okFieldNames);
+    sb.append(",reqFieldNames="); sb.append(reqFieldNames);
+    sb.append(",transformer="); sb.append(transformer);
+    sb.append(",wantsScore="); sb.append(_wantsScore);
+    sb.append(",wantsAllFields="); sb.append(_wantsAllFields);
+    sb.append(')');
+    return sb.toString();
   }
 }

@@ -1,7 +1,3 @@
-/**
- * Standard file is based on the TextParser.jj from lucene 2.3
- */
-
 options {
   STATIC=false;
   JAVA_UNICODE_ESCAPE=true;
@@ -13,7 +9,7 @@ options {
 PARSER_BEGIN(StandardSyntaxParser)
 package org.apache.lucene.queryparser.flexible.standard.parser;
 
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -32,6 +28,7 @@ package org.apache.lucene.queryparser.flexible.standard.parser;
 
 import java.io.StringReader;
 import java.util.Vector;
+import java.util.Arrays;
 
 import org.apache.lucene.queryparser.flexible.messages.Message;
 import org.apache.lucene.queryparser.flexible.messages.MessageImpl;
@@ -56,10 +53,6 @@ import org.apache.lucene.queryparser.flexible.standard.nodes.TermRangeQueryNode;
  * Parser for the standard Lucene syntax
  */
 public class StandardSyntaxParser implements SyntaxParser {
-
-  private static final int CONJ_NONE =0;
-  private static final int CONJ_AND =2;
-  private static final int CONJ_OR =2;
 
  
    // syntax parser constructor
@@ -149,20 +142,6 @@ PARSER_END(StandardSyntaxParser)
 | <RANGE_GOOP: (~[ " ", "]", "}" ])+ >
 }
 
-// *   Query  ::= ( Clause )*
-// *   Clause ::= ["+", "-"] [<TERM> ":"] ( <TERM> | "(" Query ")" )
-
-int Conjunction() : {
-  int ret = CONJ_NONE;
-}
-{
-  [
-    <AND> { ret = CONJ_AND; }
-    | <OR>  { ret = CONJ_OR; }
-  ]
-  { return ret; }
-}
-
 ModifierQueryNode.Modifier Modifiers() : {
   ModifierQueryNode.Modifier ret = ModifierQueryNode.Modifier.MOD_NONE;
 }
@@ -183,7 +162,7 @@ QueryNode TopLevelQuery(CharSequence field) :
 {
   q=Query(field) <EOF>
   {
-    return q;
+     return q;
   }
 }
 
@@ -212,14 +191,23 @@ QueryNode Query(CharSequence field) :
        if (clauses == null) {
            clauses = new Vector<QueryNode>();
            clauses.addElement(first);
-       }
-       clauses.addElement(c);
+        }
+        clauses.addElement(c);
     }
     )*
     {
         if (clauses != null) { 
         return new BooleanQueryNode(clauses);
       } else {
+          // Handle the case of a "pure" negation query which
+          // needs to be wrapped as a boolean query, otherwise
+          // the returned result drops the negation.
+          if (first instanceof ModifierQueryNode) {
+            ModifierQueryNode m = (ModifierQueryNode) first;
+            if (m.getModifier() == ModifierQueryNode.Modifier.MOD_NOT) {
+              return new BooleanQueryNode(Arrays.<QueryNode> asList(m));
+            }
+          }
           return first;
       }
     }
@@ -290,18 +278,18 @@ QueryNode ConjQuery(CharSequence field) : {
 //     
 //     // do not create modifier nodes with MOD_NONE
 //      if (mods != ModifierQueryNode.Modifier.MOD_NONE) {
-//        q = new ModifierQueryNode(q, mods);
-//      }
+//          q = new ModifierQueryNode(q, mods);
+//         }
 //      clauses.add(q);
 //   }
 //   (
 //     conj=Conjunction() mods=Modifiers() q=Clause(field)
 //     { 
 //       // do not create modifier nodes with MOD_NONE
-//        if (mods != ModifierQueryNode.Modifier.MOD_NONE) {
+//         if (mods != ModifierQueryNode.Modifier.MOD_NONE) {
 //          q = new ModifierQueryNode(q, mods);
-//        }
-//        clauses.add(q);
+//         }
+//          clauses.add(q);
 //        //TODO: figure out what to do with AND and ORs
 //   }
 //   )*
@@ -321,7 +309,7 @@ QueryNode ModClause(CharSequence field) : {
 {
    mods=Modifiers() q= Clause(field) {
         if (mods != ModifierQueryNode.Modifier.MOD_NONE) {
-          q = new ModifierQueryNode(q, mods);
+           q = new ModifierQueryNode(q, mods);
         }
         return q;
    }
@@ -350,7 +338,7 @@ QueryNode Clause(CharSequence field) : {
               lowerInclusive = true;
               upperInclusive = false;
 
-              qLower = new FieldQueryNode(field,
+               qLower = new FieldQueryNode(field,
                                          "*", term.beginColumn, term.endColumn);
             qUpper = new FieldQueryNode(field,
                                  EscapeQuerySyntaxImpl.discardEscapeChar(term.image), term.beginColumn, term.endColumn);
@@ -445,8 +433,8 @@ QueryNode Term(CharSequence field) : {
            try {
             fms = Float.valueOf(fuzzySlop.image.substring(1)).floatValue();
            } catch (Exception ignored) { }
-          if(fms < 0.0f){
-            throw new ParseException(new MessageImpl(QueryParserMessages.INVALID_SYNTAX_FUZZY_LIMITS));
+           if(fms < 0.0f){
+                throw new ParseException(new MessageImpl(QueryParserMessages.INVALID_SYNTAX_FUZZY_LIMITS));
           } else if (fms >= 1.0f && fms != (int) fms) {
             throw new ParseException(new MessageImpl(QueryParserMessages.INVALID_SYNTAX_FUZZY_EDITS));
           }

@@ -16,19 +16,28 @@
  */
 package org.apache.solr.common.util;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+
 import org.apache.solr.common.EnumFieldValue;
-import org.noggit.CharArr;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.SolrInputField;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.util.*;
-import java.util.Map.Entry;
-import java.nio.ByteBuffer;
+import org.noggit.CharArr;
 
 /**
  * The class is designed to optimaly serialize/deserialize any supported types in Solr response. As we know there are only a limited type of
@@ -36,7 +45,7 @@ import java.nio.ByteBuffer;
  * object in the object tree which does not fall into these types, It must be converted to one of these. Implement an
  * ObjectResolver and pass it over It is expected that this class is used on both end of the pipes. The class has one
  * read method and one write method for each of the datatypes
- * <p/>
+ * <p>
  * Note -- Never re-use an instance of this class for more than one marshal or unmarshall operation. Always create a new
  * instance.
  */
@@ -77,18 +86,38 @@ public class JavaBinCodec {
           NAMED_LST = (byte) (6 << 5), // NamedList
           EXTERN_STRING = (byte) (7 << 5);
 
+  private static final int MAX_UTF8_SIZE_FOR_ARRAY_GROW_STRATEGY = 65536;
+
 
   private static byte VERSION = 2;
-  private ObjectResolver resolver;
+  private final ObjectResolver resolver;
   protected FastOutputStream daos;
+  private StringCache stringCache;
+  private WritableDocFields writableDocFields;
 
   public JavaBinCodec() {
+    resolver =null;
+    writableDocFields =null;
   }
 
   public JavaBinCodec(ObjectResolver resolver) {
-    this.resolver = resolver;
+    this(resolver, null);
+  }
+  public JavaBinCodec setWritableDocFields(WritableDocFields writableDocFields){
+    this.writableDocFields = writableDocFields;
+    return this;
+
   }
 
+  public JavaBinCodec(ObjectResolver resolver, StringCache stringCache) {
+    this.resolver = resolver;
+    this.stringCache = stringCache;
+  }
+
+  public ObjectResolver getResolver() {
+    return resolver;
+  }
+  
   public void marshal(Object nl, OutputStream os) throws IOException {
     init(FastOutputStream.wrap(os));
     try {
@@ -153,9 +182,15 @@ public class JavaBinCodec {
     if (writeKnownType(val)) {
       return;
     } else {
-      Object tmpVal = val;
+      ObjectResolver resolver = null;
+      if(val instanceof ObjectResolver) {
+        resolver = (ObjectResolver)val;
+      }
+      else {
+        resolver = this.resolver;
+      }
       if (resolver != null) {
-        tmpVal = resolver.resolve(val, this);
+        Object tmpVal = resolver.resolve(val, this);
         if (tmpVal == null) return; // null means the resolver took care of it fully
         if (writeKnownType(tmpVal)) return;
       }
@@ -256,18 +291,7 @@ public class JavaBinCodec {
     }
     if (val instanceof SolrDocument) {
       //this needs special treatment to know which fields are to be written
-      if (resolver == null) {
-        writeSolrDocument((SolrDocument) val);
-      } else {
-        Object retVal = resolver.resolve(val, this);
-        if (retVal != null) {
-          if (retVal instanceof SolrDocument) {
-            writeSolrDocument((SolrDocument) retVal);
-          } else {
-            writeVal(retVal);
-          }
-        }
-      }
+      writeSolrDocument((SolrDocument) val);
       return true;
     }
     if (val instanceof SolrInputDocument) {
@@ -280,6 +304,10 @@ public class JavaBinCodec {
     }
     if (val instanceof Iterator) {
       writeIterator((Iterator) val);
+      return true;
+    }
+    if (val instanceof Path) {
+      writeStr(((Path) val).toAbsolutePath().toString());
       return true;
     }
     if (val instanceof Iterable) {
@@ -325,23 +353,46 @@ public class JavaBinCodec {
     dis.readFully(arr);
     return arr;
   }
+  //use this to ignore the writable interface because , child docs will ignore the fl flag
+  // is it a good design?
+  private boolean ignoreWritable =false;
 
   public void writeSolrDocument(SolrDocument doc) throws IOException {
     List<SolrDocument> children = doc.getChildDocuments();
-    int sz = doc.size() + (children==null ? 0 : children.size());
+    int fieldsCount = 0;
+    if(writableDocFields == null || writableDocFields.wantsAllFields() || ignoreWritable){
+      fieldsCount = doc.size();
+    } else {
+      for (Entry<String, Object> e : doc) {
+        if(toWrite(e.getKey())) fieldsCount++;
+      }
+    }
+    int sz = fieldsCount + (children==null ? 0 : children.size());
     writeTag(SOLRDOC);
     writeTag(ORDERED_MAP, sz);
     for (Map.Entry<String, Object> entry : doc) {
       String name = entry.getKey();
-      writeExternString(name);
-      Object val = entry.getValue();
-      writeVal(val);
-    }
-    if (children != null) {
-      for (SolrDocument child : children) {
-        writeSolrDocument(child);
+      if(toWrite(name)) {
+        writeExternString(name);
+        Object val = entry.getValue();
+        writeVal(val);
       }
     }
+      if (children != null) {
+        try {
+          ignoreWritable = true;
+          for (SolrDocument child : children) {
+            writeSolrDocument(child);
+          }
+        } finally {
+          ignoreWritable = false;
+        }
+      }
+
+  }
+
+  protected boolean toWrite(String key) {
+    return writableDocFields == null || ignoreWritable || writableDocFields.isWritable(key);
   }
 
   public SolrDocument readSolrDocument(DataInputInputStream dis) throws IOException {
@@ -539,7 +590,7 @@ public class JavaBinCodec {
 
       @Override
       public String toString() {
-        return "MapEntry[" + key.toString() + ":" + value.toString() + "]";
+        return "MapEntry[" + key + ":" + value + "]";
       }
 
       @Override
@@ -578,25 +629,41 @@ public class JavaBinCodec {
       return;
     }
     int end = s.length();
-    int maxSize = end * 4;
-    if (bytes == null || bytes.length < maxSize) bytes = new byte[maxSize];
-    int sz = ByteUtils.UTF16toUTF8(s, 0, end, bytes, 0);
+    int maxSize = end * ByteUtils.MAX_UTF8_BYTES_PER_CHAR;
 
-    writeTag(STR, sz);
-    daos.write(bytes, 0, sz);
+    if (maxSize <= MAX_UTF8_SIZE_FOR_ARRAY_GROW_STRATEGY) {
+      if (bytes == null || bytes.length < maxSize) bytes = new byte[maxSize];
+      int sz = ByteUtils.UTF16toUTF8(s, 0, end, bytes, 0);
+      writeTag(STR, sz);
+      daos.write(bytes, 0, sz);
+    } else {
+      // double pass logic for large strings, see SOLR-7971
+      int sz = ByteUtils.calcUTF16toUTF8Length(s, 0, end);
+      writeTag(STR, sz);
+      if (bytes == null || bytes.length < 8192) bytes = new byte[8192];
+      ByteUtils.writeUTF16toUTF8(s, 0, end, daos, bytes);
+    }
   }
 
   byte[] bytes;
   CharArr arr = new CharArr();
+  private StringBytes bytesRef = new StringBytes(bytes,0,0);
 
   public String readStr(DataInputInputStream dis) throws IOException {
+    return readStr(dis,null);
+  }
+
+  public String readStr(DataInputInputStream dis, StringCache stringCache) throws IOException {
     int sz = readSize(dis);
     if (bytes == null || bytes.length < sz) bytes = new byte[sz];
     dis.readFully(bytes, 0, sz);
-
-    arr.reset();
-    ByteUtils.UTF8toUTF16(bytes, 0, sz, arr);
-    return arr.toString();
+    if (stringCache != null) {
+      return stringCache.get(bytesRef.reset(bytes, 0, sz));
+    } else {
+      arr.reset();
+      ByteUtils.UTF8toUTF16(bytes, 0, sz, arr);
+      return arr.toString();
+    }
   }
 
   public void writeInt(int val) throws IOException {
@@ -732,7 +799,7 @@ public class JavaBinCodec {
 
   /**
    * Special method for variable length int (copied from lucene). Usually used for writing the length of a
-   * collection/array/map In most of the cases the length can be represented in one byte (length < 127) so it saves 3
+   * collection/array/map In most of the cases the length can be represented in one byte (length &lt; 127) so it saves 3
    * bytes/object
    *
    * @throws IOException If there is a low-level I/O error.
@@ -804,7 +871,8 @@ public class JavaBinCodec {
     if (idx != 0) {// idx != 0 is the index of the extern string
       return stringsList.get(idx - 1);
     } else {// idx == 0 means it has a string value
-      String s = (String) readVal(fis);
+      tagByte = fis.readByte();
+      String s = readStr(fis, stringCache);
       if (stringsList == null) stringsList = new ArrayList<>();
       stringsList.add(s);
       return s;
@@ -816,5 +884,90 @@ public class JavaBinCodec {
     public Object resolve(Object o, JavaBinCodec codec) throws IOException;
   }
 
+  public interface WritableDocFields {
+    public boolean isWritable(String name);
+    public boolean wantsAllFields();
+  }
 
+
+  public static class StringCache {
+    private final Cache<StringBytes, String> cache;
+
+    public StringCache(Cache<StringBytes, String> cache) {
+      this.cache = cache;
+    }
+
+    public String get(StringBytes b) {
+      String result = cache.get(b);
+      if (result == null) {
+        //make a copy because the buffer received may be changed later by the caller
+        StringBytes copy = new StringBytes(Arrays.copyOfRange(b.bytes, b.offset, b.offset + b.length), 0, b.length);
+        CharArr arr = new CharArr();
+        ByteUtils.UTF8toUTF16(b.bytes, b.offset, b.length, arr);
+        result = arr.toString();
+        cache.put(copy, result);
+      }
+      return result;
+    }
+  }
+
+  public static class StringBytes {
+    byte[] bytes;
+
+    /**
+     * Offset of first valid byte.
+     */
+    int offset;
+
+    /**
+     * Length of used bytes.
+     */
+    private int length;
+    private int hash;
+
+    public StringBytes(byte[] bytes, int offset, int length) {
+      reset(bytes, offset, length);
+    }
+
+    StringBytes reset(byte[] bytes, int offset, int length) {
+      this.bytes = bytes;
+      this.offset = offset;
+      this.length = length;
+      hash = bytes == null ? 0 : Hash.murmurhash3_x86_32(bytes, offset, length, 0);
+      return this;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      if (other == null) {
+        return false;
+      }
+      if (other instanceof StringBytes) {
+        return this.bytesEquals((StringBytes) other);
+      }
+      return false;
+    }
+
+    boolean bytesEquals(StringBytes other) {
+      assert other != null;
+      if (length == other.length) {
+        int otherUpto = other.offset;
+        final byte[] otherBytes = other.bytes;
+        final int end = offset + length;
+        for (int upto = offset; upto < end; upto++, otherUpto++) {
+          if (bytes[upto] != otherBytes[otherUpto]) {
+            return false;
+          }
+        }
+        return true;
+      } else {
+        return false;
+      }
+    }
+
+    @Override
+    public int hashCode() {
+      return hash;
+    }
+  }
 }

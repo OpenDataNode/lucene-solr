@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.builders;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard.builders;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.builders;
 
 import org.apache.lucene.queryparser.flexible.core.QueryNodeException;
 import org.apache.lucene.queryparser.flexible.core.builders.QueryTreeBuilder;
@@ -45,7 +44,7 @@ import org.apache.lucene.search.Query;
  * This query tree builder only defines the necessary map to build a
  * {@link Query} tree object. It should be used to generate a {@link Query} tree
  * object from a query node tree processed by a
- * {@link StandardQueryNodeProcessorPipeline}. <br/>
+ * {@link StandardQueryNodeProcessorPipeline}.
  * 
  * @see QueryTreeBuilder
  * @see StandardQueryNodeProcessorPipeline

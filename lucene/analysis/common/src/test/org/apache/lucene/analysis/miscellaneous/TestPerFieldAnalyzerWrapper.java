@@ -1,23 +1,3 @@
-package org.apache.lucene.analysis.miscellaneous;
-
-import java.io.IOException;
-import java.io.Reader;
-import java.util.Collections;
-import java.util.Map;
-
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.AnalyzerWrapper;
-import org.apache.lucene.analysis.BaseTokenStreamTestCase;
-import org.apache.lucene.analysis.MockCharFilter;
-import org.apache.lucene.analysis.MockTokenizer;
-import org.apache.lucene.analysis.TokenFilter;
-import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.analysis.core.SimpleAnalyzer;
-import org.apache.lucene.analysis.core.WhitespaceAnalyzer;
-import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
-import org.apache.lucene.util.IOUtils;
-import org.apache.lucene.util.Rethrow;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -34,6 +14,24 @@ import org.apache.lucene.util.Rethrow;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.miscellaneous;
+
+import java.io.Reader;
+import java.util.Collections;
+import java.util.Map;
+
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.AnalyzerWrapper;
+import org.apache.lucene.analysis.BaseTokenStreamTestCase;
+import org.apache.lucene.analysis.MockCharFilter;
+import org.apache.lucene.analysis.MockTokenizer;
+import org.apache.lucene.analysis.TokenFilter;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.core.SimpleAnalyzer;
+import org.apache.lucene.analysis.core.WhitespaceAnalyzer;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.util.IOUtils;
+
 
 public class TestPerFieldAnalyzerWrapper extends BaseTokenStreamTestCase {
   public void testPerField() throws Exception {
@@ -41,12 +39,13 @@ public class TestPerFieldAnalyzerWrapper extends BaseTokenStreamTestCase {
 
     Map<String,Analyzer> analyzerPerField =
         Collections.<String,Analyzer>singletonMap("special", new SimpleAnalyzer());
+    
+    Analyzer defaultAnalyzer = new WhitespaceAnalyzer();
 
     PerFieldAnalyzerWrapper analyzer =
-              new PerFieldAnalyzerWrapper(new WhitespaceAnalyzer(), analyzerPerField);
+              new PerFieldAnalyzerWrapper(defaultAnalyzer, analyzerPerField);
 
-    TokenStream tokenStream = analyzer.tokenStream("field", text);
-    try {
+    try (TokenStream tokenStream = analyzer.tokenStream("field", text)) {
       CharTermAttribute termAtt = tokenStream.getAttribute(CharTermAttribute.class);
       tokenStream.reset();
 
@@ -56,12 +55,9 @@ public class TestPerFieldAnalyzerWrapper extends BaseTokenStreamTestCase {
                  termAtt.toString());
       assertFalse(tokenStream.incrementToken());
       tokenStream.end();
-    } finally {
-      IOUtils.closeWhileHandlingException(tokenStream);
     }
 
-    tokenStream = analyzer.tokenStream("special", text);
-    try {
+    try (TokenStream tokenStream = analyzer.tokenStream("special", text)) {
       CharTermAttribute termAtt = tokenStream.getAttribute(CharTermAttribute.class);
       tokenStream.reset();
 
@@ -71,9 +67,11 @@ public class TestPerFieldAnalyzerWrapper extends BaseTokenStreamTestCase {
                  termAtt.toString());
       assertFalse(tokenStream.incrementToken());
       tokenStream.end();
-    } finally {
-      IOUtils.closeWhileHandlingException(tokenStream);
     }
+    // TODO: fix this about PFAW, this is crazy
+    analyzer.close();
+    defaultAnalyzer.close();
+    IOUtils.close(analyzerPerField.values());    
   }
   
   public void testReuseWrapped() throws Exception {
@@ -105,11 +103,7 @@ public class TestPerFieldAnalyzerWrapper extends BaseTokenStreamTestCase {
 
       @Override
       protected TokenStreamComponents wrapComponents(String fieldName, TokenStreamComponents components) {
-        try {
-          assertNotSame(specialAnalyzer.tokenStream("special", text), components.getTokenStream());
-        } catch (IOException e) {
-          Rethrow.rethrow(e);
-        }
+        assertNotSame(specialAnalyzer.tokenStream("special", text), components.getTokenStream());
         TokenFilter filter = new ASCIIFoldingFilter(components.getTokenStream());
         return new TokenStreamComponents(components.getTokenizer(), filter);
       }
@@ -131,13 +125,14 @@ public class TestPerFieldAnalyzerWrapper extends BaseTokenStreamTestCase {
     ts4 = wrapper3.tokenStream("moreSpecial", text);
     assertSame(ts3, ts4);
     assertSame(ts2, ts3);
+    IOUtils.close(wrapper3, wrapper2, wrapper1, specialAnalyzer, defaultAnalyzer);
   }
   
   public void testCharFilters() throws Exception {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        return new TokenStreamComponents(new MockTokenizer(reader));
+      protected TokenStreamComponents createComponents(String fieldName) {
+        return new TokenStreamComponents(new MockTokenizer());
       }
 
       @Override
@@ -159,5 +154,7 @@ public class TestPerFieldAnalyzerWrapper extends BaseTokenStreamTestCase {
         new int[] { 0 },
         new int[] { 2 }
     );
+    p.close();
+    a.close(); // TODO: fix this about PFAW, its a trap
   }
 }

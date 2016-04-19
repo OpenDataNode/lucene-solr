@@ -1,5 +1,3 @@
-package org.apache.lucene.search.highlight;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.highlight;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.highlight;
 
 import org.apache.lucene.analysis.Token;
 import org.apache.lucene.analysis.TokenStream;
@@ -24,18 +23,20 @@ import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 
 /**
  * One, or several overlapping tokens, along with the score(s) and the scope of
- * the original text
+ * the original text.
  */
 public class TokenGroup {
 
   private static final int MAX_NUM_TOKENS_PER_GROUP = 50;
-  Token [] tokens=new Token[MAX_NUM_TOKENS_PER_GROUP];
-  float[] scores = new float[MAX_NUM_TOKENS_PER_GROUP];
-  int numTokens = 0;
-  int startOffset = 0;
-  int endOffset = 0;
-  float tot;
-  int matchStartOffset, matchEndOffset;
+
+  private Token[] tokens = new Token[MAX_NUM_TOKENS_PER_GROUP];
+  private float[] scores = new float[MAX_NUM_TOKENS_PER_GROUP];
+  private int numTokens = 0;
+  private int startOffset = 0;
+  private int endOffset = 0;
+  private float tot;
+  private int matchStartOffset;
+  private int matchEndOffset;
 
   private OffsetAttribute offsetAtt;
   private CharTermAttribute termAtt;
@@ -47,8 +48,8 @@ public class TokenGroup {
 
   void addToken(float score) {
     if (numTokens < MAX_NUM_TOKENS_PER_GROUP) {
-      int termStartOffset = offsetAtt.startOffset();
-      int termEndOffset = offsetAtt.endOffset();
+      final int termStartOffset = offsetAtt.startOffset();
+      final int termEndOffset = offsetAtt.endOffset();
       if (numTokens == 0) {
         startOffset = matchStartOffset = termStartOffset;
         endOffset = matchEndOffset = termEndOffset;
@@ -58,8 +59,8 @@ public class TokenGroup {
         endOffset = Math.max(endOffset, termEndOffset);
         if (score > 0) {
           if (tot == 0) {
-            matchStartOffset = offsetAtt.startOffset();
-            matchEndOffset = offsetAtt.endOffset();
+            matchStartOffset = termStartOffset;
+            matchEndOffset = termEndOffset;
           } else {
             matchStartOffset = Math.min(matchStartOffset, termStartOffset);
             matchEndOffset = Math.max(matchEndOffset, termEndOffset);
@@ -84,15 +85,14 @@ public class TokenGroup {
     numTokens = 0;
     tot = 0;
   }
-  
-  /* 
-  * @param index a value between 0 and numTokens -1
-  * @return the "n"th token
-  */
- public Token getToken(int index)
- {
-     return tokens[index];
- }
+
+  /**
+   * @param index a value between 0 and numTokens -1
+   * @return the "n"th token
+   */
+  public Token getToken(int index) {
+    return tokens[index];
+  }
 
   /**
    * 
@@ -104,10 +104,19 @@ public class TokenGroup {
   }
 
   /**
-   * @return the end position in the original text
+   * @return the earliest start offset in the original text of a matching token in this group (score &gt; 0), or
+   * if there are none then the earliest offset of any token in the group.
+   */
+  public int getStartOffset() {
+    return matchStartOffset;
+  }
+
+  /**
+   * @return the latest end offset in the original text of a matching token in this group (score &gt; 0), or
+   * if there are none then {@link #getEndOffset()}.
    */
   public int getEndOffset() {
-    return endOffset;
+    return matchEndOffset;
   }
 
   /**
@@ -118,16 +127,10 @@ public class TokenGroup {
   }
 
   /**
-   * @return the start position in the original text
-   */
-  public int getStartOffset() {
-    return startOffset;
-  }
-
-  /**
    * @return all tokens' scores summed up
    */
   public float getTotalScore() {
     return tot;
   }
+
 }

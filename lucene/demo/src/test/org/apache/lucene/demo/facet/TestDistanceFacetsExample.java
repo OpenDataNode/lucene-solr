@@ -1,5 +1,3 @@
-package org.apache.lucene.demo.facet;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,14 @@ package org.apache.lucene.demo.facet;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.demo.facet;
+
 
 
 import org.apache.lucene.facet.FacetResult;
 import org.apache.lucene.search.TopDocs;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.LuceneTestCase;
 
-@SuppressCodecs("Lucene3x")
 public class TestDistanceFacetsExample extends LuceneTestCase {
 
   public void testSimple() throws Exception {

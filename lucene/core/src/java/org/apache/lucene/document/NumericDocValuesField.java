@@ -1,5 +1,3 @@
-package org.apache.lucene.document;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,10 @@ package org.apache.lucene.document;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.document;
 
-import org.apache.lucene.index.FieldInfo;
+
+import org.apache.lucene.index.DocValuesType;
 
 /**
  * <p>
@@ -40,7 +40,7 @@ public class NumericDocValuesField extends Field {
    */
   public static final FieldType TYPE = new FieldType();
   static {
-    TYPE.setDocValueType(FieldInfo.DocValuesType.NUMERIC);
+    TYPE.setDocValuesType(DocValuesType.NUMERIC);
     TYPE.freeze();
   }
 

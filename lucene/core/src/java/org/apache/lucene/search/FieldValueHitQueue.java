@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,20 +14,20 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.util.PriorityQueue;
 
 /**
  * Expert: A hit queue for sorting by hits by terms in more than one field.
- * Uses <code>FieldCache.DEFAULT</code> for maintaining
- * internal term lookup tables.
  * 
  * @lucene.experimental
  * @since 2.9
- * @see IndexSearcher#search(Query,Filter,int,Sort)
- * @see FieldCache
+ * @see IndexSearcher#search(Query,int,Sort)
  */
 public abstract class FieldValueHitQueue<T extends FieldValueHitQueue.Entry> extends PriorityQueue<T> {
 
@@ -56,17 +54,17 @@ public abstract class FieldValueHitQueue<T extends FieldValueHitQueue.Entry> ext
    * there is just one comparator.
    */
   private static final class OneComparatorFieldValueHitQueue<T extends FieldValueHitQueue.Entry> extends FieldValueHitQueue<T> {
+    
     private final int oneReverseMul;
+    private final FieldComparator<?> oneComparator;
     
     public OneComparatorFieldValueHitQueue(SortField[] fields, int size)
         throws IOException {
       super(fields, size);
 
-      SortField field = fields[0];
-      setComparator(0,field.getComparator(size, 0));
-      oneReverseMul = field.reverse ? -1 : 1;
-
-      reverseMul[0] = oneReverseMul;
+      assert fields.length == 1;
+      oneComparator = comparators[0];
+      oneReverseMul = reverseMul[0];
     }
 
     /**
@@ -81,7 +79,7 @@ public abstract class FieldValueHitQueue<T extends FieldValueHitQueue.Entry> ext
       assert hitA != hitB;
       assert hitA.slot != hitB.slot;
 
-      final int c = oneReverseMul * firstComparator.compare(hitA.slot, hitB.slot);
+      final int c = oneReverseMul * oneComparator.compare(hitA.slot, hitB.slot);
       if (c != 0) {
         return c > 0;
       }
@@ -101,14 +99,6 @@ public abstract class FieldValueHitQueue<T extends FieldValueHitQueue.Entry> ext
     public MultiComparatorsFieldValueHitQueue(SortField[] fields, int size)
         throws IOException {
       super(fields, size);
-
-      int numComparators = comparators.length;
-      for (int i = 0; i < numComparators; ++i) {
-        SortField field = fields[i];
-
-        reverseMul[i] = field.reverse ? -1 : 1;
-        setComparator(i, field.getComparator(size, i));
-      }
     }
   
     @Override
@@ -133,8 +123,7 @@ public abstract class FieldValueHitQueue<T extends FieldValueHitQueue.Entry> ext
   }
   
   // prevent instantiation and extension.
-  @SuppressWarnings({"rawtypes","unchecked"})
-  private FieldValueHitQueue(SortField[] fields, int size) {
+  private FieldValueHitQueue(SortField[] fields, int size) throws IOException {
     super(size);
     // When we get here, fields.length is guaranteed to be > 0, therefore no
     // need to check it again.
@@ -144,8 +133,14 @@ public abstract class FieldValueHitQueue<T extends FieldValueHitQueue.Entry> ext
     // anyway.
     this.fields = fields;
     int numComparators = fields.length;
-    comparators = new FieldComparator[numComparators];
+    comparators = new FieldComparator<?>[numComparators];
     reverseMul = new int[numComparators];
+    for (int i = 0; i < numComparators; ++i) {
+      SortField field = fields[i];
+
+      reverseMul[i] = field.reverse ? -1 : 1;
+      comparators[i] = field.getComparator(size, i);
+    }
   }
 
   /**
@@ -182,15 +177,17 @@ public abstract class FieldValueHitQueue<T extends FieldValueHitQueue.Entry> ext
     return reverseMul;
   }
 
-  public void setComparator(int pos, FieldComparator<?> comparator) {
-    if (pos==0) firstComparator = comparator;
-    comparators[pos] = comparator;
+  public LeafFieldComparator[] getComparators(LeafReaderContext context) throws IOException {
+    LeafFieldComparator[] comparators = new LeafFieldComparator[this.comparators.length];
+    for (int i = 0; i < comparators.length; ++i) {
+      comparators[i] = this.comparators[i].getLeafComparator(context);
+    }
+    return comparators;
   }
 
   /** Stores the sort criteria being used. */
   protected final SortField[] fields;
-  protected final FieldComparator<?>[] comparators;  // use setComparator to change this array
-  protected FieldComparator<?> firstComparator;      // this must always be equal to comparators[0]
+  protected final FieldComparator<?>[] comparators;
   protected final int[] reverseMul;
 
   @Override
@@ -205,7 +202,7 @@ public abstract class FieldValueHitQueue<T extends FieldValueHitQueue.Entry> ext
    * 
    * @param entry The Entry used to create a FieldDoc
    * @return The newly created FieldDoc
-   * @see IndexSearcher#search(Query,Filter,int,Sort)
+   * @see IndexSearcher#search(Query,int,Sort)
    */
   FieldDoc fillFields(final Entry entry) {
     final int n = comparators.length;

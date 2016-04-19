@@ -1,4 +1,3 @@
-package org.apache.solr.core;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.core;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.search.QParserPlugin;
 import org.apache.solr.search.FooQParserPlugin;
@@ -73,6 +72,16 @@ public class SOLR749Test extends SolrTestCaseJ4 {
                   "fq", "{!query v=$qq}"),
               "//result[@numFound=20]");
       assertEquals(20, CountUsageValueSourceParser.getAndClearCount("func_q_wrapping_fq"));
+
+      assertQ("frange in complex bq w/ other mandatory clauses to check skipping",
+              req("q","{!notfoo}(+id:[20 TO 39] -id:25 +{!frange l=4.5 u=4.5 v='countUsage(frange_in_bq,4.5)'})"),
+              "//result[@numFound=19]");
+
+      // don't assume specific clause evaluation ordering.
+      // ideally this is 19, but could be as high as 20 depending on whether frange's
+      // scorer has next() called on it before other clauses skipTo
+      int count = CountUsageValueSourceParser.getAndClearCount("frange_in_bq");
+      assertTrue("frange_in_bq: " + count, (19 <= count && count <= 20));
 
     } finally {
       CountUsageValueSourceParser.clearCounters();

@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.util.List;
 
@@ -70,7 +70,7 @@ public final class ReaderUtil {
    * Returns index of the searcher/reader for document <code>n</code> in the
    * array used to construct this searcher/reader.
    */
-  public static int subIndex(int n, List<AtomicReaderContext> leaves) { // find
+  public static int subIndex(int n, List<LeafReaderContext> leaves) { // find
     // searcher/reader for doc n:
     int size = leaves.size();
     int lo = 0; // search starts array

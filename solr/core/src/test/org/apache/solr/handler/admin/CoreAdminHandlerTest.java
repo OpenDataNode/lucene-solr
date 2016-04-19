@@ -14,17 +14,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler.admin;
 
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 
+import com.carrotsearch.randomizedtesting.rules.SystemPropertiesRestoreRule;
 import org.apache.commons.codec.Charsets;
 import org.apache.commons.io.FileUtils;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.request.CoreAdminRequest;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
@@ -33,15 +35,12 @@ import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.CoreDescriptor;
 import org.apache.solr.core.SolrCore;
-import org.apache.solr.core.SolrXMLCoresLocator;
 import org.apache.solr.response.SolrQueryResponse;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.RuleChain;
 import org.junit.rules.TestRule;
-
-import com.carrotsearch.randomizedtesting.rules.SystemPropertiesRestoreRule;
 
 public class CoreAdminHandlerTest extends SolrTestCaseJ4 {
   
@@ -59,7 +58,7 @@ public class CoreAdminHandlerTest extends SolrTestCaseJ4 {
   public void testCreateWithSysVars() throws Exception {
     useFactory(null); // I require FS-based indexes for this test.
 
-    final File workDir = createTempDir(getCoreName());
+    final File workDir = createTempDir(getCoreName()).toFile();
 
     String coreName = "with_sys_vars";
     File instDir = new File(workDir, coreName);
@@ -74,8 +73,6 @@ public class CoreAdminHandlerTest extends SolrTestCaseJ4 {
         new File(subHome, "solrconfig.snippet.randomindexconfig.xml"));
 
     final CoreContainer cores = h.getCoreContainer();
-    SolrXMLCoresLocator.NonPersistingLocator locator
-        = (SolrXMLCoresLocator.NonPersistingLocator) cores.getCoresLocator();
 
     final CoreAdminHandler admin = new CoreAdminHandler(cores);
 
@@ -99,15 +96,6 @@ public class CoreAdminHandlerTest extends SolrTestCaseJ4 {
             resp);
     assertNull("Exception on create", resp.getException());
 
-    // First assert that these values are persisted.
-    h.validateXPath
-        (locator.xml
-            ,"/solr/cores/core[@name='" + getCoreName() + "' and @instanceDir='${INSTDIR_TEST}']"
-            ,"/solr/cores/core[@name='" + getCoreName() + "' and @dataDir='${DATA_TEST}']"
-            ,"/solr/cores/core[@name='" + getCoreName() + "' and @schema='${SCHEMA_TEST}']"
-            ,"/solr/cores/core[@name='" + getCoreName() + "' and @config='${CONFIG_TEST}']"
-        );
-
     // Now assert that certain values are properly dereferenced in the process of creating the core, see
     // SOLR-4982.
 
@@ -120,32 +108,44 @@ public class CoreAdminHandlerTest extends SolrTestCaseJ4 {
     // Should have segments in the directory pointed to by the ${DATA_TEST}.
     File test = new File(dataDir, "index");
     assertTrue("Should have found index dir at " + test.getAbsolutePath(), test.exists());
-    test = new File(test,"segments.gen");
-    assertTrue("Should have found segments.gen at " + test.getAbsolutePath(), test.exists());
   }
 
   @Test
   public void testCoreAdminHandler() throws Exception {
-    final File workDir = createTempDir();
+    final File workDir = createTempDir().toFile();
     
     final CoreContainer cores = h.getCoreContainer();
 
     final CoreAdminHandler admin = new CoreAdminHandler(cores);
 
-    String instDir;
+    Path instDir;
     try (SolrCore template = cores.getCore("collection1")) {
       assertNotNull(template);
       instDir = template.getCoreDescriptor().getInstanceDir();
     }
-    
-    final File instDirFile = new File(instDir);
-    assertTrue("instDir doesn't exist: " + instDir, instDirFile.exists());
+
+    assertTrue("instDir doesn't exist: " + instDir, Files.exists(instDir));
     final File instPropFile = new File(workDir, "instProp");
-    FileUtils.copyDirectory(instDirFile, instPropFile);
-    
-    // create a new core (using CoreAdminHandler) w/ properties
-    
+    FileUtils.copyDirectory(instDir.toFile(), instPropFile);
+
     SolrQueryResponse resp = new SolrQueryResponse();
+    // Sneaking in a test for using a bad core name
+    try {
+      admin.handleRequestBody
+          (req(CoreAdminParams.ACTION,
+              CoreAdminParams.CoreAdminAction.CREATE.toString(),
+              CoreAdminParams.INSTANCE_DIR, instPropFile.getAbsolutePath(),
+              CoreAdminParams.NAME, "ugly$core=name"),
+              resp);
+
+    } catch (SolrException se) {
+      assertTrue("Expected error message for bad core name.", se.toString().contains("Invalid name"));
+    }
+    CoreDescriptor cd = cores.getCoreDescriptor("ugly$core=name");
+    assertNull("Should NOT have added this core!", cd);
+
+    // create a new core (using CoreAdminHandler) w/ properties
+
     admin.handleRequestBody
       (req(CoreAdminParams.ACTION,
            CoreAdminParams.CoreAdminAction.CREATE.toString(),
@@ -156,7 +156,7 @@ public class CoreAdminHandlerTest extends SolrTestCaseJ4 {
        resp);
     assertNull("Exception on create", resp.getException());
 
-    CoreDescriptor cd = cores.getCoreDescriptor("props");
+    cd = cores.getCoreDescriptor("props");
     assertNotNull("Core not added!", cd);
     assertEquals(cd.getCoreProperty("hoss", null), "man");
     assertEquals(cd.getCoreProperty("foo", null), "baz");
@@ -202,7 +202,43 @@ public class CoreAdminHandlerTest extends SolrTestCaseJ4 {
     assertEquals("bogus_dir_core status isn't empty",
                  0, ((NamedList)status.get("bogus_dir_core")).size());
 
-               
+
+    //Try renaming the core, we should fail
+    // First assert that the props core exists
+    cd = cores.getCoreDescriptor("props");
+    assertNotNull("Core disappeared!", cd);
+
+    // now rename it something else just for kicks since we don't actually test this that I could find.
+    admin.handleRequestBody
+        (req(CoreAdminParams.ACTION,
+            CoreAdminParams.CoreAdminAction.RENAME.toString(),
+            CoreAdminParams.CORE, "props",
+            CoreAdminParams.OTHER, "rename_me"),
+            resp);
+
+    cd = cores.getCoreDescriptor("rename_me");
+    assertNotNull("Core should have been renamed!", cd);
+
+    // Rename it something bogus and see if you get an exception, the old core is still there and the bogus one isn't
+    try {
+      admin.handleRequestBody
+          (req(CoreAdminParams.ACTION,
+              CoreAdminParams.CoreAdminAction.RENAME.toString(),
+              CoreAdminParams.CORE, "rename_me",
+              CoreAdminParams.OTHER, "bad$name"),
+              resp);
+    } catch (SolrException e) { // why the heck does create return a SolrException (admittedly wrapping an IAE)
+      assertTrue("Expected error message for bad core name.", e.getMessage().contains("Invalid name"));
+    }
+
+    cd = cores.getCoreDescriptor("bad$name");
+    assertNull("Core should NOT exist!", cd);
+
+    cd = cores.getCoreDescriptor("rename_me");
+    assertNotNull("Core should have been renamed!", cd);
+
+
+
     // :TODO: because of SOLR-3665 we can't ask for status from all cores
 
   }
@@ -210,47 +246,37 @@ public class CoreAdminHandlerTest extends SolrTestCaseJ4 {
   @Test
   public void testDeleteInstanceDir() throws Exception  {
     File solrHomeDirectory = new File(initCoreDataDir, getClass().getName() + "-corex-"
-        + System.currentTimeMillis());
+        + System.nanoTime());
     solrHomeDirectory.mkdirs();
     copySolrHomeToTemp(solrHomeDirectory, "corex", true);
     File corex = new File(solrHomeDirectory, "corex");
     FileUtils.write(new File(corex, "core.properties"), "", Charsets.UTF_8.toString());
-    JettySolrRunner runner = new JettySolrRunner(solrHomeDirectory.getAbsolutePath(), "/solr", 0);
-    HttpSolrServer server = null;
-    try {
-      runner.start();
-      server = new HttpSolrServer("http://localhost:" + runner.getLocalPort() + "/solr/corex");
-      server.setConnectionTimeout(SolrTestCaseJ4.DEFAULT_CONNECTION_TIMEOUT);
-      server.setSoTimeout(SolrTestCaseJ4.DEFAULT_CONNECTION_TIMEOUT);
+    JettySolrRunner runner = new JettySolrRunner(solrHomeDirectory.getAbsolutePath(), buildJettyConfig("/solr"));
+    runner.start();
+
+    try (HttpSolrClient client = new HttpSolrClient(runner.getBaseUrl() + "/corex")) {
+      client.setConnectionTimeout(SolrTestCaseJ4.DEFAULT_CONNECTION_TIMEOUT);
+      client.setSoTimeout(SolrTestCaseJ4.DEFAULT_CONNECTION_TIMEOUT);
       SolrInputDocument doc = new SolrInputDocument();
       doc.addField("id", "123");
-      server.add(doc);
-      server.commit();
-      server.shutdown();
+      client.add(doc);
+      client.commit();
+    }
 
-      server = new HttpSolrServer("http://localhost:" + runner.getLocalPort() + "/solr");
-      server.setConnectionTimeout(SolrTestCaseJ4.DEFAULT_CONNECTION_TIMEOUT);
-      server.setSoTimeout(SolrTestCaseJ4.DEFAULT_CONNECTION_TIMEOUT);
+    try (HttpSolrClient client = new HttpSolrClient(runner.getBaseUrl().toString())) {
+      client.setConnectionTimeout(SolrTestCaseJ4.DEFAULT_CONNECTION_TIMEOUT);
+      client.setSoTimeout(SolrTestCaseJ4.DEFAULT_CONNECTION_TIMEOUT);
       CoreAdminRequest.Unload req = new CoreAdminRequest.Unload(false);
       req.setDeleteInstanceDir(true);
       req.setCoreName("corex");
-      req.process(server);
-      server.shutdown();
-
-      runner.stop();
-
-      assertFalse("Instance directory exists after core unload with deleteInstanceDir=true : " + corex,
-          corex.exists());
-    } catch (Exception e) {
-      log.error("Exception testing core unload with deleteInstanceDir=true", e);
-    } finally {
-      if (server != null) {
-        server.shutdown();
-      }
-      if (!runner.isStopped())  {
-        runner.stop();
-      }
+      req.process(client);
     }
+
+    runner.stop();
+
+    assertFalse("Instance directory exists after core unload with deleteInstanceDir=true : " + corex,
+        corex.exists());
+
   }
 
   @Test
@@ -268,5 +294,21 @@ public class CoreAdminHandlerTest extends SolrTestCaseJ4 {
     } catch (Exception e) {
       assertEquals("Expected error message for non-existent core.", "Core with core name [non-existent-core] does not exist.", e.getMessage());
     }
+
+    // test null core
+    try {
+      admin.handleRequestBody(
+          req(CoreAdminParams.ACTION,
+              CoreAdminParams.CoreAdminAction.RELOAD.toString())
+          , resp);
+      fail("Was able to successfully reload null core");
+    }
+    catch (Exception e) {
+      if (!(e instanceof SolrException)) {
+        fail("Expected SolrException but got " + e);
+      }
+      assertEquals("Expected error message for non-existent core.", "Core with core name [null] does not exist.", e.getMessage());
+    }
+
   }
 }

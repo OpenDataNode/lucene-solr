@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.config;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,10 @@ package org.apache.lucene.queryparser.flexible.standard.config;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.config;
 
 import java.text.NumberFormat;
+import java.util.Objects;
 
 import org.apache.lucene.document.FieldType.NumericType;
 import org.apache.lucene.search.NumericRangeQuery;
@@ -154,6 +154,11 @@ public class NumericConfig {
     
     return false;
     
+  }
+  
+  @Override
+  public int hashCode() {
+    return Objects.hash(precisionStep, type, format);
   }
   
 }

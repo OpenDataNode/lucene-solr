@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.processors;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard.processors;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.processors;
 
 import java.util.List;
 
@@ -37,7 +36,7 @@ import org.apache.lucene.search.PrefixQuery;
  * have values containing the prefixed wildcard. However, Lucene
  * {@link PrefixQuery} cannot contain the prefixed wildcard. So, this processor
  * basically removed the prefixed wildcard from the
- * {@link PrefixWildcardQueryNode} value. <br/>
+ * {@link PrefixWildcardQueryNode} value.
  * 
  * @see PrefixQuery
  * @see PrefixWildcardQueryNode

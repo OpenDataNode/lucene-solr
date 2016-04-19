@@ -14,29 +14,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.core;
-
-import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.TieredMergePolicy;
-import org.apache.lucene.index.ConcurrentMergeScheduler;
-import org.apache.solr.SolrTestCaseJ4;
-import org.apache.solr.handler.admin.ShowFileRequestHandler;
-import org.apache.solr.update.DirectUpdateHandler2;
-import org.apache.solr.update.SolrIndexConfig;
-import org.apache.solr.util.RefCounted;
-import org.apache.solr.schema.IndexSchema;
-import org.apache.solr.schema.IndexSchemaFactory;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
 
 import javax.xml.xpath.XPathConstants;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Locale;
+
+import org.apache.lucene.index.ConcurrentMergeScheduler;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.TieredMergePolicy;
+import org.apache.lucene.util.InfoStream;
+import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.handler.admin.ShowFileRequestHandler;
+import org.apache.solr.schema.IndexSchema;
+import org.apache.solr.schema.IndexSchemaFactory;
+import org.apache.solr.update.SolrIndexConfig;
+import org.junit.BeforeClass;
+import org.junit.Test;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 
 public class TestConfig extends SolrTestCaseJ4 {
 
@@ -107,51 +103,66 @@ public class TestConfig extends SolrTestCaseJ4 {
     ShowFileRequestHandler handler = (ShowFileRequestHandler) h.getCore().getRequestHandler("/admin/file");
     assertTrue("file handler should have been automatically registered", handler != null);
 
-    //System.out.println( handler.getHiddenFiles() );
-    // should not contain: <gettableFiles>solrconfig.xml schema.xml admin-extra.html</gettableFiles>
-    assertFalse(handler.getHiddenFiles().contains("schema.xml".toUpperCase(Locale.ROOT)));
-    assertTrue(handler.getHiddenFiles().contains("PROTWORDS.TXT"));
-  }
-
-  @Test
-  public void testTermIndexDivisor() throws Exception {
-    IndexReaderFactory irf = h.getCore().getIndexReaderFactory();
-    StandardIndexReaderFactory sirf = (StandardIndexReaderFactory) irf;
-    assertEquals(12, sirf.termInfosIndexDivisor);
   }
 
   // If defaults change, add test methods to cover each version
   @Test
   public void testDefaults() throws Exception {
 
-    SolrConfig sc = new SolrConfig(new SolrResourceLoader("solr/collection1"), "solrconfig-defaults.xml", null);
+    int numDefaultsTested = 0;
+    int numNullDefaults = 0;
+
+    SolrConfig sc = new SolrConfig(new SolrResourceLoader(TEST_PATH().resolve("collection1")), "solrconfig-defaults.xml", null);
     SolrIndexConfig sic = sc.indexConfig;
-    assertEquals("default ramBufferSizeMB", 100.0D, sic.ramBufferSizeMB, 0.0D);
-    assertEquals("default LockType", SolrIndexConfig.LOCK_TYPE_NATIVE, sic.lockType);
-    assertEquals("default useCompoundFile", false, sic.useCompoundFile);
+
+    ++numDefaultsTested; assertEquals("default useCompoundFile", false, sic.getUseCompoundFile());
+
+    ++numDefaultsTested; assertEquals("default maxBufferedDocs", -1, sic.maxBufferedDocs);
+    ++numDefaultsTested; assertEquals("default maxMergeDocs", -1, sic.maxMergeDocs);
+    ++numDefaultsTested; assertEquals("default mergeFactor", -1, sic.mergeFactor);
+
+    ++numDefaultsTested; assertEquals("default ramBufferSizeMB", 100.0D, sic.ramBufferSizeMB, 0.0D);
+    ++numDefaultsTested; assertEquals("default writeLockTimeout", -1, sic.writeLockTimeout);
+    ++numDefaultsTested; assertEquals("default LockType", DirectoryFactory.LOCK_TYPE_NATIVE, sic.lockType);
+
+    ++numDefaultsTested; assertEquals("default infoStream", InfoStream.NO_OUTPUT, sic.infoStream);
+
+    // mergePolicyInfo and mergePolicyFactoryInfo are mutually exclusive
+    // so ++ count them only once for both instead of individually
+    ++numDefaultsTested; ++numNullDefaults;
+    assertNull("default mergePolicyInfo", sic.mergePolicyInfo);
+    assertNull("default mergePolicyFactoryInfo", sic.mergePolicyFactoryInfo);
+
+    ++numDefaultsTested; ++numNullDefaults; assertNull("default mergeSchedulerInfo", sic.mergeSchedulerInfo);
+    ++numDefaultsTested; ++numNullDefaults; assertNull("default mergedSegmentWarmerInfo", sic.mergedSegmentWarmerInfo);
 
     IndexSchema indexSchema = IndexSchemaFactory.buildIndexSchema("schema.xml", solrConfig);
-    IndexWriterConfig iwc = sic.toIndexWriterConfig(indexSchema);
+    IndexWriterConfig iwc = sic.toIndexWriterConfig(h.getCore());
 
     assertNotNull("null mp", iwc.getMergePolicy());
-    assertTrue("mp is not TMP", iwc.getMergePolicy() instanceof TieredMergePolicy);
+    assertTrue("mp is not TieredMergePolicy", iwc.getMergePolicy() instanceof TieredMergePolicy);
 
     assertNotNull("null ms", iwc.getMergeScheduler());
     assertTrue("ms is not CMS", iwc.getMergeScheduler() instanceof ConcurrentMergeScheduler);
+
+    assertNull("non-null mergedSegmentWarmer", iwc.getMergedSegmentWarmer());
+
+    final int numDefaultsMapped = sic.toMap().size();
+    assertEquals("numDefaultsTested vs. numDefaultsMapped+numNullDefaults ="+sic.toMap().keySet(), numDefaultsTested, numDefaultsMapped+numNullDefaults);
   }
 
 
   // sanity check that sys propertis are working as expected
   public void testSanityCheckTestSysPropsAreUsed() throws Exception {
 
-    SolrConfig sc = new SolrConfig(new SolrResourceLoader("solr/collection1"), "solrconfig-basic.xml", null);
+    SolrConfig sc = new SolrConfig(new SolrResourceLoader(TEST_PATH().resolve("collection1")), "solrconfig-basic.xml", null);
     SolrIndexConfig sic = sc.indexConfig;
 
     assertEquals("ramBufferSizeMB sysprop", 
                  Double.parseDouble(System.getProperty("solr.tests.ramBufferSizeMB")), 
                                     sic.ramBufferSizeMB, 0.0D);
     assertEquals("useCompoundFile sysprop", 
-                 Boolean.parseBoolean(System.getProperty("useCompoundFile")), sic.useCompoundFile);
+                 Boolean.parseBoolean(System.getProperty("useCompoundFile")), sic.getUseCompoundFile());
   }
 
 }

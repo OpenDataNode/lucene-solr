@@ -14,10 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.queries.function.valuesource;
 
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.docvalues.BoolDocValues;
@@ -43,7 +42,7 @@ public abstract class MultiBoolFunction extends BoolFunction {
   protected abstract boolean func(int doc, FunctionValues[] vals);
 
   @Override
-  public BoolDocValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+  public BoolDocValues getValues(Map context, LeafReaderContext readerContext) throws IOException {
     final FunctionValues[] vals =  new FunctionValues[sources.size()];
     int i=0;
     for (ValueSource source : sources) {

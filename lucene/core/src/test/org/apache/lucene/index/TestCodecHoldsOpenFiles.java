@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,15 +14,15 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.store.BaseDirectoryWrapper;
-import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.TestUtil;
 
 public class TestCodecHoldsOpenFiles extends LuceneTestCase {
@@ -54,7 +52,7 @@ public class TestCodecHoldsOpenFiles extends LuceneTestCase {
       }
     }
 
-    for(AtomicReaderContext cxt : r.leaves()) {
+    for(LeafReaderContext cxt : r.leaves()) {
       TestUtil.checkReader(cxt.reader());
     }
 

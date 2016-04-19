@@ -1,7 +1,3 @@
-package org.apache.solr.util;
-
-import org.apache.solr.core.CoreContainer;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -18,7 +14,27 @@ import org.apache.solr.core.CoreContainer;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.util;
+
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
+import org.apache.solr.core.CoreContainer;
+import org.apache.solr.core.CoreDescriptor;
+
 
 public class MockCoreContainer extends CoreContainer {
+  public static class MockCoreDescriptor extends CoreDescriptor {
+    public MockCoreDescriptor() {
+      super(new MockCoreContainer(), "mock", Paths.get("path"));
+    }
+  }
   
+  public MockCoreContainer() {
+    super(new Object());
+  }
+  
+  public Path getCoreRootDirectory() {
+    return Paths.get("coreroot");
+  }
 }

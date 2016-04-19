@@ -1,5 +1,3 @@
-package org.apache.lucene.sandbox.queries.regex;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.sandbox.queries.regex;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.sandbox.queries.regex;
 
 import org.apache.lucene.index.FilteredTermsEnum;
 import org.apache.lucene.index.Term;
@@ -30,8 +29,9 @@ import org.apache.lucene.util.StringHelper;
  * <p>
  * Term enumerations are always ordered by Term.compareTo().  Each term in
  * the enumeration is greater than all that precede it.
+ * @deprecated Use core's regex query.
  */
-
+@Deprecated
 public class RegexTermsEnum extends FilteredTermsEnum {
 
   private RegexCapabilities.RegexMatcher regexImpl;

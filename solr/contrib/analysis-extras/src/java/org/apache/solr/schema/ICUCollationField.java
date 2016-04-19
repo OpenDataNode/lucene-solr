@@ -1,5 +1,3 @@
-package org.apache.solr.schema;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.schema;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -28,19 +27,18 @@ import org.apache.commons.io.IOUtils;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
+import org.apache.lucene.analysis.util.ResourceLoader;
 import org.apache.lucene.collation.ICUCollationKeyAnalyzer;
-import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.document.SortedSetDocValuesField;
-import org.apache.lucene.search.ConstantScoreQuery;
-import org.apache.lucene.search.DocTermOrdsRangeFilter;
-import org.apache.lucene.search.FieldCacheRangeFilter;
+import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.search.DocValuesRangeQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermRangeQuery;
+import org.apache.lucene.uninverting.UninvertingReader.Type;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Version;
-import org.apache.lucene.analysis.util.ResourceLoader;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.response.TextResponseWriter;
@@ -224,6 +222,15 @@ public class ICUCollationField extends FieldType {
   public SortField getSortField(SchemaField field, boolean top) {
     return getStringSort(field, top);
   }
+  
+  @Override
+  public Type getUninversionType(SchemaField sf) {
+    if (sf.multiValued()) {
+      return Type.SORTED_SET_BINARY; 
+    } else {
+      return Type.SORTED;
+    }
+  }
 
   @Override
   public Analyzer getIndexAnalyzer() {
@@ -241,26 +248,22 @@ public class ICUCollationField extends FieldType {
    * simple (we already have a threadlocal clone in the reused TS)
    */
   private BytesRef getCollationKey(String field, String text) {
-    TokenStream source = null;
-    try {
-      source = analyzer.tokenStream(field, text);
+    try (TokenStream source = analyzer.tokenStream(field, text)) {
       source.reset();
       
       TermToBytesRefAttribute termAtt = source.getAttribute(TermToBytesRefAttribute.class);
-      BytesRef bytes = termAtt.getBytesRef();
+      
 
       // we control the analyzer here: most errors are impossible
       if (!source.incrementToken())
         throw new IllegalArgumentException("analyzer returned no terms for text: " + text);
-      termAtt.fillBytesRef();
+      BytesRef bytes = BytesRef.deepCopyOf(termAtt.getBytesRef());
       assert !source.incrementToken();
       
       source.end();
-      return BytesRef.deepCopyOf(bytes);
+      return bytes;
     } catch (IOException e) {
       throw new RuntimeException("Unable to analyze text: " + text, e);
-    } finally {
-      IOUtils.closeQuietly(source);
     }
   }
   
@@ -271,11 +274,11 @@ public class ICUCollationField extends FieldType {
     BytesRef high = part2 == null ? null : getCollationKey(f, part2);
     if (!field.indexed() && field.hasDocValues()) {
       if (field.multiValued()) {
-          return new ConstantScoreQuery(DocTermOrdsRangeFilter.newBytesRefRange(
-              field.getName(), low, high, minInclusive, maxInclusive));
+          return DocValuesRangeQuery.newBytesRefRange(
+              field.getName(), low, high, minInclusive, maxInclusive);
         } else {
-          return new ConstantScoreQuery(FieldCacheRangeFilter.newBytesRefRange(
-              field.getName(), low, high, minInclusive, maxInclusive));
+          return DocValuesRangeQuery.newBytesRefRange(
+              field.getName(), low, high, minInclusive, maxInclusive);
         } 
     } else {
       return new TermRangeQuery(field.getName(), low, high, minInclusive, maxInclusive);

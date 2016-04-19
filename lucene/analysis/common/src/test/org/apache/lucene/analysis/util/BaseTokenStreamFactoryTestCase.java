@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.util;
+
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.HashMap;
@@ -28,14 +28,14 @@ import org.apache.lucene.util.Version;
  * Base class for testing tokenstream factories. 
  * <p>
  * Example usage:
- * <code><pre>
+ * <pre class="prettyprint">
  *   Reader reader = new StringReader("Some Text to Analyze");
  *   reader = charFilterFactory("htmlstrip").create(reader);
  *   TokenStream stream = tokenizerFactory("standard").create(reader);
  *   stream = tokenFilterFactory("lowercase").create(stream);
  *   stream = tokenFilterFactory("asciifolding").create(stream);
  *   assertTokenStreamContents(stream, new String[] { "some", "text", "to", "analyze" });
- * </pre></code>
+ * </pre>
  */
 // TODO: this has to be here, since the abstract factories are not in lucene-core,
 // so test-framework doesnt know about them...
@@ -79,7 +79,7 @@ public abstract class BaseTokenStreamFactoryTestCase extends BaseTokenStreamTest
    * be on the test classpath.
    */
   protected TokenizerFactory tokenizerFactory(String name, String... keysAndValues) throws Exception {
-    return tokenizerFactory(name, TEST_VERSION_CURRENT, keysAndValues);
+    return tokenizerFactory(name, Version.LATEST, keysAndValues);
   }
 
   /** 
@@ -114,7 +114,7 @@ public abstract class BaseTokenStreamFactoryTestCase extends BaseTokenStreamTest
    * be on the test classpath.
    */
   protected TokenFilterFactory tokenFilterFactory(String name, String... keysAndValues) throws Exception {
-    return tokenFilterFactory(name, TEST_VERSION_CURRENT, keysAndValues);
+    return tokenFilterFactory(name, Version.LATEST, keysAndValues);
   }
   
   /** 
@@ -131,7 +131,7 @@ public abstract class BaseTokenStreamFactoryTestCase extends BaseTokenStreamTest
    * be on the test classpath.
    */
   protected CharFilterFactory charFilterFactory(String name, String... keysAndValues) throws Exception {
-    return charFilterFactory(name, TEST_VERSION_CURRENT, new ClasspathResourceLoader(getClass()), keysAndValues);
+    return charFilterFactory(name, Version.LATEST, new ClasspathResourceLoader(getClass()), keysAndValues);
   }
   
   /** 

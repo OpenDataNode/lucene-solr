@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.wikipedia;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.wikipedia;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.wikipedia;
+
 
 import java.io.Reader;
 import java.io.StringReader;
@@ -30,7 +30,8 @@ import org.apache.lucene.analysis.wikipedia.WikipediaTokenizer;
 public class TestWikipediaTokenizerFactory extends BaseTokenStreamFactoryTestCase {
   public void testTokenizer() throws Exception {
     Reader reader = new StringReader("This is a [[Category:foo]]");
-    Tokenizer tokenizer = tokenizerFactory("Wikipedia").create(newAttributeFactory(), reader);
+    Tokenizer tokenizer = tokenizerFactory("Wikipedia").create(newAttributeFactory());
+    tokenizer.setReader(reader);
     assertTokenStreamContents(tokenizer,
         new String[] { "This", "is", "a", "foo" },
         new int[] { 0, 5, 8, 21 },

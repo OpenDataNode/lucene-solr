@@ -1,5 +1,3 @@
-package org.apache.lucene.util.automaton;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.util.automaton;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util.automaton;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -40,6 +39,11 @@ import org.apache.lucene.util.UnicodeUtil;
  * basic unoptimized implementations (*slow) for testing.
  */
 public class AutomatonTestUtil {
+  /**
+   * Default maximum number of states that {@link Operations#determinize} should create.
+   */
+  public static final int DEFAULT_MAX_DETERMINIZED_STATES = 1000000;
+
   /** Returns random string, including full unicode range. */
   public static String randomRegexp(Random r) {
     while (true) {
@@ -251,26 +255,33 @@ public class AutomatonTestUtil {
       return ArrayUtil.toIntArray(soFar);
     }
   }
+
+  private static Automaton randomSingleAutomaton(Random random) {
+    while (true) {
+      try {
+        Automaton a1 = new RegExp(AutomatonTestUtil.randomRegexp(random), RegExp.NONE).toAutomaton();
+        if (random.nextBoolean()) {
+          a1 = Operations.complement(a1, DEFAULT_MAX_DETERMINIZED_STATES);
+        }
+        return a1;
+      } catch (TooComplexToDeterminizeException tctde) {
+        // This can (rarely) happen if the random regexp is too hard; just try again...
+      }
+    }
+  }
   
   /** return a random NFA/DFA for testing */
   public static Automaton randomAutomaton(Random random) {
     // get two random Automata from regexps
-    Automaton a1 = new RegExp(AutomatonTestUtil.randomRegexp(random), RegExp.NONE).toAutomaton();
-    if (random.nextBoolean()) {
-      a1 = Operations.complement(a1);
-    }
-    
-    Automaton a2 = new RegExp(AutomatonTestUtil.randomRegexp(random), RegExp.NONE).toAutomaton();
-    if (random.nextBoolean()) {
-      a2 = Operations.complement(a2);
-    }
+    Automaton a1 = randomSingleAutomaton(random);
+    Automaton a2 = randomSingleAutomaton(random);
 
     // combine them in random ways
     switch (random.nextInt(4)) {
       case 0: return Operations.concatenate(a1, a2);
       case 1: return Operations.union(a1, a2);
       case 2: return Operations.intersection(a1, a2);
-      default: return Operations.minus(a1, a2);
+      default: return Operations.minus(a1, a2, DEFAULT_MAX_DETERMINIZED_STATES);
     }
   }
   

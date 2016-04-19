@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.analysis.cn.smart;
 
 import org.apache.lucene.analysis.cn.smart.hhmm.SegTokenFilter; // for javadoc
@@ -58,7 +57,7 @@ public class Utility {
    * @param lstartIndex start offset into larray
    * @param rarray right array
    * @param rstartIndex start offset into rarray
-   * @return 0 if the arrays are equal，1 if larray > rarray, -1 if larray < rarray
+   * @return 0 if the arrays are equal，1 if larray &gt; rarray, -1 if larray &lt; rarray
    */
   public static int compareArray(char[] larray, int lstartIndex, char[] rarray,
       int rstartIndex) {

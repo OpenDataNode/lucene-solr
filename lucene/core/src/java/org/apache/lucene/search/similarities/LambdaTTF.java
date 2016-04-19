@@ -1,5 +1,3 @@
-package org.apache.lucene.search.similarities;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.similarities;
+
 
 import org.apache.lucene.search.Explanation;
 
@@ -35,14 +35,11 @@ public class LambdaTTF extends Lambda {
 
   @Override
   public final Explanation explain(BasicStats stats) {
-    Explanation result = new Explanation();
-    result.setDescription(getClass().getSimpleName() + ", computed from: ");
-    result.setValue(lambda(stats));
-    result.addDetail(
-        new Explanation(stats.getTotalTermFreq(), "totalTermFreq"));
-    result.addDetail(
-        new Explanation(stats.getNumberOfDocuments(), "numberOfDocuments"));
-    return result;
+    return Explanation.match(
+        lambda(stats),
+        getClass().getSimpleName() + ", computed from: ",
+        Explanation.match(stats.getTotalTermFreq(), "totalTermFreq"),
+        Explanation.match(stats.getNumberOfDocuments(), "numberOfDocuments"));
   }
   
   @Override

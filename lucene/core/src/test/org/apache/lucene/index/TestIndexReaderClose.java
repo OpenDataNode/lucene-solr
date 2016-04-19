@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -35,16 +35,16 @@ import org.apache.lucene.util.TestUtil;
 public class TestIndexReaderClose extends LuceneTestCase {
 
   public void testCloseUnderException() throws IOException {
+    Directory dir = newDirectory();
+    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(random(), new MockAnalyzer(random())));
+    writer.commit();
+    writer.close();
     final int iters = 1000 +  1 + random().nextInt(20);
     for (int j = 0; j < iters; j++) {
-      Directory dir = newDirectory();
-      IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(random(), TEST_VERSION_CURRENT, new MockAnalyzer(random())));
-      writer.commit();
-      writer.close();
       DirectoryReader open = DirectoryReader.open(dir);
       final boolean throwOnClose = !rarely();
-      AtomicReader wrap = SlowCompositeReaderWrapper.wrap(open);
-      FilterAtomicReader reader = new FilterAtomicReader(wrap) {
+      LeafReader wrap = SlowCompositeReaderWrapper.wrap(open);
+      FilterLeafReader reader = new FilterLeafReader(wrap) {
         @Override
         protected void doClose() throws IOException {
           super.doClose();
@@ -90,11 +90,11 @@ public class TestIndexReaderClose extends LuceneTestCase {
       }
       assertEquals(0, count.get());
       wrap.close();
-      dir.close();
     }
+    dir.close();
   }
 
-  public void testCoreListenerOnWrapper() throws IOException {
+  public void testCoreListenerOnSlowCompositeReaderWrapper() throws IOException {
     RandomIndexWriter w = new RandomIndexWriter(random(), newDirectory());
     final int numDocs = TestUtil.nextInt(random(), 1, 5);
     for (int i = 0; i < numDocs; ++i) {
@@ -107,46 +107,99 @@ public class TestIndexReaderClose extends LuceneTestCase {
     w.close();
 
     final IndexReader reader = DirectoryReader.open(w.w.getDirectory());
-    final AtomicReader atomicReader = SlowCompositeReaderWrapper.wrap(reader);
+    final LeafReader leafReader = SlowCompositeReaderWrapper.wrap(reader);
     
     final int numListeners = TestUtil.nextInt(random(), 1, 10);
-    final List<AtomicReader.CoreClosedListener> listeners = new ArrayList<>();
+    final List<LeafReader.CoreClosedListener> listeners = new ArrayList<>();
     AtomicInteger counter = new AtomicInteger(numListeners);
     
     for (int i = 0; i < numListeners; ++i) {
-      CountCoreListener listener = new CountCoreListener(counter);
+      CountCoreListener listener = new CountCoreListener(counter, leafReader.getCoreCacheKey());
       listeners.add(listener);
-      atomicReader.addCoreClosedListener(listener);
+      leafReader.addCoreClosedListener(listener);
     }
     for (int i = 0; i < 100; ++i) {
-      atomicReader.addCoreClosedListener(listeners.get(random().nextInt(listeners.size())));
+      leafReader.addCoreClosedListener(listeners.get(random().nextInt(listeners.size())));
     }
     final int removed = random().nextInt(numListeners);
-    Collections.shuffle(listeners);
+    Collections.shuffle(listeners, random());
     for (int i = 0; i < removed; ++i) {
-      atomicReader.removeCoreClosedListener(listeners.get(i));
+      leafReader.removeCoreClosedListener(listeners.get(i));
     }
     assertEquals(numListeners, counter.get());
     // make sure listeners are registered on the wrapped reader and that closing any of them has the same effect
     if (random().nextBoolean()) {
       reader.close();
     } else {
-      atomicReader.close();
+      leafReader.close();
     }
     assertEquals(removed, counter.get());
     w.w.getDirectory().close();
   }
 
-  private static final class CountCoreListener implements AtomicReader.CoreClosedListener {
+  public void testCoreListenerOnWrapperWithDifferentCacheKey() throws IOException {
+    RandomIndexWriter w = new RandomIndexWriter(random(), newDirectory());
+    final int numDocs = TestUtil.nextInt(random(), 1, 5);
+    for (int i = 0; i < numDocs; ++i) {
+      w.addDocument(new Document());
+      if (random().nextBoolean()) {
+        w.commit();
+      }
+    }
+    w.commit();
+    w.close();
+
+    final IndexReader reader = DirectoryReader.open(w.w.getDirectory());
+    // We explicitly define a different cache key
+    final Object coreCacheKey = new Object();
+    final LeafReader leafReader = new FilterLeafReader(SlowCompositeReaderWrapper.wrap(reader)) {
+      @Override
+      public Object getCoreCacheKey() {
+        return coreCacheKey;
+      }
+    };
+
+    final int numListeners = TestUtil.nextInt(random(), 1, 10);
+    final List<LeafReader.CoreClosedListener> listeners = new ArrayList<>();
+    AtomicInteger counter = new AtomicInteger(numListeners);
+    
+    for (int i = 0; i < numListeners; ++i) {
+      CountCoreListener listener = new CountCoreListener(counter, coreCacheKey);
+      listeners.add(listener);
+      leafReader.addCoreClosedListener(listener);
+    }
+    for (int i = 0; i < 100; ++i) {
+      leafReader.addCoreClosedListener(listeners.get(random().nextInt(listeners.size())));
+    }
+    final int removed = random().nextInt(numListeners);
+    Collections.shuffle(listeners, random());
+    for (int i = 0; i < removed; ++i) {
+      leafReader.removeCoreClosedListener(listeners.get(i));
+    }
+    assertEquals(numListeners, counter.get());
+    // make sure listeners are registered on the wrapped reader and that closing any of them has the same effect
+    if (random().nextBoolean()) {
+      reader.close();
+    } else {
+      leafReader.close();
+    }
+    assertEquals(removed, counter.get());
+    w.w.getDirectory().close();
+  }
+
+  private static final class CountCoreListener implements LeafReader.CoreClosedListener {
 
     private final AtomicInteger count;
+    private final Object coreCacheKey;
 
-    public CountCoreListener(AtomicInteger count) {
+    public CountCoreListener(AtomicInteger count, Object coreCacheKey) {
       this.count = count;
+      this.coreCacheKey = coreCacheKey;
     }
 
     @Override
     public void onClose(Object coreCacheKey) {
+      assertSame(this.coreCacheKey, coreCacheKey);
       count.decrementAndGet();
     }
 

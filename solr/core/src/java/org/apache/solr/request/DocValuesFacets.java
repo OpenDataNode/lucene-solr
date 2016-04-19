@@ -1,5 +1,3 @@
-package org.apache.solr.request;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,10 @@ package org.apache.solr.request;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.request;
 
-import java.io.IOException;
-import java.util.List;
-
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.DocValues;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.MultiDocValues.MultiSortedDocValues;
 import org.apache.lucene.index.MultiDocValues.MultiSortedSetDocValues;
 import org.apache.lucene.index.MultiDocValues.OrdinalMap;
@@ -32,7 +28,6 @@ import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Filter;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
-import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.CharsRefBuilder;
 import org.apache.lucene.util.LongValues;
 import org.apache.lucene.util.UnicodeUtil;
@@ -43,6 +38,9 @@ import org.apache.solr.schema.SchemaField;
 import org.apache.solr.search.DocSet;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.util.LongPriorityQueue;
+
+import java.io.IOException;
+import java.util.List;
 
 /**
  * Computes term facets for docvalues field (single or multivalued).
@@ -59,20 +57,23 @@ import org.apache.solr.util.LongPriorityQueue;
 public class DocValuesFacets {
   private DocValuesFacets() {}
   
-  public static NamedList<Integer> getCounts(SolrIndexSearcher searcher, DocSet docs, String fieldName, int offset, int limit, int mincount, boolean missing, String sort, String prefix) throws IOException {
+  public static NamedList<Integer> getCounts(SolrIndexSearcher searcher, DocSet docs, String fieldName, int offset, int limit, int mincount, boolean missing, String sort, String prefix, String contains, boolean ignoreCase) throws IOException {
     SchemaField schemaField = searcher.getSchema().getField(fieldName);
     FieldType ft = schemaField.getType();
     NamedList<Integer> res = new NamedList<>();
+    
+    // TODO: remove multiValuedFieldCache(), check dv type / uninversion type?
+    final boolean multiValued = schemaField.multiValued() || ft.multiValuedFieldCache();
 
     final SortedSetDocValues si; // for term lookups only
     OrdinalMap ordinalMap = null; // for mapping per-segment ords to global ones
-    if (schemaField.multiValued()) {
-      si = searcher.getAtomicReader().getSortedSetDocValues(fieldName);
+    if (multiValued) {
+      si = searcher.getLeafReader().getSortedSetDocValues(fieldName);
       if (si instanceof MultiSortedSetDocValues) {
         ordinalMap = ((MultiSortedSetDocValues)si).mapping;
       }
     } else {
-      SortedDocValues single = searcher.getAtomicReader().getSortedDocValues(fieldName);
+      SortedDocValues single = searcher.getLeafReader().getSortedDocValues(fieldName);
       si = single == null ? null : DocValues.singleton(single);
       if (single instanceof MultiSortedDocValues) {
         ordinalMap = ((MultiSortedDocValues)single).mapping;
@@ -95,7 +96,7 @@ public class DocValuesFacets {
       prefixRef = new BytesRefBuilder();
       prefixRef.copyChars(prefix);
     }
-
+    
     int startTermIndex, endTermIndex;
     if (prefix!=null) {
       startTermIndex = (int) si.lookupTerm(prefixRef.get());
@@ -111,7 +112,7 @@ public class DocValuesFacets {
 
     final int nTerms=endTermIndex-startTermIndex;
     int missingCount = -1; 
-    final CharsRef charsRef = new CharsRef();
+    final CharsRefBuilder charsRef = new CharsRefBuilder();
     if (nTerms>0 && docs.size() >= mincount) {
 
       // count collection array only needs to be as big as the number of terms we are
@@ -119,16 +120,16 @@ public class DocValuesFacets {
       final int[] counts = new int[nTerms];
 
       Filter filter = docs.getTopFilter();
-      List<AtomicReaderContext> leaves = searcher.getTopReaderContext().leaves();
+      List<LeafReaderContext> leaves = searcher.getTopReaderContext().leaves();
       for (int subIndex = 0; subIndex < leaves.size(); subIndex++) {
-        AtomicReaderContext leaf = leaves.get(subIndex);
+        LeafReaderContext leaf = leaves.get(subIndex);
         DocIdSet dis = filter.getDocIdSet(leaf, null); // solr docsets already exclude any deleted docs
         DocIdSetIterator disi = null;
         if (dis != null) {
           disi = dis.iterator();
         }
         if (disi != null) {
-          if (schemaField.multiValued()) {
+          if (multiValued) {
             SortedSetDocValues sub = leaf.reader().getSortedSetDocValues(fieldName);
             if (sub == null) {
               sub = DocValues.emptySortedSet();
@@ -168,6 +169,12 @@ public class DocValuesFacets {
         int min=mincount-1;  // the smallest value in the top 'N' values
         for (int i=(startTermIndex==-1)?1:0; i<nTerms; i++) {
           int c = counts[i];
+          if (contains != null) {
+            final BytesRef term = si.lookupOrd(startTermIndex+i);
+            if (!SimpleFacets.contains(term.utf8ToString(), contains, ignoreCase)) {
+              continue;
+            }
+          }
           if (c>min) {
             // NOTE: we use c>min rather than c>=min as an optimization because we are going in
             // index order, so we already know that the keys are ordered.  This can be very
@@ -201,18 +208,28 @@ public class DocValuesFacets {
       } else {
         // add results in index order
         int i=(startTermIndex==-1)?1:0;
-        if (mincount<=0) {
-          // if mincount<=0, then we won't discard any terms and we know exactly
-          // where to start.
+        if (mincount<=0 && contains == null) {
+          // if mincount<=0 and we're not examining the values for contains, then
+          // we won't discard any terms and we know exactly where to start.
           i+=off;
           off=0;
         }
 
         for (; i<nTerms; i++) {          
           int c = counts[i];
-          if (c<mincount || --off>=0) continue;
+          if (c<mincount) continue;
+          BytesRef term = null;
+          if (contains != null) {
+            term = si.lookupOrd(startTermIndex+i);
+            if (!SimpleFacets.contains(term.utf8ToString(), contains, ignoreCase)) {
+              continue;
+            }
+          }
+          if (--off>=0) continue;
           if (--lim<0) break;
-          final BytesRef term = si.lookupOrd(startTermIndex+i);
+          if (term == null) {
+            term = si.lookupOrd(startTermIndex+i);
+          }
           ft.indexedToReadable(term, charsRef);
           res.add(charsRef.toString(), c);
         }

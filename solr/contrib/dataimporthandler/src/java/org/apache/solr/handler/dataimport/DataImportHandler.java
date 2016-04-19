@@ -21,6 +21,7 @@ import static org.apache.solr.handler.dataimport.DataImporter.IMPORT_CMD;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.params.CommonParams;
+import org.apache.solr.common.params.MapSolrParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.params.UpdateParams;
@@ -44,6 +45,7 @@ import org.apache.solr.util.plugin.SolrCoreAware;
 
 import java.util.*;
 import java.io.StringReader;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Constructor;
 
 import org.slf4j.Logger;
@@ -57,13 +59,12 @@ import org.xml.sax.InputSource;
  * <p>
  * It is configured in solrconfig.xml
  * </p>
- * <p/>
  * <p>
  * Refer to <a
  * href="http://wiki.apache.org/solr/DataImportHandler">http://wiki.apache.org/solr/DataImportHandler</a>
  * for more details.
  * </p>
- * <p/>
+ * <p>
  * <b>This API is experimental and subject to change</b>
  *
  * @since solr 1.3
@@ -71,7 +72,7 @@ import org.xml.sax.InputSource;
 public class DataImportHandler extends RequestHandlerBase implements
         SolrCoreAware {
 
-  private static final Logger LOG = LoggerFactory.getLogger(DataImportHandler.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private DataImporter importer;
 
@@ -85,30 +86,26 @@ public class DataImportHandler extends RequestHandlerBase implements
   public DataImporter getImporter() {
     return this.importer;
   }
-  
+
   @Override
   @SuppressWarnings("unchecked")
   public void init(NamedList args) {
     super.init(args);
+    Map<String,String> macro = new HashMap<>();
+    macro.put("expandMacros", "false");
+    defaults = SolrParams.wrapDefaults(defaults, new MapSolrParams(macro));
   }
 
   @Override
   @SuppressWarnings("unchecked")
   public void inform(SolrCore core) {
     try {
-      //hack to get the name of this handler
-      for (Map.Entry<String, SolrRequestHandler> e : core.getRequestHandlers().entrySet()) {
-        SolrRequestHandler handler = e.getValue();
-        //this will not work if startup=lazy is set
-        if( this == handler) {
-          String name= e.getKey();
-          if(name.startsWith("/")){
-            myName = name.substring(1);
-          }
-          // some users may have '/' in the handler name. replace with '_'
-          myName = myName.replaceAll("/","_") ;
-        }
+      String name = getPluginInfo().name;
+      if (name.startsWith("/")) {
+        myName = name.substring(1);
       }
+      // some users may have '/' in the handler name. replace with '_'
+      myName = myName.replaceAll("/", "_");
       debugEnabled = StrUtils.parseBool((String)initArgs.get(ENABLE_DEBUG), true);
       importer = new DataImporter(core, myName);         
     } catch (Exception e) {
@@ -178,7 +175,7 @@ public class DataImportHandler extends RequestHandlerBase implements
               IMPORT_CMD.equals(command)) {
         importer.maybeReloadConfiguration(requestParams, defaultParams);
         UpdateRequestProcessorChain processorChain =
-                req.getCore().getUpdateProcessingChain(params.get(UpdateParams.UPDATE_CHAIN));
+                req.getCore().getUpdateProcessorChain(params);
         UpdateRequestProcessor processor = processorChain.createProcessor(req, rsp);
         SolrResourceLoader loader = req.getCore().getResourceLoader();
         DIHWriter sw = getSolrWriter(processor, loader, requestParams, req);
@@ -214,8 +211,6 @@ public class DataImportHandler extends RequestHandlerBase implements
     rsp.add("status", importer.isBusy() ? "busy" : "idle");
     rsp.add("importResponse", message);
     rsp.add("statusMessages", importer.getStatusMessages());
-
-    RequestHandlerUtils.addExperimentalFormatWarning(rsp);
   }
 
   private Map<String, Object> getParamsMap(SolrParams params) {
@@ -313,11 +308,6 @@ public class DataImportHandler extends RequestHandlerBase implements
   @Override
   public String getDescription() {
     return DataImporter.MSG.JMX_DESC;
-  }
-
-  @Override
-  public String getSource() {
-    return null;
   }
 
   public static final String ENABLE_DEBUG = "enableDebug";

@@ -1,5 +1,3 @@
-package org.apache.solr.update;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,22 +14,23 @@ package org.apache.solr.update;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.update;
+
+import java.nio.file.Path;
+import java.util.Map;
 
 import org.apache.lucene.index.ConcurrentMergeScheduler;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.SimpleMergedSegmentWarmer;
 import org.apache.lucene.index.TieredMergePolicy;
 import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.core.DirectoryFactory;
 import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.TestMergePolicyConfig;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.IndexSchemaFactory;
+import org.junit.BeforeClass;
 import org.junit.Test;
-import org.xml.sax.SAXException;
-
-import javax.xml.parsers.ParserConfigurationException;
-import java.io.File;
-import java.io.IOException;
 
 /**
  * Testcase for {@link SolrIndexConfig}
@@ -40,13 +39,28 @@ import java.io.IOException;
  */
 public class SolrIndexConfigTest extends SolrTestCaseJ4 {
 
+  private static final String solrConfigFileName = "solrconfig.xml";
+  private static final String solrConfigFileNameWarmerRandomMergePolicy = "solrconfig-warmer.xml";
+  private static final String solrConfigFileNameWarmerRandomMergePolicyFactory = "solrconfig-warmer-randommergepolicyfactory.xml";
+  private static final String solrConfigFileNameTieredMergePolicy = "solrconfig-tieredmergepolicy.xml";
+  private static final String solrConfigFileNameTieredMergePolicyFactory = "solrconfig-tieredmergepolicyfactory.xml";
+  private static final String schemaFileName = "schema.xml";
+
+  @BeforeClass
+  public static void beforeClass() throws Exception {
+    initCore(solrConfigFileName,schemaFileName);
+  }
+  
+  private final Path instanceDir = TEST_PATH().resolve("collection1");
+
   @Test
   public void testFailingSolrIndexConfigCreation() {
     try {
-      SolrConfig solrConfig = new SolrConfig("bad-mp-solrconfig.xml");
+      SolrConfig solrConfig = new SolrConfig(random().nextBoolean() ? "bad-mp-solrconfig.xml" : "bad-mpf-solrconfig.xml");
       SolrIndexConfig solrIndexConfig = new SolrIndexConfig(solrConfig, null, null);
-      IndexSchema indexSchema = IndexSchemaFactory.buildIndexSchema("schema.xml", solrConfig);
-      solrIndexConfig.toIndexWriterConfig(indexSchema);
+      IndexSchema indexSchema = IndexSchemaFactory.buildIndexSchema(schemaFileName, solrConfig);
+      h.getCore().setLatestSchema(indexSchema);
+      solrIndexConfig.toIndexWriterConfig(h.getCore());
       fail("a mergePolicy should have an empty constructor in order to be instantiated in Solr thus this should fail ");
     } catch (Exception e) {
       // it failed as expected
@@ -55,17 +69,16 @@ public class SolrIndexConfigTest extends SolrTestCaseJ4 {
 
   @Test
   public void testTieredMPSolrIndexConfigCreation() throws Exception {
-    SolrConfig solrConfig = new SolrConfig("solr" + File.separator
-        + "collection1", "solrconfig-tieredmergepolicy.xml", null);
-    SolrIndexConfig solrIndexConfig = new SolrIndexConfig(solrConfig, null,
-        null);
-    assertNotNull(solrIndexConfig);
-    IndexSchema indexSchema = IndexSchemaFactory.buildIndexSchema("schema.xml", solrConfig);
-
-    IndexWriterConfig iwc = solrIndexConfig.toIndexWriterConfig(indexSchema);
+    String solrConfigFileName = random().nextBoolean() ? solrConfigFileNameTieredMergePolicy : solrConfigFileNameTieredMergePolicyFactory;
+    SolrConfig solrConfig = new SolrConfig(instanceDir, solrConfigFileName, null);
+    SolrIndexConfig solrIndexConfig = new SolrIndexConfig(solrConfig, null, null);
+    IndexSchema indexSchema = IndexSchemaFactory.buildIndexSchema(schemaFileName, solrConfig);
+    
+    h.getCore().setLatestSchema(indexSchema);
+    IndexWriterConfig iwc = solrIndexConfig.toIndexWriterConfig(h.getCore());
 
     assertNotNull("null mp", iwc.getMergePolicy());
-    assertTrue("mp is not TMP", iwc.getMergePolicy() instanceof TieredMergePolicy);
+    assertTrue("mp is not TieredMergePolicy", iwc.getMergePolicy() instanceof TieredMergePolicy);
     TieredMergePolicy mp = (TieredMergePolicy) iwc.getMergePolicy();
     assertEquals("mp.maxMergeAtOnceExplicit", 19, mp.getMaxMergeAtOnceExplicit());
     assertEquals("mp.segmentsPerTier",9,(int)mp.getSegmentsPerTier());
@@ -78,29 +91,84 @@ public class SolrIndexConfigTest extends SolrTestCaseJ4 {
 
   }
 
-  @Test
-  public void testCheckIntegrityAtMerge() throws Exception {
-    SolrConfig solrConfig = new SolrConfig("solr" + File.separator
-        + "collection1", "solrconfig-indexconfig.xml", null);
-    SolrIndexConfig solrIndexConfig = new SolrIndexConfig(solrConfig, null, null);
-    assertNotNull(solrIndexConfig.checkIntegrityAtMerge);
-    assertTrue(solrIndexConfig.checkIntegrityAtMerge);
-    IndexSchema indexSchema = IndexSchemaFactory.buildIndexSchema("schema.xml", solrConfig);
-    IndexWriterConfig iwc = solrIndexConfig.toIndexWriterConfig(indexSchema);
-    assertTrue(iwc.getCheckIntegrityAtMerge());
-  }
-
   public void testMergedSegmentWarmerIndexConfigCreation() throws Exception {
-    SolrConfig solrConfig = new SolrConfig("solr" + File.separator
-        + "collection1", "solrconfig-warmer.xml", null);
+    SolrConfig solrConfig = new SolrConfig(instanceDir, random().nextBoolean() ? solrConfigFileNameWarmerRandomMergePolicy : solrConfigFileNameWarmerRandomMergePolicyFactory, null);
     SolrIndexConfig solrIndexConfig = new SolrIndexConfig(solrConfig, null, null);
     assertNotNull(solrIndexConfig);
     assertNotNull(solrIndexConfig.mergedSegmentWarmerInfo);
     assertEquals(SimpleMergedSegmentWarmer.class.getName(),
         solrIndexConfig.mergedSegmentWarmerInfo.className);
-    IndexSchema indexSchema = IndexSchemaFactory.buildIndexSchema("schema.xml", solrConfig);
-    IndexWriterConfig iwc = solrIndexConfig.toIndexWriterConfig(indexSchema);
+    IndexSchema indexSchema = IndexSchemaFactory.buildIndexSchema(schemaFileName, solrConfig);
+    h.getCore().setLatestSchema(indexSchema);
+    IndexWriterConfig iwc = solrIndexConfig.toIndexWriterConfig(h.getCore());
     assertEquals(SimpleMergedSegmentWarmer.class, iwc.getMergedSegmentWarmer().getClass());
   }
 
+  public void testToMap() throws Exception {
+    final String solrConfigFileNameWarmer = random().nextBoolean() ? solrConfigFileNameWarmerRandomMergePolicy : solrConfigFileNameWarmerRandomMergePolicyFactory;
+    final String solrConfigFileNameTMP = random().nextBoolean() ? solrConfigFileNameTieredMergePolicy : solrConfigFileNameTieredMergePolicyFactory;
+    final String solrConfigFileName = (random().nextBoolean() ? solrConfigFileNameWarmer : solrConfigFileNameTMP);
+    SolrConfig solrConfig = new SolrConfig(instanceDir, solrConfigFileName, null);
+    SolrIndexConfig solrIndexConfig = new SolrIndexConfig(solrConfig, null, null);
+    assertNotNull(solrIndexConfig);
+    if (solrConfigFileName.equals(solrConfigFileNameTieredMergePolicyFactory) ||
+        solrConfigFileName.equals(solrConfigFileNameWarmerRandomMergePolicyFactory)) {
+      assertNotNull(solrIndexConfig.mergePolicyFactoryInfo);
+    } else {
+      assertNotNull(solrIndexConfig.mergePolicyInfo);
+    }
+    if (solrConfigFileName.equals(solrConfigFileNameWarmerRandomMergePolicy) ||
+        solrConfigFileName.equals(solrConfigFileNameWarmerRandomMergePolicyFactory)) {
+      assertNotNull(solrIndexConfig.mergedSegmentWarmerInfo);
+    } else {
+      assertNull(solrIndexConfig.mergedSegmentWarmerInfo);
+    }
+    assertNotNull(solrIndexConfig.mergeSchedulerInfo);
+
+    Map<String, Object> m = solrIndexConfig.toMap();
+    int mSizeExpected = 0;
+
+    ++mSizeExpected; assertTrue(m.get("useCompoundFile") instanceof Boolean);
+
+    ++mSizeExpected; assertTrue(m.get("maxBufferedDocs") instanceof Integer);
+    ++mSizeExpected; assertTrue(m.get("maxMergeDocs") instanceof Integer);
+    ++mSizeExpected; assertTrue(m.get("mergeFactor") instanceof Integer);
+
+    ++mSizeExpected; assertTrue(m.get("ramBufferSizeMB") instanceof Double);
+
+    ++mSizeExpected; assertTrue(m.get("writeLockTimeout") instanceof Integer);
+
+    ++mSizeExpected; assertTrue(m.get("lockType") instanceof String);
+    {
+      final String lockType = (String)m.get("lockType");
+      assertTrue(DirectoryFactory.LOCK_TYPE_SIMPLE.equals(lockType) ||
+          DirectoryFactory.LOCK_TYPE_NATIVE.equals(lockType) ||
+          DirectoryFactory.LOCK_TYPE_SINGLE.equals(lockType) ||
+          DirectoryFactory.LOCK_TYPE_NONE.equals(lockType) ||
+          DirectoryFactory.LOCK_TYPE_HDFS.equals(lockType));
+    }
+
+    ++mSizeExpected; assertTrue(m.get("infoStreamEnabled") instanceof Boolean);
+    {
+      assertFalse(Boolean.valueOf(m.get("infoStreamEnabled").toString()).booleanValue());
+    }
+    
+    ++mSizeExpected; assertTrue(m.get("mergeScheduler") instanceof Map);
+    if (solrConfigFileName.equals(solrConfigFileNameTieredMergePolicyFactory) ||
+        solrConfigFileName.equals(solrConfigFileNameWarmerRandomMergePolicyFactory)) {
+      assertNull(m.get("mergePolicy"));
+      ++mSizeExpected; assertTrue(m.get("mergePolicyFactory") instanceof Map);
+    } else {
+      ++mSizeExpected; assertTrue(m.get("mergePolicy") instanceof Map);
+      assertNull(m.get("mergePolicyFactory"));
+    }
+    if (solrConfigFileName.equals(solrConfigFileNameWarmerRandomMergePolicy) ||
+        solrConfigFileName.equals(solrConfigFileNameWarmerRandomMergePolicyFactory)) {
+      ++mSizeExpected; assertTrue(m.get("mergedSegmentWarmer") instanceof Map);
+    } else {
+      assertNull(m.get("mergedSegmentWarmer"));
+    }
+
+    assertEquals(mSizeExpected, m.size());
+  }
 }

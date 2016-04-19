@@ -14,10 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.schema;
 
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.docvalues.DocTermsIndexDocValues;
 import org.apache.lucene.queries.function.valuesource.FieldCacheSource;
@@ -37,7 +36,7 @@ public class StrFieldSource extends FieldCacheSource {
   }
 
   @Override
-  public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+  public FunctionValues getValues(Map context, LeafReaderContext readerContext) throws IOException {
     return new DocTermsIndexDocValues(this, readerContext, field) {
 
       @Override
@@ -73,7 +72,7 @@ public class StrFieldSource extends FieldCacheSource {
             && super.equals(o);
   }
 
-  private static int hcode = SortableFloatFieldSource.class.hashCode();
+  private static int hcode = StrFieldSource.class.hashCode();
   @Override
   public int hashCode() {
     return hcode + super.hashCode();

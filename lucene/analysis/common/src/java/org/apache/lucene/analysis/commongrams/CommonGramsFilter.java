@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.analysis.commongrams;
 
 import java.io.IOException;
@@ -27,7 +26,6 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionLengthAttribute;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
 import org.apache.lucene.analysis.util.CharArraySet;
-import org.apache.lucene.util.Version;
 
 /*
  * TODO: Consider implementing https://issues.apache.org/jira/browse/LUCENE-1688 changes to stop list and associated constructors 
@@ -84,14 +82,6 @@ public final class CommonGramsFilter extends TokenFilter {
   }
 
   /**
-   * @deprecated Use {@link #CommonGramsFilter(TokenStream, CharArraySet)}
-   */
-  @Deprecated
-  public CommonGramsFilter(Version matchVersion, TokenStream input, CharArraySet commonWords) {
-    this(input, commonWords);
-  }
-
-  /**
    * Inserts bigrams for common words into a token stream. For each input token,
    * output the token. If the token and/or the following token are in the list
    * of common words also output a bigram with position increment 0 and
@@ -121,7 +111,7 @@ public final class CommonGramsFilter extends TokenFilter {
     
     /* We build n-grams before and after stopwords. 
      * When valid, the buffer always contains at least the separator.
-     * If its empty, there is nothing before this stopword.
+     * If it's empty, there is nothing before this stopword.
      */
     if (lastWasCommon || (isCommon() && buffer.length() > 0)) {
       savedState = captureState();

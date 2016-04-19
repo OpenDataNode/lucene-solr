@@ -1,5 +1,3 @@
-package org.apache.lucene.spatial;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,9 @@ package org.apache.lucene.spatial;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.spatial;
+
+import java.io.IOException;
 
 import com.spatial4j.core.context.SpatialContext;
 import com.spatial4j.core.distance.DistanceUtils;
@@ -23,17 +24,16 @@ import com.spatial4j.core.shape.Point;
 import com.spatial4j.core.shape.Shape;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.IntField;
+import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.document.StoredField;
 import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.queries.function.ValueSource;
-import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchAllDocsQuery;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TopDocs;
@@ -46,8 +46,6 @@ import org.apache.lucene.spatial.query.SpatialOperation;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.LuceneTestCase;
-
-import java.io.IOException;
 
 /**
  * This class serves as example code to show how to use the Lucene spatial
@@ -103,7 +101,7 @@ public class SpatialExample extends LuceneTestCase {
   }
 
   private void indexPoints() throws Exception {
-    IndexWriterConfig iwConfig = new IndexWriterConfig(TEST_VERSION_CURRENT,null);
+    IndexWriterConfig iwConfig = new IndexWriterConfig(null);
     IndexWriter indexWriter = new IndexWriter(directory, iwConfig);
 
     //Spatial4j is x-y order for arguments
@@ -122,11 +120,12 @@ public class SpatialExample extends LuceneTestCase {
 
   private Document newSampleDocument(int id, Shape... shapes) {
     Document doc = new Document();
-    doc.add(new IntField("id", id, Field.Store.YES));
+    doc.add(new StoredField("id", id));
+    doc.add(new NumericDocValuesField("id", id));
     //Potentially more than one shape in this field is supported by some
     // strategies; see the javadocs of the SpatialStrategy impl to see.
     for (Shape shape : shapes) {
-      for (IndexableField f : strategy.createIndexableFields(shape)) {
+      for (Field f : strategy.createIndexableFields(shape)) {
         doc.add(f);
       }
       //store it too; the format is up to you
@@ -149,8 +148,8 @@ public class SpatialExample extends LuceneTestCase {
       //note: SpatialArgs can be parsed from a string
       SpatialArgs args = new SpatialArgs(SpatialOperation.Intersects,
           ctx.makeCircle(-80.0, 33.0, DistanceUtils.dist2Degrees(200, DistanceUtils.EARTH_MEAN_RADIUS_KM)));
-      Filter filter = strategy.makeFilter(args);
-      TopDocs docs = indexSearcher.search(new MatchAllDocsQuery(), filter, 10, idSort);
+      Query query = strategy.makeQuery(args);
+      TopDocs docs = indexSearcher.search(query, 10, idSort);
       assertDocMatchedIds(indexSearcher, docs, 2);
       //Now, lets get the distance for the 1st doc via computing from stored point value:
       // (this computation is usually not redundant)

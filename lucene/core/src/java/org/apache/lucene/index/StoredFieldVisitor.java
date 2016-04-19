@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 
@@ -53,8 +53,8 @@ public abstract class StoredFieldVisitor {
   public void binaryField(FieldInfo fieldInfo, byte[] value) throws IOException {
   }
 
-  /** Process a string field */
-  public void stringField(FieldInfo fieldInfo, String value) throws IOException {
+  /** Process a string field; the provided byte[] value is a UTF-8 encoded string value. */
+  public void stringField(FieldInfo fieldInfo, byte[] value) throws IOException {
   }
 
   /** Process a int numeric field. */

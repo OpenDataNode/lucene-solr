@@ -1,5 +1,3 @@
-package org.apache.lucene.spatial.query;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.spatial.query;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.spatial.query;
 
 import com.spatial4j.core.context.SpatialContext;
 import com.spatial4j.core.shape.Point;
@@ -76,7 +75,7 @@ public class SpatialArgs {
    * looks at {@link #getDistErr()}, {@link #getDistErrPct()}, and {@code
    * defaultDistErrPct}.
    * @param defaultDistErrPct 0 to 0.5
-   * @return >= 0
+   * @return {@code >= 0}
    */
   public double resolveDistErr(SpatialContext ctx, double defaultDistErrPct) {
     if (distErr != null)
@@ -137,7 +136,7 @@ public class SpatialArgs {
    * The acceptable error of the shape.  This effectively inflates the
    * size of the shape but should not shrink it.
    *
-   * @return >= 0
+   * @return {@code >= 0}
    */
   public Double getDistErr() {
     return distErr;

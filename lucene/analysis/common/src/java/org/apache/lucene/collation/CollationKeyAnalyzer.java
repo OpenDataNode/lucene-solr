@@ -1,5 +1,3 @@
-package org.apache.lucene.collation;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,15 +14,15 @@ package org.apache.lucene.collation;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.collation;
+
 
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.KeywordTokenizer;
-import org.apache.lucene.util.IndexableBinaryStringTools; // javadoc @link
 import org.apache.lucene.util.Version;
 
 import java.text.Collator;
-import java.io.Reader;
 
 /**
  * <p>
@@ -32,8 +30,7 @@ import java.io.Reader;
  * </p>
  * <p>
  *   Converts the token into its {@link java.text.CollationKey}, and then
- *   encodes the CollationKey either directly or with 
- *   {@link IndexableBinaryStringTools} (see <a href="#version">below</a>), to allow 
+ *   encodes the CollationKey directly to allow 
  *   it to be stored as an index term.
  * </p>
  * <p>
@@ -59,7 +56,7 @@ import java.io.Reader;
  * </ol> 
  * <p>
  *   The <code>ICUCollationKeyAnalyzer</code> in the analysis-icu package 
- *   uses ICU4J's Collator, which makes its
+ *   uses ICU4J's Collator, which makes
  *   its version available, thus allowing collation to be versioned
  *   independently from the JVM.  ICUCollationKeyAnalyzer is also significantly
  *   faster and generates significantly shorter keys than CollationKeyAnalyzer.
@@ -74,49 +71,22 @@ import java.io.Reader;
  *   CollationKeyAnalyzer to generate index terms, do not use
  *   ICUCollationKeyAnalyzer on the query side, or vice versa.
  * </p>
- * <a name="version"/>
- * <p>You must specify the required {@link Version}
- * compatibility when creating CollationKeyAnalyzer:
- * <ul>
- *   <li> As of 4.0, Collation Keys are directly encoded as bytes. Previous
- *   versions will encode the bytes with {@link IndexableBinaryStringTools}.
- * </ul>
  */
 public final class CollationKeyAnalyzer extends Analyzer {
-  private final Collator collator;
   private final CollationAttributeFactory factory;
-  private final Version matchVersion;
   
   /**
    * Create a new CollationKeyAnalyzer, using the specified collator.
    *
-   * @param matchVersion See <a href="#version">above</a>
    * @param collator CollationKey generator
    */
-  public CollationKeyAnalyzer(Version matchVersion, Collator collator) {
-    this.matchVersion = matchVersion;
-    this.collator = collator;
-    this.factory = new CollationAttributeFactory(collator);
-  }
-  
-  /**
-   * @deprecated Use {@link CollationKeyAnalyzer#CollationKeyAnalyzer(Version, Collator)}
-   *   and specify a version instead. This ctor will be removed in Lucene 5.0
-   */
-  @Deprecated
   public CollationKeyAnalyzer(Collator collator) {
-    this(Version.LUCENE_3_1, collator);
+    this.factory = new CollationAttributeFactory(collator);
   }
 
   @Override
-  protected TokenStreamComponents createComponents(String fieldName,
-      Reader reader) {
-    if (matchVersion.onOrAfter(Version.LUCENE_4_0)) {
-      KeywordTokenizer tokenizer = new KeywordTokenizer(factory, reader, KeywordTokenizer.DEFAULT_BUFFER_SIZE);
-      return new TokenStreamComponents(tokenizer, tokenizer);
-    } else {
-      KeywordTokenizer tokenizer = new KeywordTokenizer(reader);
-      return new TokenStreamComponents(tokenizer, new CollationKeyFilter(tokenizer, collator));
-    }
+  protected TokenStreamComponents createComponents(String fieldName) {
+    KeywordTokenizer tokenizer = new KeywordTokenizer(factory, KeywordTokenizer.DEFAULT_BUFFER_SIZE);
+    return new TokenStreamComponents(tokenizer, tokenizer);
   }
 }

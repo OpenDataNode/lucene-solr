@@ -14,16 +14,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update;
 
-import static org.apache.solr.update.processor.DistributedUpdateProcessor.DistribPhase.FROMLEADER;
-import static org.apache.solr.update.processor.DistributingUpdateProcessorFactory.DISTRIB_UPDATE_PARAM;
-
+import java.io.Closeable;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -60,20 +59,25 @@ import org.apache.solr.update.processor.DistributedUpdateProcessor;
 import org.apache.solr.update.processor.UpdateRequestProcessor;
 import org.apache.solr.update.processor.UpdateRequestProcessorChain;
 import org.apache.solr.util.DefaultSolrThreadFactory;
+import org.apache.solr.util.RTimer;
 import org.apache.solr.util.RefCounted;
 import org.apache.solr.util.plugin.PluginInfoInitialized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.solr.update.processor.DistributedUpdateProcessor.DistribPhase.FROMLEADER;
+import static org.apache.solr.update.processor.DistributingUpdateProcessorFactory.DISTRIB_UPDATE_PARAM;
+
 
 /** @lucene.experimental */
 public class UpdateLog implements PluginInfoInitialized {
+  private static final long STATUS_TIME = TimeUnit.NANOSECONDS.convert(60, TimeUnit.SECONDS);
   public static String LOG_FILENAME_PATTERN = "%s.%019d";
   public static String TLOG_NAME="tlog";
 
-  public static Logger log = LoggerFactory.getLogger(UpdateLog.class);
-  public boolean debug = log.isDebugEnabled();
-  public boolean trace = log.isTraceEnabled();
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+  private static boolean debug = log.isDebugEnabled();
+  private static boolean trace = log.isTraceEnabled();
 
   // TODO: hack
   public FileSystem getFs() {
@@ -128,7 +132,7 @@ public class UpdateLog implements PluginInfoInitialized {
 
   protected TransactionLog tlog;
   protected TransactionLog prevTlog;
-  protected Deque<TransactionLog> logs = new LinkedList<>();  // list of recent logs, newest first
+  protected final Deque<TransactionLog> logs = new LinkedList<>();  // list of recent logs, newest first
   protected LinkedList<TransactionLog> newestLogsOnStartup = new LinkedList<>();
   protected int numOldRecords;  // number of records in the recent logs
 
@@ -140,7 +144,10 @@ public class UpdateLog implements PluginInfoInitialized {
 
   protected final int numDeletesToKeep = 1000;
   protected final int numDeletesByQueryToKeep = 100;
-  public final int numRecordsToKeep = 100;
+  protected int numRecordsToKeep;
+  protected int maxNumLogsToKeep;
+  protected int numVersionBuckets; // This should only be used to initialize VersionInfo... the actual number of buckets may be rounded up to a power of two.
+  protected Long maxVersionFromIndex = null;
 
   // keep track of deletes only... this is not updated on an add
   protected LinkedHashMap<BytesRef, LogPtr> oldDeletes = new LinkedHashMap<BytesRef, LogPtr>(numDeletesToKeep) {
@@ -195,7 +202,7 @@ public class UpdateLog implements PluginInfoInitialized {
 
   public long getTotalLogsSize() {
     long size = 0;
-    synchronized (logs) {
+    synchronized (this) {
       for (TransactionLog log : logs) {
         size += log.getLogSize();
       }
@@ -204,17 +211,48 @@ public class UpdateLog implements PluginInfoInitialized {
   }
 
   public long getTotalLogsNumber() {
-    return logs.size();
+    synchronized (this) {
+      return logs.size();
+    }
   }
 
   public VersionInfo getVersionInfo() {
     return versionInfo;
   }
 
+  public int getNumRecordsToKeep() {
+    return numRecordsToKeep;
+  }
+
+  public int getMaxNumLogsToKeep() {
+    return maxNumLogsToKeep;
+  }
+
+  public int getNumVersionBuckets() {
+    return numVersionBuckets;
+  }
+
+  protected static int objToInt(Object obj, int def) {
+    if (obj != null) {
+      return Integer.parseInt(obj.toString());
+    }
+    else return def;
+  }
+
   @Override
   public void init(PluginInfo info) {
     dataDir = (String)info.initArgs.get("dir");
     defaultSyncLevel = SyncLevel.getSyncLevel((String)info.initArgs.get("syncLevel"));
+
+    numRecordsToKeep = objToInt(info.initArgs.get("numRecordsToKeep"), 100);
+    maxNumLogsToKeep = objToInt(info.initArgs.get("maxNumLogsToKeep"), 10);
+    numVersionBuckets = objToInt(info.initArgs.get("numVersionBuckets"), 65536);
+    if (numVersionBuckets <= 0)
+      throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,
+          "Number of version buckets must be greater than 0!");
+
+    log.info("Initializing UpdateLog: dataDir={} defaultSyncLevel={} numRecordsToKeep={} maxNumLogsToKeep={} numVersionBuckets={}",
+        dataDir, defaultSyncLevel, numRecordsToKeep, maxNumLogsToKeep, numVersionBuckets);
   }
 
   /* Note, when this is called, uhandler is not completely constructed.
@@ -222,15 +260,7 @@ public class UpdateLog implements PluginInfoInitialized {
    * for an existing log whenever the core or update handler changes.
    */
   public void init(UpdateHandler uhandler, SolrCore core) {
-    // ulogDir from CoreDescriptor overrides
-    String ulogDir = core.getCoreDescriptor().getUlogDir();
-    if (ulogDir != null) {
-      dataDir = ulogDir;
-    }
-
-    if (dataDir == null || dataDir.length()==0) {
-      dataDir = core.getDataDir();
-    }
+    dataDir = core.getUlogDir();
 
     this.uhandler = uhandler;
 
@@ -253,7 +283,7 @@ public class UpdateLog implements PluginInfoInitialized {
     if (debug) {
       log.debug("UpdateHandler init: tlogDir=" + tlogDir + ", existing tlogs=" + Arrays.asList(tlogFiles) + ", next id=" + id);
     }
-    
+
     TransactionLog oldLog = null;
     for (String oldLogName : tlogFiles) {
       File f = new File(tlogDir, oldLogName);
@@ -267,14 +297,14 @@ public class UpdateLog implements PluginInfoInitialized {
     }
 
     // Record first two logs (oldest first) at startup for potential tlog recovery.
-    // It's possible that at abnormal shutdown both "tlog" and "prevTlog" were uncapped.
+    // It's possible that at abnormal close both "tlog" and "prevTlog" were uncapped.
     for (TransactionLog ll : logs) {
       newestLogsOnStartup.addFirst(ll);
       if (newestLogsOnStartup.size() >= 2) break;
     }
 
     try {
-      versionInfo = new VersionInfo(this, 256);
+      versionInfo = new VersionInfo(this, numVersionBuckets);
     } catch (SolrException e) {
       log.error("Unable to use updateLog: " + e.getMessage(), e);
       throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,
@@ -282,19 +312,18 @@ public class UpdateLog implements PluginInfoInitialized {
     }
 
     // TODO: these startingVersions assume that we successfully recover from all non-complete tlogs.
-    UpdateLog.RecentUpdates startingUpdates = getRecentUpdates();
-    try {
+    try (RecentUpdates startingUpdates = getRecentUpdates()) {
       startingVersions = startingUpdates.getVersions(numRecordsToKeep);
       startingOperation = startingUpdates.getLatestOperation();
 
       // populate recent deletes list (since we can't get that info from the index)
-      for (int i=startingUpdates.deleteList.size()-1; i>=0; i--) {
+      for (int i = startingUpdates.deleteList.size() - 1; i >= 0; i--) {
         DeleteUpdate du = startingUpdates.deleteList.get(i);
-        oldDeletes.put(new BytesRef(du.id), new LogPtr(-1,du.version));
+        oldDeletes.put(new BytesRef(du.id), new LogPtr(-1, du.version));
       }
 
       // populate recent deleteByQuery commands
-      for (int i=startingUpdates.deleteByQueryList.size()-1; i>=0; i--) {
+      for (int i = startingUpdates.deleteByQueryList.size() - 1; i >= 0; i--) {
         Update update = startingUpdates.deleteByQueryList.get(i);
         List<Object> dbq = (List<Object>) update.log.lookup(update.pointer);
         long version = (Long) dbq.get(1);
@@ -302,16 +331,14 @@ public class UpdateLog implements PluginInfoInitialized {
         trackDeleteByQuery(q, version);
       }
 
-    } finally {
-      startingUpdates.close();
     }
 
   }
-  
+
   public String getLogDir() {
     return tlogDir.getAbsolutePath();
   }
-  
+
   public List<Long> getStartingVersions() {
     return startingVersions;
   }
@@ -321,9 +348,9 @@ public class UpdateLog implements PluginInfoInitialized {
   }
 
   /* Takes over ownership of the log, keeping it until no longer needed
-     and then decrementing it's reference and dropping it.
+     and then decrementing its reference and dropping it.
    */
-  protected void addOldLog(TransactionLog oldLog, boolean removeOld) {
+  protected synchronized void addOldLog(TransactionLog oldLog, boolean removeOld) {
     if (oldLog == null) return;
 
     numOldRecords += oldLog.numRecords();
@@ -339,7 +366,7 @@ public class UpdateLog implements PluginInfoInitialized {
       int nrec = log.numRecords();
       // remove oldest log if we don't need it to keep at least numRecordsToKeep, or if
       // we already have the limit of 10 log files.
-      if (currRecords - nrec >= numRecordsToKeep || logs.size() >= 10) {
+      if (currRecords - nrec >= numRecordsToKeep || (maxNumLogsToKeep > 0 && logs.size() >= maxNumLogsToKeep)) {
         currRecords -= nrec;
         numOldRecords -= nrec;
         logs.removeLast().decref();  // dereference so it will be deleted when no longer in use
@@ -476,32 +503,35 @@ public class UpdateLog implements PluginInfoInitialized {
       if ((cmd.getFlags() & UpdateCommand.BUFFERING) == 0) {
         // given that we just did a delete-by-query, we don't know what documents were
         // affected and hence we must purge our caches.
-        if (map != null) map.clear();
-        if (prevMap != null) prevMap.clear();
-        if (prevMap2 != null) prevMap2.clear();
-
+        openRealtimeSearcher();
         trackDeleteByQuery(cmd.getQuery(), cmd.getVersion());
 
-        // oldDeletes.clear();
-
-        // We must cause a new IndexReader to be opened before anything looks at these caches again
-        // so that a cache miss will read fresh data.
-        //
-        // TODO: FUTURE: open a new searcher lazily for better throughput with delete-by-query commands
-        try {
-          RefCounted<SolrIndexSearcher> holder = uhandler.core.openNewSearcher(true, true);
-          holder.decref();
-        } catch (Exception e) {
-          SolrException.log(log, "Error opening realtime searcher for deleteByQuery", e);
+        if (trace) {
+          LogPtr ptr = new LogPtr(pos, cmd.getVersion());
+          log.trace("TLOG: added deleteByQuery " + cmd.query + " to " + tlog + " " + ptr + " map=" + System.identityHashCode(map));
         }
+      }
+    }
+  }
 
+  /** Opens a new realtime searcher and clears the id caches.
+   * This may also be called when we updates are being buffered (from PeerSync/IndexFingerprint)
+   */
+  public void openRealtimeSearcher() {
+    synchronized (this) {
+      // We must cause a new IndexReader to be opened before anything looks at these caches again
+      // so that a cache miss will read fresh data.
+      try {
+        RefCounted<SolrIndexSearcher> holder = uhandler.core.openNewSearcher(true, true);
+        holder.decref();
+      } catch (Exception e) {
+        SolrException.log(log, "Error opening realtime searcher", e);
+        return;
       }
 
-      LogPtr ptr = new LogPtr(pos, cmd.getVersion());
-
-      if (trace) {
-        log.trace("TLOG: added deleteByQuery " + cmd.query + " to " + tlog + " " + ptr + " map=" + System.identityHashCode(map));
-      }
+      if (map != null) map.clear();
+      if (prevMap != null) prevMap.clear();
+      if (prevMap2 != null) prevMap2.clear();
     }
   }
 
@@ -593,7 +623,7 @@ public class UpdateLog implements PluginInfoInitialized {
   public boolean hasUncommittedChanges() {
     return tlog != null;
   }
-  
+
   public void preCommit(CommitUpdateCommand cmd) {
     synchronized (this) {
       if (debug) {
@@ -676,6 +706,7 @@ public class UpdateLog implements PluginInfoInitialized {
         SolrCore.verbose("TLOG: postSoftCommit: disposing of prevMap="+ System.identityHashCode(prevMap) + ", prevMap2=" + System.identityHashCode(prevMap2));
       }
       clearOldMaps();
+
     }
   }
 
@@ -850,18 +881,14 @@ public class UpdateLog implements PluginInfoInitialized {
       theLog.forceClose();
     }
   }
-  
+
   public void close(boolean committed) {
     close(committed, false);
   }
-  
+
   public void close(boolean committed, boolean deleteOnClose) {
     synchronized (this) {
-      try {
-        ExecutorUtil.shutdownNowAndAwaitTermination(recoveryExecutor);
-      } catch (Exception e) {
-        SolrException.log(log, e);
-      }
+      recoveryExecutor.shutdown(); // no new tasks
 
       // Don't delete the old tlogs, we want to be able to replay from them and retrieve old versions
 
@@ -875,6 +902,11 @@ public class UpdateLog implements PluginInfoInitialized {
         log.forceClose();
       }
 
+      try {
+        ExecutorUtil.shutdownAndAwaitTermination(recoveryExecutor);
+      } catch (Exception e) {
+        SolrException.log(log, e);
+      }
     }
   }
 
@@ -894,28 +926,44 @@ public class UpdateLog implements PluginInfoInitialized {
       this.id = id;
     }
   }
-  
-  public class RecentUpdates {
-    Deque<TransactionLog> logList;    // newest first
+
+  public class RecentUpdates implements Closeable {
+
+    final Deque<TransactionLog> logList;    // newest first
     List<List<Update>> updateList;
     HashMap<Long, Update> updates;
     List<Update> deleteByQueryList;
     List<DeleteUpdate> deleteList;
     int latestOperation;
 
+    public RecentUpdates(Deque<TransactionLog> logList) {
+      this.logList = logList;
+      boolean success = false;
+      try {
+        update();
+        success = true;
+      } finally {
+        // defensive: if some unknown exception is thrown,
+        // make sure we close so that the tlogs are decref'd
+        if (!success) {
+          close();
+        }
+      }
+    }
+
     public List<Long> getVersions(int n) {
-      List<Long> ret = new ArrayList(n);
-      
+      List<Long> ret = new ArrayList<>(n);
+
       for (List<Update> singleList : updateList) {
         for (Update ptr : singleList) {
           ret.add(ptr.version);
           if (--n <= 0) return ret;
         }
       }
-      
+
       return ret;
     }
-    
+
     public Object lookup(long version) {
       Update update = updates.get(version);
       if (update == null) return null;
@@ -959,7 +1007,7 @@ public class UpdateLog implements PluginInfoInitialized {
             try {
               o = reader.next();
               if (o==null) break;
-              
+
               // should currently be a List<Oper,Ver,Doc/Id>
               List entry = (List)o;
 
@@ -982,13 +1030,13 @@ public class UpdateLog implements PluginInfoInitialized {
 
                   updatesForLog.add(update);
                   updates.put(version, update);
-                  
+
                   if (oper == UpdateLog.DELETE_BY_QUERY) {
                     deleteByQueryList.add(update);
                   } else if (oper == UpdateLog.DELETE) {
                     deleteList.add(new DeleteUpdate(version, (byte[])entry.get(2)));
                   }
-                  
+
                   break;
 
                 case UpdateLog.COMMIT:
@@ -1018,11 +1066,21 @@ public class UpdateLog implements PluginInfoInitialized {
       }
 
     }
-    
+
+    @Override
     public void close() {
       for (TransactionLog log : logList) {
         log.decref();
       }
+    }
+
+    public long getMaxRecentVersion() {
+      long maxRecentVersion = 0L;
+      if (updates != null) {
+        for (Long key : updates.keySet())
+          maxRecentVersion = Math.max(maxRecentVersion, Math.abs(key.longValue()));
+      }
+      return maxRecentVersion;
     }
   }
 
@@ -1046,23 +1104,8 @@ public class UpdateLog implements PluginInfoInitialized {
 
     // TODO: what if I hand out a list of updates, then do an update, then hand out another list (and
     // one of the updates I originally handed out fell off the list).  Over-request?
+    return new RecentUpdates(logList);
 
-    boolean success = false;
-    RecentUpdates recentUpdates = null;
-    try {
-      recentUpdates = new RecentUpdates();
-      recentUpdates.logList = logList;
-      recentUpdates.update();
-      success = true;
-    } finally {
-      // defensive: if some unknown exception is thrown,
-      // make sure we close so that the tlogs are decref'd
-      if (!success && recentUpdates != null) {
-        recentUpdates.close();
-      }
-    }
-
-    return recentUpdates;
   }
 
   public void bufferUpdates() {
@@ -1070,13 +1113,19 @@ public class UpdateLog implements PluginInfoInitialized {
     // it checks the state first
     // assert state == State.ACTIVE;
 
-    recoveryInfo = new RecoveryInfo();
-
     // block all updates to eliminate race conditions
-    // reading state and acting on it in the update processor
+    // reading state and acting on it in the distributed update processor
     versionInfo.blockUpdates();
     try {
-      if (state != State.ACTIVE) return;
+      if (state == State.BUFFERING) {
+        log.info("Restarting buffering. previous=" + recoveryInfo);
+      } else if (state != State.ACTIVE) {
+        // we don't currently have support for handling other states
+        log.warn("Unexpected state for bufferUpdates: " + state + ", Ignoring request.");
+        return;
+      }
+
+      recoveryInfo = new RecoveryInfo();
 
       if (log.isInfoEnabled()) {
         log.info("Starting to buffer updates. " + this);
@@ -1229,6 +1278,12 @@ public class UpdateLog implements PluginInfoInitialized {
         // change the state while updates are still blocked to prevent races
         state = State.ACTIVE;
         if (finishing) {
+
+          // after replay, update the max from the index
+          log.info("Re-computing max version from index after log re-play.");
+          maxVersionFromIndex = null;
+          getMaxVersionFromIndex();
+
           versionInfo.unblockUpdates();
         }
 
@@ -1251,7 +1306,7 @@ public class UpdateLog implements PluginInfoInitialized {
     public void doReplay(TransactionLog translog) {
       try {
         loglog.warn("Starting log replay " + translog + " active="+activeLog + " starting pos=" + recoveryInfo.positionOfStart);
-
+        long lastStatusTime = System.nanoTime();
         tlogReader = translog.getReader(recoveryInfo.positionOfStart);
 
         // NOTE: we don't currently handle a core reload during recovery.  This would cause the core
@@ -1262,12 +1317,27 @@ public class UpdateLog implements PluginInfoInitialized {
 
         long commitVersion = 0;
         int operationAndFlags = 0;
+        long nextCount = 0;
 
         for(;;) {
           Object o = null;
           if (cancelApplyBufferUpdate) break;
           try {
             if (testing_logReplayHook != null) testing_logReplayHook.run();
+            if (nextCount++ % 1000 == 0) {
+              long now = System.nanoTime();
+              if (now - lastStatusTime > STATUS_TIME) {
+                lastStatusTime = now;
+                long cpos = tlogReader.currentPos();
+                long csize = tlogReader.currentSize();
+                loglog.info(
+                        "log replay status {} active={} starting pos={} current pos={} current size={} % read={}",
+                        translog, activeLog, recoveryInfo.positionOfStart, cpos, csize,
+                        Math.round(cpos / (double) csize * 100.));
+                
+              }
+            }
+
             o = null;
             o = tlogReader.next();
             if (o == null && activeLog) {
@@ -1291,10 +1361,6 @@ public class UpdateLog implements PluginInfoInitialized {
                 // versionInfo.unblockUpdates();
               }
             }
-          } catch (InterruptedException e) {
-            SolrException.log(log,e);
-          } catch (IOException e) {
-            SolrException.log(log,e);
           } catch (Exception e) {
             SolrException.log(log,e);
           }
@@ -1428,7 +1494,7 @@ public class UpdateLog implements PluginInfoInitialized {
     this.cancelApplyBufferUpdate = true;
   }
 
-  ThreadPoolExecutor recoveryExecutor = new ThreadPoolExecutor(0,
+  ThreadPoolExecutor recoveryExecutor = new ExecutorUtil.MDCAwareThreadPoolExecutor(0,
       Integer.MAX_VALUE, 1, TimeUnit.SECONDS, new SynchronousQueue<Runnable>(),
       new DefaultSolrThreadFactory("recoveryExecutor"));
 
@@ -1436,10 +1502,8 @@ public class UpdateLog implements PluginInfoInitialized {
   public static void deleteFile(File file) {
     boolean success = false;
     try {
-      success = file.delete();
-      if (!success) {
-        log.error("Error deleting file: " + file);
-      }
+      Files.deleteIfExists(file.toPath());
+      success = true;
     } catch (Exception e) {
       log.error("Error deleting file: " + file, e);
     }
@@ -1452,25 +1516,25 @@ public class UpdateLog implements PluginInfoInitialized {
       }
     }
   }
-  
+
   protected String getTlogDir(SolrCore core, PluginInfo info) {
     String dataDir = (String) info.initArgs.get("dir");
-    
+
     String ulogDir = core.getCoreDescriptor().getUlogDir();
     if (ulogDir != null) {
       dataDir = ulogDir;
     }
-    
+
     if (dataDir == null || dataDir.length() == 0) {
       dataDir = core.getDataDir();
     }
 
     return dataDir + "/" + TLOG_NAME;
   }
-  
+
   /**
    * Clears the logs on the file system. Only call before init.
-   * 
+   *
    * @param core the SolrCore
    * @param ulogPluginInfo the init info for the UpdateHandler
    */
@@ -1481,13 +1545,76 @@ public class UpdateLog implements PluginInfoInitialized {
       String[] files = getLogList(tlogDir);
       for (String file : files) {
         File f = new File(tlogDir, file);
-        boolean s = f.delete();
-        if (!s) {
-          log.error("Could not remove tlog file:" + f);
+        try {
+          Files.delete(f.toPath());
+        } catch (IOException cause) {
+          // NOTE: still throws SecurityException as before.
+          log.error("Could not remove tlog file:" + f, cause);
         }
       }
     }
   }
-  
+
+  public Long getCurrentMaxVersion() {
+    return maxVersionFromIndex;
+  }
+
+  // this method is primarily used for unit testing and is not part of the public API for this class
+  Long getMaxVersionFromIndex() {
+    if (maxVersionFromIndex == null && versionInfo != null) {
+      RefCounted<SolrIndexSearcher> newestSearcher = (uhandler != null && uhandler.core != null)
+          ? uhandler.core.getRealtimeSearcher() : null;
+      if (newestSearcher == null)
+        throw new IllegalStateException("No searcher available to lookup max version from index!");
+
+      try {
+        maxVersionFromIndex = seedBucketsWithHighestVersion(newestSearcher.get(), versionInfo);
+      } finally {
+        newestSearcher.decref();
+      }
+    }
+    return maxVersionFromIndex;
+  }
+
+  /**
+   * Used to seed all version buckets with the max value of the version field in the index.
+   */
+  protected Long seedBucketsWithHighestVersion(SolrIndexSearcher newSearcher, VersionInfo versions) {
+    Long highestVersion = null;
+    final RTimer timer = new RTimer();
+
+    try (RecentUpdates recentUpdates = getRecentUpdates()) {
+      long maxVersionFromRecent = recentUpdates.getMaxRecentVersion();
+      long maxVersionFromIndex = versions.getMaxVersionFromIndex(newSearcher);
+
+      long maxVersion = Math.max(maxVersionFromIndex, maxVersionFromRecent);
+      if (maxVersion == 0L) {
+        maxVersion = versions.getNewClock();
+        log.info("Could not find max version in index or recent updates, using new clock {}", maxVersion);
+      }
+
+      // seed all version buckets with the highest value from recent and index
+      versions.seedBucketsWithHighestVersion(maxVersion);
+
+      highestVersion = maxVersion;
+    } catch (IOException ioExc) {
+      log.warn("Failed to determine the max value of the version field due to: "+ioExc, ioExc);
+    }
+
+    log.info("Took {}ms to seed version buckets with highest version {}",
+        timer.getTime(), String.valueOf(highestVersion));
+
+    return highestVersion;
+  }
+
+  public void seedBucketsWithHighestVersion(SolrIndexSearcher newSearcher) {
+    log.info("Looking up max value of version field to seed version buckets");
+    versionInfo.blockUpdates();
+    try {
+      maxVersionFromIndex = seedBucketsWithHighestVersion(newSearcher, versionInfo);
+    } finally {
+      versionInfo.unblockUpdates();
+    }
+  }
 }
 

@@ -1,5 +1,3 @@
-package org.apache.solr.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search;
 
 import org.apache.solr.SolrTestCaseJ4;
 import org.junit.BeforeClass;
@@ -46,8 +45,6 @@ public class TestFoldingMultitermQuery extends SolrTestCaseJ4 {
           "float_f", num,
           "long_f", num,
           "double_f", num,
-          "byte_f", num,
-          "short_f", num,
           "bool_f", boolVal,
           "date_f", "200" + Integer.toString(i % 10) + "-01-01T00:00:00Z",
           "content", docs[i],
@@ -269,7 +266,7 @@ public class TestFoldingMultitermQuery extends SolrTestCaseJ4 {
 
   @Test
   public void testNonTextTypes() {
-    String[] intTypes = {"int_f", "float_f", "long_f", "double_f", "byte_f", "short_f"};
+    String[] intTypes = {"int_f", "float_f", "long_f", "double_f"};
 
     for (String str : intTypes) {
       assertQ(req("q", str + ":" + "0"),

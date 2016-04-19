@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.response;
 
 import java.io.IOException;
@@ -42,7 +41,7 @@ import org.apache.solr.search.SolrReturnFields;
  */
 
 public class JSONResponseWriter implements QueryResponseWriter {
-  static String CONTENT_TYPE_JSON_UTF8 = "application/json; charset=UTF-8";
+  public static String CONTENT_TYPE_JSON_UTF8 = "application/json; charset=UTF-8";
 
   private String contentType = CONTENT_TYPE_JSON_UTF8;
 
@@ -92,7 +91,7 @@ class JSONWriter extends TextResponseWriter {
         writer.write(wrapperFunction + "(");
     }
     Boolean omitHeader = req.getParams().getBool(CommonParams.OMIT_HEADER);
-    if(omitHeader != null && omitHeader) rsp.getValues().remove("responseHeader");
+    if(omitHeader != null && omitHeader) rsp.removeResponseHeader();
     writeNamedList(null, rsp.getValues());
     if(wrapperFunction!=null) {
         writer.write(')');
@@ -310,16 +309,6 @@ class JSONWriter extends TextResponseWriter {
   }
 
 
-  protected static class MultiValueField {
-    final SchemaField sfield;
-    final ArrayList<IndexableField> fields;
-    MultiValueField(SchemaField sfield, IndexableField firstVal) {
-      this.sfield = sfield;
-      this.fields = new ArrayList<>(4);
-      this.fields.add(firstVal);
-    }
-  }
-
   @Override
   public void writeSolrDocument(String name, SolrDocument doc, ReturnFields returnFields, int idx) throws IOException {
     if( idx > 0 ) {
@@ -332,10 +321,10 @@ class JSONWriter extends TextResponseWriter {
 
     boolean first=true;
     for (String fname : doc.getFieldNames()) {
-      if (!returnFields.wantsField(fname)) {
+      if (returnFields!= null && !returnFields.wantsField(fname)) {
         continue;
       }
-      
+
       if (first) {
         first=false;
       }
@@ -365,9 +354,8 @@ class JSONWriter extends TextResponseWriter {
       writeKey("_childDocuments_", true);
       writeArrayOpener(doc.getChildDocumentCount());
       List<SolrDocument> childDocs = doc.getChildDocuments();
-      ReturnFields rf = new SolrReturnFields();
       for(int i=0; i<childDocs.size(); i++) {
-        writeSolrDocument(null, childDocs.get(i), rf, i);
+        writeSolrDocument(null, childDocs.get(i), null, i);
       }
       writeArrayCloser();
     }

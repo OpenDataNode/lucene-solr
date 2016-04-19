@@ -1,4 +1,3 @@
-package org.apache.lucene.queryparser.surround.query;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,11 +14,13 @@ package org.apache.lucene.queryparser.surround.query;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.surround.query;
 import java.io.IOException;
 import java.util.List;
 import java.util.ArrayList;
 
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.search.MatchNoDocsQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.index.Term;
@@ -35,6 +36,9 @@ class SimpleTermRewriteQuery extends RewriteQuery<SimpleTerm> {
 
   @Override
   public Query rewrite(IndexReader reader) throws IOException {
+    if (getBoost() != 1f) {
+      return super.rewrite(reader);
+    }
     final List<Query> luceneSubQueries = new ArrayList<>();
     srndQuery.visitMatchingTerms(reader, fieldName,
     new SimpleTerm.MatchingTermVisitor() {
@@ -43,7 +47,7 @@ class SimpleTermRewriteQuery extends RewriteQuery<SimpleTerm> {
         luceneSubQueries.add(qf.newTermQuery(term));
       }
     });
-    return  (luceneSubQueries.size() == 0) ? SrndQuery.theEmptyLcnQuery
+    return  (luceneSubQueries.size() == 0) ? new MatchNoDocsQuery()
     : (luceneSubQueries.size() == 1) ? luceneSubQueries.get(0)
     : SrndBooleanQuery.makeBooleanQuery(
       /* luceneSubQueries all have default weight */

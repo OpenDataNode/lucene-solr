@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,15 +14,18 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.request.QueryRequest;
+import org.apache.solr.client.solrj.response.RequestStatusState;
 import org.apache.solr.common.params.CollectionParams;
+import org.apache.solr.common.params.CommonAdminParams;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
-import org.junit.Before;
+import org.junit.Test;
 
 import java.io.IOException;
 
@@ -36,13 +37,8 @@ public class AsyncMigrateRouteKeyTest extends MigrateRouteKeyTest {
 
   private static final int MAX_WAIT_SECONDS = 2 * 60;
 
-  @Override
-  @Before
-  public void setUp() throws Exception {
-    super.setUp();
-  }
-
-  public void doTest() throws Exception {
+  @Test
+  public void test() throws Exception {
     waitForThingsToLevelOut(15);
 
     multipleShardMigrateTest();
@@ -54,14 +50,14 @@ public class AsyncMigrateRouteKeyTest extends MigrateRouteKeyTest {
     String message;
     params = new ModifiableSolrParams();
     params.set("action", CollectionParams.CollectionAction.REQUESTSTATUS.toString());
-    params.set(OverseerCollectionProcessor.REQUESTID, asyncId);
+    params.set(OverseerCollectionMessageHandler.REQUESTID, asyncId);
     // This task takes long enough to run. Also check for the current state of the task to be running.
     message = sendStatusRequestWithRetry(params, 5);
-    assertEquals("found " + asyncId + " in running tasks", message);
+    assertEquals("found [" + asyncId + "] in running tasks", message);
     // Now wait until the task actually completes successfully/fails.
     message = sendStatusRequestWithRetry(params, MAX_WAIT_SECONDS);
-    assertEquals("Task " + asyncId + " not found in completed tasks.",
-        "found " + asyncId + " in completed tasks", message);
+    assertEquals("Task " + asyncId + " not found in completed tasks.", 
+        "found [" + asyncId + "] in completed tasks", message);
   }
 
   @Override
@@ -73,7 +69,7 @@ public class AsyncMigrateRouteKeyTest extends MigrateRouteKeyTest {
     params.set("target.collection", targetCollection);
     params.set("split.key", splitKey);
     params.set("forward.timeout", 45);
-    params.set("async", asyncId);
+    params.set(CommonAdminParams.ASYNC, asyncId);
 
     invoke(params);
 
@@ -87,17 +83,18 @@ public class AsyncMigrateRouteKeyTest extends MigrateRouteKeyTest {
   private String sendStatusRequestWithRetry(ModifiableSolrParams params, int maxCounter)
       throws SolrServerException, IOException {
     NamedList status = null;
-    String state = null;
+    RequestStatusState state = null;
     String message = null;
     NamedList r;
     while (maxCounter-- > 0) {
       r = sendRequest(params);
       status = (NamedList) r.get("status");
-      state = (String) status.get("state");
+      state = RequestStatusState.fromKey((String) status.get("state"));
       message = (String) status.get("msg");
 
-      if (state.equals("completed") || state.equals("failed"))
+      if (state == RequestStatusState.COMPLETED || state == RequestStatusState.FAILED) {
         return (String) status.get("msg");
+      }
       try {
         Thread.sleep(1000);
       } catch (InterruptedException e) {
@@ -110,21 +107,15 @@ public class AsyncMigrateRouteKeyTest extends MigrateRouteKeyTest {
   }
 
   protected NamedList sendRequest(ModifiableSolrParams params) throws SolrServerException, IOException {
-    SolrRequest request = new QueryRequest(params);
+    final SolrRequest request = new QueryRequest(params);
     request.setPath("/admin/collections");
 
-    String baseUrl = ((HttpSolrServer) shardToJetty.get(SHARD1).get(0).client.solrClient)
-        .getBaseURL();
+    String baseUrl = ((HttpSolrClient) shardToJetty.get(SHARD1).get(0).client.solrClient).getBaseURL();
     baseUrl = baseUrl.substring(0, baseUrl.length() - "collection1".length());
 
-    HttpSolrServer baseServer = null;
-
-    try {
-      baseServer = new HttpSolrServer(baseUrl);
+    try (HttpSolrClient baseServer = new HttpSolrClient(baseUrl)) {
       baseServer.setConnectionTimeout(15000);
       return baseServer.request(request);
-    } finally {
-      baseServer.shutdown();
     }
   }
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.tr;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,13 @@ package org.apache.lucene.analysis.tr;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.tr;
+
 
 
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.util.BaseTokenStreamFactoryTestCase;
 
 import java.io.Reader;
@@ -34,7 +35,8 @@ public class TestApostropheFilterFactory extends BaseTokenStreamFactoryTestCase 
    */
   public void testApostrophes() throws Exception {
     Reader reader = new StringReader("Türkiye'de 2003'te Van Gölü'nü gördüm");
-    TokenStream stream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream stream = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    ((Tokenizer) stream).setReader(reader);
     stream = tokenFilterFactory("Apostrophe").create(stream);
     assertTokenStreamContents(stream, new String[]{"Türkiye", "2003", "Van", "Gölü", "gördüm"});
   }

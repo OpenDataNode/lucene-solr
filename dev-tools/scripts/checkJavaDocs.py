@@ -22,9 +22,13 @@ reHREF = re.compile('<a.*?>(.*?)</a>', re.IGNORECASE)
 reMarkup = re.compile('<.*?>')
 reDivBlock = re.compile('<div class="block">(.*?)</div>', re.IGNORECASE)
 reCaption = re.compile('<caption><span>(.*?)</span>', re.IGNORECASE)
+reJ8Caption = re.compile('<h3>(.*?) Summary</h3>')
 reTDLastNested = re.compile('^<td class="colLast"><code><strong><a href="[^>]*\.([^>]*?)\.html" title="class in[^>]*">', re.IGNORECASE)
 reTDLast = re.compile('^<td class="colLast"><code><strong><a href="[^>]*#([^>]*?)">', re.IGNORECASE)
 reColOne = re.compile('^<td class="colOne"><code><strong><a href="[^>]*#([^>]*?)">', re.IGNORECASE)
+reMemberNameLink = re.compile('^<td class="colLast"><code><span class="memberNameLink"><a href="[^>]*#([^>]*?)"', re.IGNORECASE)
+reNestedClassMemberNameLink = re.compile('^<td class="colLast"><code><span class="memberNameLink"><a href="[^>]*?".*?>(.*?)</a>', re.IGNORECASE)
+reMemberNameOneLink = re.compile('^<td class="colOne"><code><span class="memberNameLink"><a href="[^>]*#([^>]*?)"', re.IGNORECASE)
 
 # the Method detail section at the end
 reMethodDetail = re.compile('^<h3>Method Detail</h3>$', re.IGNORECASE)
@@ -80,8 +84,6 @@ def checkClassDetails(fullPath):
   Checks for invalid HTML in the full javadocs under each field/method.
   """
 
-  isAttributeSource = fullPath.endswith('AttributeSource.html')
-
   # TODO: only works with java7 generated javadocs now!
   with open(fullPath, encoding='UTF-8') as f:
     desc = None
@@ -90,15 +92,9 @@ def checkClassDetails(fullPath):
     errors = []
     for line in f.readlines():
 
-      if isAttributeSource:
-        # Work around Javadocs bug that fails to escape the <T> type parameter in {@link #getAttribute} and {@link #addAttribute}
-        line = line.replace('<code>getAttribute(java.lang.Class<T>)</code>', '<code>getAttribute(java.lang.Class)</code>')
-        line = line.replace('<code>addAttribute(java.lang.Class<T>)</code>', '<code>addAttribute(java.lang.Class)</code>')
-      
       m = reH3.search(line)
       if m is not None:
         if desc is not None:
-          # Have to fake <ul> context because we pulled a fragment out "across" two <ul>s:
           desc = ''.join(desc)
           if True or cat == 'Constructor Detail':
             idx = desc.find('</div>')
@@ -108,6 +104,7 @@ def checkClassDetails(fullPath):
               continue
             desc = desc[:idx+6]
           else:
+            # Have to fake <ul> context because we pulled a fragment out "across" two <ul>s:
             desc = '<ul>%s</ul>' % ''.join(desc)
           #print('  VERIFY %s: %s: %s' % (cat, item, desc))
           try:
@@ -123,7 +120,13 @@ def checkClassDetails(fullPath):
       if m is not None:
         if desc is not None:
           # Have to fake <ul> context because we pulled a fragment out "across" two <ul>s:
-          desc = '<ul>%s</ul>' % ''.join(desc)
+          if cat == 'Element Detail':
+            desc = ''.join(desc)
+            idx = desc.find('</dl>')
+            if idx != -1:
+              desc = desc[:idx+5]
+          else:
+            desc = '<ul>%s</ul>' % ''.join(desc)
           #print('  VERIFY %s: %s: %s' % (cat, item, desc))
           try:
             verifyHTML(desc)
@@ -147,6 +150,7 @@ def checkClassDetails(fullPath):
     return False
 
 def checkClassSummaries(fullPath):
+  #print("check %s" % fullPath)
 
   # TODO: only works with java7 generated javadocs now!
   f = open(fullPath, encoding='UTF-8')
@@ -161,11 +165,14 @@ def checkClassSummaries(fullPath):
 
   foundMethodDetail = False
   lastMethodAnchor = None
+  lineCount = 0
   
   for line in f.readlines():
     m = reMethodDetail.search(line)
+    lineCount += 1
     if m is not None:
       foundMethodDetail = True
+      #print('  got method detail')
       continue
 
     # prune methods that are just @Overrides of other interface/classes,
@@ -176,8 +183,9 @@ def checkClassSummaries(fullPath):
       if m is not None:
         lastMethodAnchor = m.group(1)
         continue
-      m = reMethodOverridden.search(line)
-      if m is not None and ('Methods', lastMethodAnchor) in missing:
+      isOverrides = '>Overrides:<' in line or '>Specified by:<' in line
+      #print('check for removing @overridden method: %s; %s; %s' % (lastMethodAnchor, isOverrides, missing))
+      if isOverrides and ('Methods', lastMethodAnchor) in missing:
         #print('removing @overridden method: %s' % lastMethodAnchor)
         missing.remove(('Methods', lastMethodAnchor))
 
@@ -185,34 +193,42 @@ def checkClassSummaries(fullPath):
     if m is not None:
       lastCaption = m.group(1)
       #print('    caption %s' % lastCaption)
-    m = reTDLastNested.search(line)
-    if m is not None:
-      # nested classes
-      lastItem = m.group(1)
-      #print('      item %s' % lastItem)
     else:
-      m = reTDLast.search(line)
+      m = reJ8Caption.search(line)
       if m is not None:
-        # methods etc
+        lastCaption = m.group(1)
+        if not lastCaption.endswith('s'):
+          lastCaption += 's'
+        #print('    caption %s' % lastCaption)
+
+    # Try to find the item in question (method/member name):
+    for matcher in (reTDLastNested, # nested classes
+                    reTDLast, # methods etc.
+                    reColOne, # ctors etc.
+                    reMemberNameLink, # java 8
+                    reNestedClassMemberNameLink, # java 8, nested class
+                    reMemberNameOneLink): # java 8 ctors
+      m = matcher.search(line)
+      if m is not None:
         lastItem = m.group(1)
-      else:
-        # ctors etc
-        m = reColOne.search(line)
-        if m is not None:
-          lastItem = m.group(1)
-          #print('      item %s' % lastItem)
+        #print('  found item %s; inThing=%s' % (lastItem, inThing))
+        break
 
     lineLower = line.strip().lower()
 
-    if lineLower.find('<tr class="') != -1:
+    if lineLower.find('<tr class="') != -1 or lineLower.find('<tr id="') != -1:
       inThing = True
       hasDesc = False
       continue
 
     if inThing:
       if lineLower.find('</tr>') != -1:
+        #print('  end item %s; hasDesc %s' % (lastItem, hasDesc))
         if not hasDesc:
+          if lastItem is None:
+            raise RuntimeError('failed to locate javadoc item in %s, line %d? last line: %s' % (fullPath, lineCount, line.rstrip()))
           missing.append((lastCaption, unEscapeURL(lastItem)))
+          #print('    add missing; now %d: %s' % (len(missing), str(missing)))
         inThing = False
         continue
       else:
@@ -233,6 +249,7 @@ def checkClassSummaries(fullPath):
             desc = desc.replace('</div>', '')
             desc = desc.strip()
             hasDesc = len(desc) > 0
+            #print('   thing %s: %s' % (lastItem, desc))
 
             desc = None
   f.close()
@@ -261,7 +278,7 @@ def checkSummary(fullPath):
       if lineLower.startswith('package ') or lineLower.startswith('<h1 title="package" '):
         sawPackage = True
       elif sawPackage:
-        if lineLower.startswith('<table ') or lineLower.startswith('<b>see: '):
+        if lineLower.startswith('<table ') or lineLower.startswith('<b>see: ') or lineLower.startswith('<p>see:'):
           desc = ' '.join(desc)
           desc = reMarkup.sub(' ', desc)
           desc = desc.strip()

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,8 +16,10 @@
  */
 package org.apache.solr.logging.log4j;
 
+import org.apache.solr.common.util.SuppressForbidden;
 import org.apache.solr.logging.LoggerInfo;
 
+@SuppressForbidden(reason = "class is specific to log4j")
 public class Log4jInfo extends LoggerInfo {
   final org.apache.log4j.Logger logger;
 

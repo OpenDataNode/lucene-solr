@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,13 +14,14 @@ package org.apache.lucene.analysis.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.core;
+
 
 import org.apache.lucene.analysis.util.AbstractAnalysisFactory;
 import org.apache.lucene.analysis.util.MultiTermAwareComponent;
 import org.apache.lucene.analysis.util.TokenizerFactory;
 import org.apache.lucene.util.AttributeFactory;
 
-import java.io.Reader;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -46,11 +45,8 @@ public class LowerCaseTokenizerFactory extends TokenizerFactory implements Multi
   }
 
   @Override
-  public LowerCaseTokenizer create(AttributeFactory factory, Reader input) {
-    if (luceneMatchVersion == null) {
-      return new LowerCaseTokenizer(factory, input);
-    }
-    return new LowerCaseTokenizer(luceneMatchVersion, factory, input);
+  public LowerCaseTokenizer create(AttributeFactory factory) {
+    return new LowerCaseTokenizer(factory);
   }
 
   @Override

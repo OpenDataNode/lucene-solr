@@ -1,4 +1,3 @@
-package org.apache.solr.handler.clustering;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,6 +14,7 @@ package org.apache.solr.handler.clustering;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.clustering;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.SolrCore;
 
@@ -22,7 +22,7 @@ import org.apache.solr.core.SolrCore;
  * A base class for {@link SearchClusteringEngine} and {@link DocumentClusteringEngine}.
  * @lucene.experimental
  */
-public class ClusteringEngine {
+public abstract class ClusteringEngine {
   public static final String ENGINE_NAME = "name";
   public static final String DEFAULT_ENGINE_NAME = "default";
 
@@ -36,4 +36,6 @@ public class ClusteringEngine {
   public String getName() {
     return name;
   }
+
+  public abstract boolean isAvailable();
 }

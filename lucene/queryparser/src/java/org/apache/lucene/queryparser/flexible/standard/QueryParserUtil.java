@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.queryparser.flexible.core.QueryNodeException;
@@ -54,7 +53,7 @@ final public class QueryParserUtil {
       throws QueryNodeException {
     if (queries.length != fields.length)
       throw new IllegalArgumentException("queries.length != fields.length");
-    BooleanQuery bQuery = new BooleanQuery();
+    BooleanQuery.Builder bQuery = new BooleanQuery.Builder();
 
     StandardQueryParser qp = new StandardQueryParser();
     qp.setAnalyzer(analyzer);
@@ -62,12 +61,11 @@ final public class QueryParserUtil {
     for (int i = 0; i < fields.length; i++) {
       Query q = qp.parse(queries[i], fields[i]);
 
-      if (q != null && // q never null, just being defensive
-          (!(q instanceof BooleanQuery) || ((BooleanQuery) q).getClauses().length > 0)) {
+      if (q != null) { // q never null, just being defensive
         bQuery.add(q, BooleanClause.Occur.SHOULD);
       }
     }
-    return bQuery;
+    return bQuery.build();
   }
 
   /**
@@ -110,7 +108,7 @@ final public class QueryParserUtil {
       BooleanClause.Occur[] flags, Analyzer analyzer) throws QueryNodeException {
     if (fields.length != flags.length)
       throw new IllegalArgumentException("fields.length != flags.length");
-    BooleanQuery bQuery = new BooleanQuery();
+    BooleanQuery.Builder bQuery = new BooleanQuery.Builder();
 
     StandardQueryParser qp = new StandardQueryParser();
     qp.setAnalyzer(analyzer);
@@ -118,12 +116,11 @@ final public class QueryParserUtil {
     for (int i = 0; i < fields.length; i++) {
       Query q = qp.parse(query, fields[i]);
 
-      if (q != null && // q never null, just being defensive
-          (!(q instanceof BooleanQuery) || ((BooleanQuery) q).getClauses().length > 0)) {
+      if (q != null) { // q never null, just being defensive
         bQuery.add(q, flags[i]);
       }
     }
-    return bQuery;
+    return bQuery.build();
   }
 
   /**
@@ -167,7 +164,7 @@ final public class QueryParserUtil {
     if (!(queries.length == fields.length && queries.length == flags.length))
       throw new IllegalArgumentException(
           "queries, fields, and flags array have have different length");
-    BooleanQuery bQuery = new BooleanQuery();
+    BooleanQuery.Builder bQuery = new BooleanQuery.Builder();
 
     StandardQueryParser qp = new StandardQueryParser();
     qp.setAnalyzer(analyzer);
@@ -175,12 +172,11 @@ final public class QueryParserUtil {
     for (int i = 0; i < fields.length; i++) {
       Query q = qp.parse(queries[i], fields[i]);
 
-      if (q != null && // q never null, just being defensive
-          (!(q instanceof BooleanQuery) || ((BooleanQuery) q).getClauses().length > 0)) {
+      if (q != null) { // q never null, just being defensive
         bQuery.add(q, flags[i]);
       }
     }
-    return bQuery;
+    return bQuery.build();
   }
 
   /**

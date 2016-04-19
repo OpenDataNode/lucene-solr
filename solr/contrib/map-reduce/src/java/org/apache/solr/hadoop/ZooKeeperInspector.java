@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -14,17 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.hadoop;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
-
+import com.google.common.io.Files;
 import org.apache.commons.io.FileUtils;
 import org.apache.solr.cloud.ZkController;
 import org.apache.solr.common.SolrException;
@@ -34,6 +26,7 @@ import org.apache.solr.common.cloud.DocCollection;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.SolrZkClient;
+import org.apache.solr.common.cloud.ZkConfigManager;
 import org.apache.solr.common.cloud.ZkCoreNodeProps;
 import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
@@ -42,14 +35,21 @@ import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.io.Files;
+import java.io.File;
+import java.io.IOException;
+import java.lang.invoke.MethodHandles;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 
 /**
  * Extracts SolrCloud information from ZooKeeper.
  */
 final class ZooKeeperInspector {
   
-  private static final Logger LOG = LoggerFactory.getLogger(ZooKeeperInspector.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   public List<List<String>> extractShardUrls(String zkHost, String collection) {
 
@@ -150,7 +150,7 @@ final class ZooKeeperInspector {
       configName = props.getStr(ZkController.CONFIGNAME_PROP);
     }
     
-    if (configName != null && !zkClient.exists(ZkController.CONFIGS_ZKNODE + "/" + configName, true)) {
+    if (configName != null && !zkClient.exists(ZkConfigManager.CONFIGS_ZKNODE + "/" + configName, true)) {
       LOG.error("Specified config does not exist in ZooKeeper:" + configName);
       throw new IllegalArgumentException("Specified config does not exist in ZooKeeper:"
         + configName);
@@ -181,7 +181,8 @@ final class ZooKeeperInspector {
   throws IOException, InterruptedException, KeeperException {
     File dir = Files.createTempDir();
     dir.deleteOnExit();
-    ZkController.downloadConfigDir(zkClient, configName, dir);
+    ZkConfigManager configManager = new ZkConfigManager(zkClient);
+    configManager.downloadConfigDir(configName, dir.toPath());
     File confDir = new File(dir, "conf");
     if (!confDir.isDirectory()) {
       // create a temporary directory with "conf" subdir and mv the config in there.  This is
@@ -193,7 +194,7 @@ final class ZooKeeperInspector {
       Files.move(dir, confDir);
       dir = confDir.getParentFile();
     }
-    FileUtils.writeStringToFile(new File(dir, "solr.xml"), "<solr><cores><core name=\"collection1\" instanceDir=\".\" /></cores></solr>", "UTF-8");
+    FileUtils.writeStringToFile(new File(dir, "solr.xml"), "<solr><solrcloud></solrcloud></solr>", "UTF-8");
     verifyConfigDir(confDir);
     return dir;
   }

@@ -14,21 +14,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.request;
+
+import java.io.Closeable;
+import java.lang.invoke.MethodHandles;
+import java.util.Date;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.TimeZone;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.CommonParams;
+import org.apache.solr.common.util.ExecutorUtil;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.component.ResponseBuilder;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.util.TimeZoneUtils;
-
-import java.io.Closeable;
-import java.util.Date;
-import java.util.TimeZone;
-import java.util.LinkedList;
-import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 public class SolrRequestInfo {
@@ -41,6 +45,7 @@ public class SolrRequestInfo {
   protected ResponseBuilder rb;
   protected List<Closeable> closeHooks;
 
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   public static SolrRequestInfo getRequestInfo() {
     return threadLocal.get();
@@ -50,7 +55,8 @@ public class SolrRequestInfo {
     // TODO: temporary sanity check... this can be changed to just an assert in the future
     SolrRequestInfo prev = threadLocal.get();
     if (prev != null) {
-      SolrCore.log.error("Previous SolrRequestInfo was not closed!  req=" + prev.req.getOriginalParams().toString());  
+      log.error("Previous SolrRequestInfo was not closed!  req=" + prev.req.getOriginalParams().toString());
+      log.error("prev == info : {}", prev.req == info.req);
     }
     assert prev == null;
 
@@ -65,7 +71,7 @@ public class SolrRequestInfo {
           try {
             hook.close();
           } catch (Exception e) {
-            SolrException.log(SolrCore.log, "Exception during close hook", e);
+            SolrException.log(log, "Exception during close hook", e);
           }
         }
       }
@@ -136,5 +142,29 @@ public class SolrRequestInfo {
       }
       closeHooks.add(hook);
     }
+  }
+
+  public static ExecutorUtil.InheritableThreadLocalProvider getInheritableThreadLocalProvider() {
+    return new ExecutorUtil.InheritableThreadLocalProvider() {
+      @Override
+      public void store(AtomicReference ctx) {
+        SolrRequestInfo me = threadLocal.get();
+        if (me != null) ctx.set(me);
+      }
+
+      @Override
+      public void set(AtomicReference ctx) {
+        SolrRequestInfo me = (SolrRequestInfo) ctx.get();
+        if (me != null) {
+          ctx.set(null);
+          threadLocal.set(me);
+        }
+      }
+
+      @Override
+      public void clean(AtomicReference ctx) {
+        threadLocal.remove();
+      }
+    };
   }
 }

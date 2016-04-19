@@ -1,6 +1,4 @@
-package org.apache.solr.search;
-
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,6 +14,8 @@ package org.apache.solr.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search;
+
 /**
  * Thrown by {@link EarlyTerminatingCollector} when the maximum to abort
  * the scoring / collection process early, when the specified maximum number
@@ -42,10 +42,10 @@ public class EarlyTerminatingCollectorException extends RuntimeException {
    * This number represents the sum of:
    * </p>
    * <ul>
-   *  <li>The total number of documents in all AtomicReaders
+   *  <li>The total number of documents in all LeafReaders
    *      that were fully exhausted during collection
    *  </li>
-   *  <li>The id of the last doc collected in the last AtomicReader
+   *  <li>The id of the last doc collected in the last LeafReader
    *      consulted during collection.
    *  </li>
    * </ul>

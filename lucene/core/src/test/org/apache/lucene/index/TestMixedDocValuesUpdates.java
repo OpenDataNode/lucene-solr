@@ -1,3 +1,19 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.apache.lucene.index;
 
 import java.io.IOException;
@@ -18,29 +34,12 @@ import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
+import org.apache.lucene.util.LuceneTestCase.Nightly;
 import org.apache.lucene.util.TestUtil;
 
 import com.carrotsearch.randomizedtesting.generators.RandomPicks;
 
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 
-@SuppressCodecs({"Appending","Lucene3x","Lucene40","Lucene41","Lucene42","Lucene45"})
 public class TestMixedDocValuesUpdates extends LuceneTestCase {
 
   public void testManyReopensAndFields() throws Exception {
@@ -51,11 +50,11 @@ public class TestMixedDocValuesUpdates extends LuceneTestCase {
     lmp.setMergeFactor(3); // merge often
     conf.setMergePolicy(lmp);
     IndexWriter writer = new IndexWriter(dir, conf);
-    
+
     final boolean isNRT = random.nextBoolean();
     DirectoryReader reader;
     if (isNRT) {
-      reader = DirectoryReader.open(writer, true);
+      reader = DirectoryReader.open(writer);
     } else {
       writer.commit();
       reader = DirectoryReader.open(dir);
@@ -72,7 +71,7 @@ public class TestMixedDocValuesUpdates extends LuceneTestCase {
     int docID = 0;
     for (int i = 0; i < numRounds; i++) {
       int numDocs = atLeast(5);
-//      System.out.println("[" + Thread.currentThread().getName() + "]: round=" + i + ", numDocs=" + numDocs);
+      // System.out.println("TEST: round=" + i + ", numDocs=" + numDocs);
       for (int j = 0; j < numDocs; j++) {
         Document doc = new Document();
         doc.add(new StringField("id", "doc-" + docID, Store.NO));
@@ -96,8 +95,8 @@ public class TestMixedDocValuesUpdates extends LuceneTestCase {
       } else {
         writer.updateBinaryDocValue(new Term("key", "all"), updateField, TestBinaryDocValuesUpdates.toBytes(++fieldValues[fieldIdx]));
       }
-//      System.out.println("[" + Thread.currentThread().getName() + "]: updated field '" + updateField + "' to value " + fieldValues[fieldIdx]);
-      
+      //System.out.println("TEST: updated field '" + updateField + "' to value " + fieldValues[fieldIdx]);
+
       if (random.nextDouble() < 0.2) {
         int deleteDoc = random.nextInt(docID); // might also delete an already deleted document, ok!
         writer.deleteDocuments(new Term("id", "doc-" + deleteDoc));
@@ -116,8 +115,8 @@ public class TestMixedDocValuesUpdates extends LuceneTestCase {
       reader = newReader;
 //      System.out.println("[" + Thread.currentThread().getName() + "]: reopened reader: " + reader);
       assertTrue(reader.numDocs() > 0); // we delete at most one document per round
-      for (AtomicReaderContext context : reader.leaves()) {
-        AtomicReader r = context.reader();
+      for (LeafReaderContext context : reader.leaves()) {
+        LeafReader r = context.reader();
 //        System.out.println(((SegmentReader) r).getSegmentName());
         Bits liveDocs = r.getLiveDocs();
         for (int field = 0; field < fieldValues.length; field++) {
@@ -138,9 +137,9 @@ public class TestMixedDocValuesUpdates extends LuceneTestCase {
 //              System.out.println("doc=" + (doc + context.docBase) + " f='" + f + "' vslue=" + getValue(bdv, doc, scratch));
               assertTrue(docsWithField.get(doc));
               if (field < numNDVFields) {
-                assertEquals("invalid value for doc=" + doc + ", field=" + f + ", reader=" + r, fieldValues[field], ndv.get(doc));
+                assertEquals("invalid numeric value for doc=" + doc + ", field=" + f + ", reader=" + r, fieldValues[field], ndv.get(doc));
               } else {
-                assertEquals("invalid value for doc=" + doc + ", field=" + f + ", reader=" + r, fieldValues[field], TestBinaryDocValuesUpdates.getValue(bdv, doc));
+                assertEquals("invalid binary value for doc=" + doc + ", field=" + f + ", reader=" + r, fieldValues[field], TestBinaryDocValuesUpdates.getValue(bdv, doc));
               }
             }
           }
@@ -149,7 +148,8 @@ public class TestMixedDocValuesUpdates extends LuceneTestCase {
 //      System.out.println();
     }
     
-    IOUtils.close(writer, reader, dir);
+    writer.close();
+    IOUtils.close(reader, dir);
   }
   
   public void testStressMultiThreading() throws Exception {
@@ -223,10 +223,10 @@ public class TestMixedDocValuesUpdates extends LuceneTestCase {
               if (random.nextDouble() < 0.1) { // reopen NRT reader (apply updates), on average once every 10 updates
                 if (reader == null) {
 //                  System.out.println("[" + Thread.currentThread().getName() + "] open NRT");
-                  reader = DirectoryReader.open(writer, true);
+                  reader = DirectoryReader.open(writer);
                 } else {
 //                  System.out.println("[" + Thread.currentThread().getName() + "] reopen NRT");
-                  DirectoryReader r2 = DirectoryReader.openIfChanged(reader, writer, true);
+                  DirectoryReader r2 = DirectoryReader.openIfChanged(reader, writer);
                   if (r2 != null) {
                     reader.close();
                     reader = r2;
@@ -260,8 +260,8 @@ public class TestMixedDocValuesUpdates extends LuceneTestCase {
     
     DirectoryReader reader = DirectoryReader.open(dir);
     BytesRef scratch = new BytesRef();
-    for (AtomicReaderContext context : reader.leaves()) {
-      AtomicReader r = context.reader();
+    for (LeafReaderContext context : reader.leaves()) {
+      LeafReader r = context.reader();
       for (int i = 0; i < numFields; i++) {
         BinaryDocValues bdv = r.getBinaryDocValues("f" + i);
         NumericDocValues control = r.getNumericDocValues("cf" + i);
@@ -310,9 +310,9 @@ public class TestMixedDocValuesUpdates extends LuceneTestCase {
       long value = random().nextLong();
       writer.updateDocValues(t, new BinaryDocValuesField("f", TestBinaryDocValuesUpdates.toBytes(value)),
           new NumericDocValuesField("cf", value*2));
-      DirectoryReader reader = DirectoryReader.open(writer, true);
-      for (AtomicReaderContext context : reader.leaves()) {
-        AtomicReader r = context.reader();
+      DirectoryReader reader = DirectoryReader.open(writer);
+      for (LeafReaderContext context : reader.leaves()) {
+        LeafReader r = context.reader();
         BinaryDocValues fbdv = r.getBinaryDocValues("f");
         NumericDocValues cfndv = r.getNumericDocValues("cf");
         for (int j = 0; j < r.maxDoc(); j++) {
@@ -325,6 +325,7 @@ public class TestMixedDocValuesUpdates extends LuceneTestCase {
     dir.close();
   }
 
+  @Nightly
   public void testTonsOfUpdates() throws Exception {
     // LUCENE-5248: make sure that when there are many updates, we don't use too much RAM
     Directory dir = newDirectory();
@@ -378,9 +379,9 @@ public class TestMixedDocValuesUpdates extends LuceneTestCase {
     writer.close();
     
     DirectoryReader reader = DirectoryReader.open(dir);
-    for (AtomicReaderContext context : reader.leaves()) {
+    for (LeafReaderContext context : reader.leaves()) {
       for (int i = 0; i < numBinaryFields; i++) {
-        AtomicReader r = context.reader();
+        LeafReader r = context.reader();
         BinaryDocValues f = r.getBinaryDocValues("f" + i);
         NumericDocValues cf = r.getNumericDocValues("cf" + i);
         for (int j = 0; j < r.maxDoc(); j++) {

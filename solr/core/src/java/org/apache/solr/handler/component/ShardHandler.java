@@ -1,4 +1,3 @@
-package org.apache.solr.handler.component;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,13 +14,15 @@ package org.apache.solr.handler.component;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
+package org.apache.solr.handler.component;
 import org.apache.solr.common.params.ModifiableSolrParams;
 
 public abstract class ShardHandler {
-  public abstract void checkDistributed(ResponseBuilder rb);
-  public abstract void submit(ShardRequest sreq, String shard, ModifiableSolrParams params) ;
+  public abstract void prepDistributed(ResponseBuilder rb);
+  public void submit(ShardRequest sreq, String shard, ModifiableSolrParams params) {
+    submit(sreq, shard, params, null);
+  }
+  public abstract void submit(ShardRequest sreq, String shard, ModifiableSolrParams params, String preferredHostAddress);
   public abstract ShardResponse takeCompletedIncludingErrors();
   public abstract ShardResponse takeCompletedOrError();
   public abstract void cancelAll();

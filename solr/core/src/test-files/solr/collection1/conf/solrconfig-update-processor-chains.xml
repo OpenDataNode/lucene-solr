@@ -23,7 +23,7 @@
 
   -->
 <config>
-  <luceneMatchVersion>${tests.luceneMatchVersion:LUCENE_CURRENT}</luceneMatchVersion>
+  <luceneMatchVersion>${tests.luceneMatchVersion:LATEST}</luceneMatchVersion>
   <xi:include href="solrconfig.snippet.randomindexconfig.xml" xmlns:xi="http://www.w3.org/2001/XInclude"/>
   <requestHandler name="standard" class="solr.StandardRequestHandler"></requestHandler>
   <directoryFactory name="DirectoryFactory" class="${solr.directoryFactory:solr.RAMDirectoryFactory}"/>
@@ -89,7 +89,7 @@
       <str name="fieldRegex">bar.*</str>
       <!-- each set of exclusions is checked independently -->
       <lst name="exclude">
-        <str name="typeClass">solr.DateField</str>
+        <str name="typeClass">solr.TrieDateField</str>
       </lst>
       <lst name="exclude">
         <str name="fieldRegex">.*HOSS.*</str>
@@ -102,7 +102,7 @@
       <str name="fieldRegex">bar.*</str>
       <!-- only excluded if it matches all in set -->
       <lst name="exclude">
-        <str name="typeClass">solr.DateField</str>
+        <str name="typeClass">solr.TrieDateField</str>
         <str name="fieldRegex">.*HOSS.*</str>
       </lst>
     </processor>
@@ -139,14 +139,14 @@
 
   <updateRequestProcessorChain name="trim-classes">
     <processor class="solr.TrimFieldUpdateProcessorFactory">
-      <str name="typeClass">solr.DateField</str>
+      <str name="typeClass">solr.TrieDateField</str>
       <str name="typeClass">solr.StrField</str>
     </processor>
   </updateRequestProcessorChain>
 
   <updateRequestProcessorChain name="trim-multi">
     <processor class="solr.TrimFieldUpdateProcessorFactory">
-      <str name="typeClass">solr.DateField</str>
+      <str name="typeClass">solr.TrieDateField</str>
       <str name="typeClass">solr.StrField</str>
       <arr name="fieldRegex">
         <str>foo.*</str>
@@ -292,11 +292,33 @@
       <str name="dest">dest_s</str>
     </processor>
   </updateRequestProcessorChain>
+  
+  <updateRequestProcessorChain name="clone-single-regex">
+    <processor class="solr.CloneFieldUpdateProcessorFactory">
+      <str name="source">source1_s</str>
+      <lst name="dest">
+        <str name="pattern">source\d(_s)</str>
+        <str name="replacement">dest$1</str>
+      </lst>
+    </processor>
+  </updateRequestProcessorChain>
+  
   <updateRequestProcessorChain name="clone-multi">
     <processor class="solr.CloneFieldUpdateProcessorFactory">
       <str name="source">source1_s</str>
       <str name="source">source2_s</str>
       <str name="dest">dest_s</str>
+    </processor>
+  </updateRequestProcessorChain>
+
+  <updateRequestProcessorChain name="clone-multi-regex">
+    <processor class="solr.CloneFieldUpdateProcessorFactory">
+      <str name="source">source1_s</str>
+      <str name="source">source2_s</str>
+      <lst name="dest">
+        <str name="pattern">source\d(_s)</str>
+        <str name="replacement">dest$1</str>
+      </lst>
     </processor>
   </updateRequestProcessorChain>
 
@@ -310,6 +332,19 @@
     </processor>
   </updateRequestProcessorChain>
 
+  <updateRequestProcessorChain name="clone-array-regex">
+    <processor class="solr.CloneFieldUpdateProcessorFactory">
+      <arr name="source">
+        <str>source1_s</str>
+        <str>source2_s</str>
+      </arr>
+      <lst name="dest">
+        <str name="pattern">source\d(_s)</str>
+        <str name="replacement">dest$1</str>
+      </lst>
+    </processor>
+  </updateRequestProcessorChain>
+
   <updateRequestProcessorChain name="clone-selector">
     <processor class="solr.CloneFieldUpdateProcessorFactory">
       <lst name="source">
@@ -319,6 +354,41 @@
         </lst>
       </lst>
       <str name="dest">dest_s</str>
+    </processor>
+  </updateRequestProcessorChain>
+  
+  <updateRequestProcessorChain name="clone-selector-regex">
+    <processor class="solr.CloneFieldUpdateProcessorFactory">
+      <lst name="source">
+        <str name="fieldRegex">source\d_.*</str>
+        <lst name="exclude">
+          <str name="fieldRegex">source0_.*</str>
+        </lst>
+      </lst>
+      <lst name="dest">
+        <str name="pattern">source\d(_s)</str>
+        <str name="replacement">dest$1</str>
+      </lst>
+    </processor>
+  </updateRequestProcessorChain>
+  
+  <updateRequestProcessorChain name="clone-simple-regex-syntax">
+    <processor class="solr.CloneFieldUpdateProcessorFactory">
+      <str name="pattern">source\d_.*</str>
+      <str name="replacement">dest_s</str>
+    </processor>
+  </updateRequestProcessorChain>
+  
+  <updateRequestProcessorChain name="clone-regex-replaceall">
+    <processor class="solr.CloneFieldUpdateProcessorFactory">
+      <lst name="source">
+        <str name="fieldRegex">foo.*</str>
+      </lst>
+      <lst name="dest">
+        <!-- unbounded pattern that can be replaced multiple times in field name -->
+        <str name="pattern">x(\d)</str>
+        <str name="replacement">y$1</str>
+      </lst>
     </processor>
   </updateRequestProcessorChain>
 
@@ -364,6 +434,16 @@
       <str name="fieldName">toField</str>
     </processor>
   </updateRequestProcessorChain>
+  
+  <updateRequestProcessorChain name="clone-first">
+    <processor class="solr.CloneFieldUpdateProcessorFactory">
+      <str name="pattern">field(.*)</str>
+      <str name="replacement">toField</str>
+    </processor>
+    <processor class="solr.FirstFieldValueUpdateProcessorFactory">
+      <str name="fieldName">toField</str>
+    </processor>
+  </updateRequestProcessorChain>
 
   <!-- example used in CloneFieldUpdateProcessorFactory javadocs -->
   <updateRequestProcessorChain name="multiple-clones">
@@ -380,12 +460,26 @@
     </processor>
     <processor class="solr.CloneFieldUpdateProcessorFactory">
       <lst name="source">
-        <str name="fieldRegex">.*_price</str>
+        <str name="fieldRegex">.*_price$</str>
         <lst name="exclude">
           <str name="fieldName">list_price</str>
         </lst>
       </lst>
       <str name="dest">all_prices</str>
+    </processor>
+    <processor class="solr.processor.CloneFieldUpdateProcessorFactory">
+      <lst name="source">
+        <str name="fieldRegex">^feat(.*)s$</str>
+      </lst>
+      <lst name="dest">
+        <str name="pattern">^feat(.*)s$</str>
+        <str name="replacement">key_feat$1</str>
+      </lst>
+    </processor>
+    <!-- equivilent sugar syntax to above, with slightly diff destination name -->
+    <processor class="solr.processor.CloneFieldUpdateProcessorFactory">
+      <str name="pattern">^feat(.*)s$</str>
+      <str name="replacement">best_feat$1</str>
     </processor>
   </updateRequestProcessorChain>
 
@@ -508,6 +602,27 @@
       <str name="fieldName">ssto</str>
       <str name="fieldName">sind</str>
       <str name="parser">json</str>
+    </processor>
+    <processor class="solr.RunUpdateProcessorFactory" />
+  </updateRequestProcessorChain>
+
+  <updateRequestProcessorChain name="ignore-commit-from-client-403">
+    <processor class="solr.IgnoreCommitOptimizeUpdateProcessorFactory"/>
+    <processor class="solr.RunUpdateProcessorFactory" />
+  </updateRequestProcessorChain>
+
+  <updateRequestProcessorChain name="ignore-commit-from-client-200">
+    <processor class="solr.IgnoreCommitOptimizeUpdateProcessorFactory">
+      <int name="statusCode">200</int>
+      <str name="responseMessage">Thou shall not issue a commit!</str>
+    </processor>
+    <processor class="solr.RunUpdateProcessorFactory" />
+  </updateRequestProcessorChain>
+
+  <updateRequestProcessorChain name="ignore-optimize-only-from-client-403">
+    <processor class="solr.IgnoreCommitOptimizeUpdateProcessorFactory">
+      <str name="responseMessage">Thou shall not issue an optimize, but commits are OK!</str>
+      <bool name="ignoreOptimizeOnly">true</bool>
     </processor>
     <processor class="solr.RunUpdateProcessorFactory" />
   </updateRequestProcessorChain>

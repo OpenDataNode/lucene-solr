@@ -1,4 +1,3 @@
-package org.apache.lucene.search.highlight;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.lucene.search.highlight;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.lucene.search.highlight;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -187,7 +186,6 @@ public class Highlighter
 
     CharTermAttribute termAtt = tokenStream.addAttribute(CharTermAttribute.class);
     OffsetAttribute offsetAtt = tokenStream.addAttribute(OffsetAttribute.class);
-    tokenStream.reset();
     TextFragment currentFrag =  new TextFragment(newText,newText.length(), docFrags.size());
 
     if (fragmentScorer instanceof QueryScorer) {
@@ -214,6 +212,7 @@ public class Highlighter
 
       TokenGroup tokenGroup=new TokenGroup(tokenStream);
 
+      tokenStream.reset();
       for (boolean next = tokenStream.incrementToken(); next && (offsetAtt.startOffset()< maxDocCharsToAnalyze);
             next = tokenStream.incrementToken())
       {
@@ -225,12 +224,12 @@ public class Highlighter
           throw new InvalidTokenOffsetsException("Token "+ termAtt.toString()
               +" exceeds length of provided text sized "+text.length());
         }
-        if((tokenGroup.numTokens>0)&&(tokenGroup.isDistinct()))
+        if((tokenGroup.getNumTokens() >0)&&(tokenGroup.isDistinct()))
         {
           //the current token is distinct from previous tokens -
           // markup the cached token group info
-          startOffset = tokenGroup.matchStartOffset;
-          endOffset = tokenGroup.matchEndOffset;
+          startOffset = tokenGroup.getStartOffset();
+          endOffset = tokenGroup.getEndOffset();
           tokenText = text.substring(startOffset, endOffset);
           String markedUpText=formatter.highlightTerm(encoder.encodeText(tokenText), tokenGroup);
           //store any whitespace etc from between this and last group
@@ -261,11 +260,11 @@ public class Highlighter
       }
       currentFrag.setScore(fragmentScorer.getFragmentScore());
 
-      if(tokenGroup.numTokens>0)
+      if(tokenGroup.getNumTokens() >0)
       {
         //flush the accumulated text (same code as in above loop)
-        startOffset = tokenGroup.matchStartOffset;
-        endOffset = tokenGroup.matchEndOffset;
+        startOffset = tokenGroup.getStartOffset();
+        endOffset = tokenGroup.getEndOffset();
         tokenText = text.substring(startOffset, endOffset);
         String markedUpText=formatter.highlightTerm(encoder.encodeText(tokenText), tokenGroup);
         //store any whitespace etc from between this and last group

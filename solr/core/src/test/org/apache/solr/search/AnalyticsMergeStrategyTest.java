@@ -1,5 +1,3 @@
-package org.apache.solr.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,14 @@ package org.apache.solr.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search;
 
 import org.apache.solr.BaseDistributedSearchTestCase;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.junit.BeforeClass;
-
-import java.util.Arrays;
+import org.junit.Test;
 
 /**
  * Test for QueryComponent's distributed querying
@@ -33,8 +31,6 @@ import java.util.Arrays;
 public class AnalyticsMergeStrategyTest extends BaseDistributedSearchTestCase {
 
   public AnalyticsMergeStrategyTest() {
-    fixShardCount = true;
-    shardCount = 3;
     stress = 0;
   }
 
@@ -43,8 +39,9 @@ public class AnalyticsMergeStrategyTest extends BaseDistributedSearchTestCase {
     initCore("solrconfig-analytics-query.xml", "schema15.xml");
   }
 
-  @Override
-  public void doTest() throws Exception {
+  @Test
+  @ShardsFixed(num = 3)
+  public void test() throws Exception {
     del("*:*");
 
     index_specific(0,"id","1", "sort_i", "5");

@@ -1,5 +1,3 @@
-package org.apache.solr.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,8 @@ package org.apache.solr.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search;
 
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.solr.SolrTestCaseJ4;
 import org.junit.BeforeClass;
 
@@ -25,7 +23,6 @@ import org.junit.BeforeClass;
 /**
  * Test QueryComponent.doFieldSortValues
  */
-@SuppressCodecs({"Lucene3x"})
 public class TestFieldSortValues extends SolrTestCaseJ4 {
 
   @BeforeClass

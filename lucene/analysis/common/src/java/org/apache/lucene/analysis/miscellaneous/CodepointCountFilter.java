@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.miscellaneous;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,12 @@ package org.apache.lucene.analysis.miscellaneous;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.miscellaneous;
+
 
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.util.FilteringTokenFilter;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
-import org.apache.lucene.util.Version;
 
 /**
  * Removes words that are too long or too short from the stream.
@@ -44,15 +43,7 @@ public final class CodepointCountFilter extends FilteringTokenFilter {
    * @param max     the maximum length
    */
   public CodepointCountFilter(TokenStream in, int min, int max) {
-    this(Version.LATEST, in, min, max);
-  }
-
-  /**
-   * @deprecated Use {@link #CodepointCountFilter(TokenStream, int, int)}
-   */
-  @Deprecated
-  public CodepointCountFilter(Version version, TokenStream in, int min, int max) {
-    super(version, in);
+    super(in);
     if (min < 0) {
       throw new IllegalArgumentException("minimum length must be greater than or equal to zero");
     }

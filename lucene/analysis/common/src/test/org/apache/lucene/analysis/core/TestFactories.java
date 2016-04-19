@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.core;
+
 
 import java.io.IOException;
 import java.io.Reader;
@@ -36,6 +36,7 @@ import org.apache.lucene.analysis.util.StringMockResourceLoader;
 import org.apache.lucene.analysis.util.TokenFilterFactory;
 import org.apache.lucene.analysis.util.TokenizerFactory;
 import org.apache.lucene.util.AttributeFactory;
+import org.apache.lucene.util.Version;
 
 /**
  * Sanity check some things about all factories,
@@ -45,6 +46,8 @@ import org.apache.lucene.util.AttributeFactory;
 // TODO: move this, TestRandomChains, and TestAllAnalyzersHaveFactories
 // to an integration test module that sucks in all analysis modules.
 // currently the only way to do this is via eclipse etc (LUCENE-3974)
+
+// TODO: fix this to use CustomAnalyzer instead of its own FactoryAnalyzer
 public class TestFactories extends BaseTokenStreamTestCase {
   public void test() throws IOException {
     for (String tokenizer : TokenizerFactory.availableTokenizers()) {
@@ -70,13 +73,15 @@ public class TestFactories extends BaseTokenStreamTestCase {
       if (factory instanceof MultiTermAwareComponent) {
         AbstractAnalysisFactory mtc = ((MultiTermAwareComponent) factory).getMultiTermComponent();
         assertNotNull(mtc);
-        // its not ok to return e.g. a charfilter here: but a tokenizer could wrap a filter around it
+        // it's not ok to return e.g. a charfilter here: but a tokenizer could wrap a filter around it
         assertFalse(mtc instanceof CharFilterFactory);
       }
       
       // beast it just a little, it shouldnt throw exceptions:
       // (it should have thrown them in initialize)
-      checkRandomData(random(), new FactoryAnalyzer(factory, null, null), 100, 20, false, false);
+      Analyzer a = new FactoryAnalyzer(factory, null, null);
+      checkRandomData(random(), a, 20, 20, false, false);
+      a.close();
     }
   }
   
@@ -90,13 +95,15 @@ public class TestFactories extends BaseTokenStreamTestCase {
       if (factory instanceof MultiTermAwareComponent) {
         AbstractAnalysisFactory mtc = ((MultiTermAwareComponent) factory).getMultiTermComponent();
         assertNotNull(mtc);
-        // its not ok to return a charfilter or tokenizer here, this makes no sense
+        // it's not ok to return a charfilter or tokenizer here, this makes no sense
         assertTrue(mtc instanceof TokenFilterFactory);
       }
       
       // beast it just a little, it shouldnt throw exceptions:
       // (it should have thrown them in initialize)
-      checkRandomData(random(), new FactoryAnalyzer(assertingTokenizer, factory, null), 100, 20, false, false);
+      Analyzer a = new FactoryAnalyzer(assertingTokenizer, factory, null);
+      checkRandomData(random(), a, 20, 20, false, false);
+      a.close();
     }
   }
   
@@ -110,20 +117,22 @@ public class TestFactories extends BaseTokenStreamTestCase {
       if (factory instanceof MultiTermAwareComponent) {
         AbstractAnalysisFactory mtc = ((MultiTermAwareComponent) factory).getMultiTermComponent();
         assertNotNull(mtc);
-        // its not ok to return a tokenizer or tokenfilter here, this makes no sense
+        // it's not ok to return a tokenizer or tokenfilter here, this makes no sense
         assertTrue(mtc instanceof CharFilterFactory);
       }
       
       // beast it just a little, it shouldnt throw exceptions:
       // (it should have thrown them in initialize)
-      checkRandomData(random(), new FactoryAnalyzer(assertingTokenizer, null, factory), 100, 20, false, false);
+      Analyzer a = new FactoryAnalyzer(assertingTokenizer, null, factory);
+      checkRandomData(random(), a, 20, 20, false, false);
+      a.close();
     }
   }
   
   /** tries to initialize a factory with no arguments */
   private AbstractAnalysisFactory initialize(Class<? extends AbstractAnalysisFactory> factoryClazz) throws IOException {
     Map<String,String> args = new HashMap<>();
-    args.put("luceneMatchVersion", TEST_VERSION_CURRENT.toString());
+    args.put("luceneMatchVersion", Version.LATEST.toString());
     Constructor<? extends AbstractAnalysisFactory> ctor;
     try {
       ctor = factoryClazz.getConstructor(Map.class);
@@ -134,13 +143,11 @@ public class TestFactories extends BaseTokenStreamTestCase {
     AbstractAnalysisFactory factory = null;
     try {
       factory = ctor.newInstance(args);
-    } catch (InstantiationException e) {
-      throw new RuntimeException(e);
-    } catch (IllegalAccessException e) {
+    } catch (InstantiationException | IllegalAccessException e) {
       throw new RuntimeException(e);
     } catch (InvocationTargetException e) {
       if (e.getCause() instanceof IllegalArgumentException) {
-        // its ok if we dont provide the right parameters to throw this
+        // it's ok if we dont provide the right parameters to throw this
         return null;
       }
     }
@@ -149,7 +156,7 @@ public class TestFactories extends BaseTokenStreamTestCase {
       try {
         ((ResourceLoaderAware) factory).inform(new StringMockResourceLoader(""));
       } catch (IOException ignored) {
-        // its ok if the right files arent available or whatever to throw this
+        // it's ok if the right files arent available or whatever to throw this
       } catch (IllegalArgumentException ignored) {
         // is this ok? I guess so
       }
@@ -160,8 +167,8 @@ public class TestFactories extends BaseTokenStreamTestCase {
   // some silly classes just so we can use checkRandomData
   private TokenizerFactory assertingTokenizer = new TokenizerFactory(new HashMap<String,String>()) {
     @Override
-    public MockTokenizer create(AttributeFactory factory, Reader input) {
-      return new MockTokenizer(factory, input);
+    public MockTokenizer create(AttributeFactory factory) {
+      return new MockTokenizer(factory);
     }
   };
   
@@ -178,8 +185,8 @@ public class TestFactories extends BaseTokenStreamTestCase {
     }
 
     @Override
-    protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      Tokenizer tf = tokenizer.create(newAttributeFactory(), reader);
+    protected TokenStreamComponents createComponents(String fieldName) {
+      Tokenizer tf = tokenizer.create(newAttributeFactory());
       if (tokenfilter != null) {
         return new TokenStreamComponents(tf, tokenfilter.create(tf));
       } else {

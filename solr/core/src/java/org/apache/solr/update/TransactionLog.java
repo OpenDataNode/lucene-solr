@@ -14,16 +14,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update;
 
+import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
+import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -39,6 +41,7 @@ import org.apache.solr.common.util.DataInputInputStream;
 import org.apache.solr.common.util.FastInputStream;
 import org.apache.solr.common.util.FastOutputStream;
 import org.apache.solr.common.util.JavaBinCodec;
+import org.apache.solr.common.util.ObjectReleaseTracker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -59,10 +62,10 @@ import org.slf4j.LoggerFactory;
  *  in them (since we know that if the request succeeds, all docs will be committed)
  *
  */
-public class TransactionLog {
-  public static Logger log = LoggerFactory.getLogger(TransactionLog.class);
-  final boolean debug = log.isDebugEnabled();
-  final boolean trace = log.isTraceEnabled();
+public class TransactionLog implements Closeable {
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+  private static boolean debug = log.isDebugEnabled();
+  private static boolean trace = log.isTraceEnabled();
 
   public final static String END_MESSAGE="SOLR_TLOG_END";
 
@@ -166,9 +169,10 @@ public class TransactionLog {
         }
       } else {
         if (start > 0) {
-          log.error("New transaction log already exists:" + tlogFile + " size=" + raf.length());
+          log.warn("New transaction log already exists:" + tlogFile + " size=" + raf.length());
+          return;
         }
-        assert start==0;
+       
         if (start > 0) {
           raf.setLength(0);
         }
@@ -176,6 +180,8 @@ public class TransactionLog {
       }
 
       success = true;
+      
+      assert ObjectReleaseTracker.track(this);
 
     } catch (IOException e) {
       throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, e);
@@ -531,7 +537,7 @@ public class TransactionLog {
     }
   }
 
-  protected void close() {
+  public void close() {
     try {
       if (debug) {
         log.debug("Closing tlog" + this);
@@ -543,10 +549,17 @@ public class TransactionLog {
       }
 
       if (deleteOnClose) {
-        tlogFile.delete();
+        try {
+          Files.deleteIfExists(tlogFile.toPath());
+        } catch (IOException e) {
+          // TODO: should this class care if a file couldnt be deleted?
+          // this just emulates previous behavior, where only SecurityException would be handled.
+        }
       }
     } catch (IOException e) {
       throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, e);
+    } finally {
+      assert ObjectReleaseTracker.release(this);
     }
   }
   
@@ -645,6 +658,18 @@ public class TransactionLog {
       synchronized (TransactionLog.this) {
         return "LogReader{" + "file=" + tlogFile + ", position=" + fis.position() + ", end=" + fos.size() + "}";
       }
+    }
+
+    // returns best effort current position
+    // for info purposes
+    public long currentPos() {
+      return fis.position();
+    }
+    
+    // returns best effort current size
+    // for info purposes
+    public long currentSize() throws IOException {
+      return channel.size();
     }
 
   }

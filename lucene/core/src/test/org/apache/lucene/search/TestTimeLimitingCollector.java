@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.BitSet;
@@ -23,7 +23,7 @@ import java.util.BitSet;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
@@ -33,6 +33,7 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Counter;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.LuceneTestCase.SuppressSysoutChecks;
+import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.ThreadInterruptedException;
 
 /**
@@ -91,7 +92,7 @@ public class TestTimeLimitingCollector extends LuceneTestCase {
     iw.close();
     searcher = newSearcher(reader);
 
-    BooleanQuery booleanQuery = new BooleanQuery();
+    BooleanQuery.Builder booleanQuery = new BooleanQuery.Builder();
     booleanQuery.add(new TermQuery(new Term(FIELD_NAME, "one")), BooleanClause.Occur.SHOULD);
     // start from 1, so that the 0th doc never matches
     for (int i = 1; i < docText.length; i++) {
@@ -101,10 +102,10 @@ public class TestTimeLimitingCollector extends LuceneTestCase {
       }
     }
 
-    query = booleanQuery;
+    query = booleanQuery.build();
     
     // warm the searcher
-    searcher.search(query, null, 1000);
+    searcher.search(query, 1000);
   }
 
   @Override
@@ -143,14 +144,15 @@ public class TestTimeLimitingCollector extends LuceneTestCase {
       
       myHc = new MyHitCollector();
       long oneHour = 3600000;
-      Collector tlCollector = createTimedCollector(myHc, oneHour, false);
+      long duration = TestUtil.nextLong(random(), oneHour, Long.MAX_VALUE); 
+      Collector tlCollector = createTimedCollector(myHc, duration, false);
       search(tlCollector);
       totalTLCResults = myHc.hitCount();
     } catch (Exception e) {
       e.printStackTrace();
       assertTrue("Unexpected exception: "+e, false); //==fail
     }
-    assertEquals( "Wrong number of results!", totalResults, totalTLCResults );
+    assertEquals("Wrong number of results!", totalResults, totalTLCResults);
   }
 
   private Collector createTimedCollector(MyHitCollector hc, long timeAllowed, boolean greedy) {
@@ -180,43 +182,47 @@ public class TestTimeLimitingCollector extends LuceneTestCase {
     Collector tlCollector = createTimedCollector(myHc, TIME_ALLOWED, greedy);
 
     // search
-    TimeExceededException timoutException = null;
+    TimeExceededException timeoutException = null;
     try {
       search(tlCollector);
     } catch (TimeExceededException x) {
-      timoutException = x;
+      timeoutException = x;
     } catch (Exception e) {
       assertTrue("Unexpected exception: "+e, false); //==fail
     }
     
     // must get exception
-    assertNotNull( "Timeout expected!", timoutException );
+    assertNotNull( "Timeout expected!", timeoutException );
 
     // greediness affect last doc collected
-    int exceptionDoc = timoutException.getLastDocCollected();
+    int exceptionDoc = timeoutException.getLastDocCollected();
     int lastCollected = myHc.getLastDocCollected(); 
-    assertTrue( "doc collected at timeout must be > 0!", exceptionDoc > 0 );
-    if (greedy) {
-      assertTrue("greedy="+greedy+" exceptionDoc="+exceptionDoc+" != lastCollected="+lastCollected, exceptionDoc==lastCollected);
-      assertTrue("greedy, but no hits found!", myHc.hitCount() > 0 );
-    } else {
-      assertTrue("greedy="+greedy+" exceptionDoc="+exceptionDoc+" not > lastCollected="+lastCollected, exceptionDoc>lastCollected);
+
+    // exceptionDoc == -1 means we hit the timeout in getLeafCollector:
+    if (exceptionDoc != -1) {
+      assertTrue( "doc collected at timeout must be > 0! or == -1 but was: " + exceptionDoc, exceptionDoc > 0);
+      if (greedy) {
+        assertTrue("greedy="+greedy+" exceptionDoc="+exceptionDoc+" != lastCollected="+lastCollected, exceptionDoc==lastCollected);
+        assertTrue("greedy, but no hits found!", myHc.hitCount() > 0 );
+      } else {
+        assertTrue("greedy="+greedy+" exceptionDoc="+exceptionDoc+" not > lastCollected="+lastCollected, exceptionDoc>lastCollected);
+      }
     }
 
     // verify that elapsed time at exception is within valid limits
-    assertEquals( timoutException.getTimeAllowed(), TIME_ALLOWED);
+    assertEquals( timeoutException.getTimeAllowed(), TIME_ALLOWED);
     // a) Not too early
-    assertTrue ( "elapsed="+timoutException.getTimeElapsed()+" <= (allowed-resolution)="+(TIME_ALLOWED-counterThread.getResolution()),
-        timoutException.getTimeElapsed() > TIME_ALLOWED-counterThread.getResolution());
+    assertTrue ( "elapsed="+timeoutException.getTimeElapsed()+" <= (allowed-resolution)="+(TIME_ALLOWED-counterThread.getResolution()),
+        timeoutException.getTimeElapsed() > TIME_ALLOWED-counterThread.getResolution());
     // b) Not too late.
     //    This part is problematic in a busy test system, so we just print a warning.
     //    We already verified that a timeout occurred, we just can't be picky about how long it took.
-    if (timoutException.getTimeElapsed() > maxTime(multiThreaded)) {
+    if (timeoutException.getTimeElapsed() > maxTime(multiThreaded)) {
       System.out.println("Informative: timeout exceeded (no action required: most probably just " +
         " because the test machine is slower than usual):  " +
         "lastDoc="+exceptionDoc+
-        " ,&& allowed="+timoutException.getTimeAllowed() +
-        " ,&& elapsed="+timoutException.getTimeElapsed() +
+        " ,&& allowed="+timeoutException.getTimeAllowed() +
+        " ,&& elapsed="+timeoutException.getTimeElapsed() +
         " >= " + maxTimeStr(multiThreaded));
     }
   }
@@ -265,6 +271,24 @@ public class TestTimeLimitingCollector extends LuceneTestCase {
       counterThread.setResolution(TimerThread.DEFAULT_RESOLUTION);
     }
   }
+
+  public void testNoHits() throws IOException {
+    MyHitCollector myHc = new MyHitCollector();
+    Collector collector = createTimedCollector(myHc, -1, random().nextBoolean());
+    // search
+    TimeExceededException timeoutException = null;
+    try {
+      BooleanQuery.Builder booleanQuery = new BooleanQuery.Builder(); // won't match - we only test if we check timeout when collectors are pulled
+      booleanQuery.add(new TermQuery(new Term(FIELD_NAME, "one")), BooleanClause.Occur.MUST);
+      booleanQuery.add(new TermQuery(new Term(FIELD_NAME, "blueberry")), BooleanClause.Occur.MUST);
+      searcher.search(booleanQuery.build(), collector);
+    } catch (TimeExceededException x) {
+      timeoutException = x;
+    }
+    // must get exception
+    assertNotNull("Timeout expected!", timeoutException);
+    assertEquals(-1, myHc.getLastDocCollected());
+  }
   
   /** 
    * Test correctness with multiple searching threads.
@@ -309,7 +333,7 @@ public class TestTimeLimitingCollector extends LuceneTestCase {
   }
   
   // counting collector that can slow down at collect().
-  private class MyHitCollector extends Collector {
+  private class MyHitCollector extends SimpleCollector {
     private final BitSet bits = new BitSet();
     private int slowdown = 0;
     private int lastDocCollected = -1;
@@ -351,12 +375,12 @@ public class TestTimeLimitingCollector extends LuceneTestCase {
     }
     
     @Override
-    public void setNextReader(AtomicReaderContext context) {
+    protected void doSetNextReader(LeafReaderContext context) throws IOException {
       docBase = context.docBase;
     }
     
     @Override
-    public boolean acceptsDocsOutOfOrder() {
+    public boolean needsScores() {
       return false;
     }
 

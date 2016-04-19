@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard;
 
 import java.util.Locale;
 import java.util.Map;
@@ -41,30 +40,25 @@ import org.apache.lucene.search.MultiTermQuery;
 import org.apache.lucene.search.Query;
 
 /**
- * <p>
  * This class is a helper that enables users to easily use the Lucene query
  * parser.
- * </p>
  * <p>
  * To construct a Query object from a query string, use the
  * {@link #parse(String, String)} method:
- * <ul>
- * StandardQueryParser queryParserHelper = new StandardQueryParser(); <br/>
+ * <pre class="prettyprint">
+ * StandardQueryParser queryParserHelper = new StandardQueryParser();
  * Query query = queryParserHelper.parse("a AND b", "defaultField");
- * </ul>
+ * </pre>
  * <p>
  * To change any configuration before parsing the query string do, for example:
- * <p/>
- * <ul>
- * // the query config handler returned by {@link StandardQueryParser} is a
- * {@link StandardQueryConfigHandler} <br/>
- * queryParserHelper.getQueryConfigHandler().setAnalyzer(new
- * WhitespaceAnalyzer());
- * </ul>
+ * <br>
+ * <pre class="prettyprint">
+ * // the query config handler returned by {@link StandardQueryParser} is a {@link StandardQueryConfigHandler}
+ * queryParserHelper.getQueryConfigHandler().setAnalyzer(new WhitespaceAnalyzer());
+ * </pre>
  * <p>
  * The syntax for query strings is as follows (copied from the old QueryParser
  * javadoc):
- * <ul>
  * A Query is a series of clauses. A clause may be prefixed by:
  * <ul>
  * <li>a plus (<code>+</code>) or a minus (<code>-</code>) sign, indicating that
@@ -92,17 +86,13 @@ import org.apache.lucene.search.Query;
  * href="{@docRoot}/org/apache/lucene/queryparser/classic/package-summary.html#package_description">
  * query syntax documentation</a>.
  * </p>
- * </ul>
  * <p>
  * The text parser used by this helper is a {@link StandardSyntaxParser}.
- * <p/>
  * <p>
  * The query node processor used by this helper is a
  * {@link StandardQueryNodeProcessorPipeline}.
- * <p/>
  * <p>
  * The builder used by this helper is a {@link StandardQueryTreeBuilder}.
- * <p/>
  * 
  * @see StandardQueryParser
  * @see StandardQueryConfigHandler
@@ -126,10 +116,10 @@ public class StandardQueryParser extends QueryParserHelper implements CommonQuer
    * Constructs a {@link StandardQueryParser} object and sets an
    * {@link Analyzer} to it. The same as:
    * 
-   * <ul>
+   * <pre class="prettyprint">
    * StandardQueryParser qp = new StandardQueryParser();
    * qp.getQueryConfigHandler().setAnalyzer(analyzer);
-   * </ul>
+   * </pre>
    * 
    * @param analyzer
    *          the analyzer to be used by this query parser helper
@@ -181,7 +171,7 @@ public class StandardQueryParser extends QueryParserHelper implements CommonQuer
    * Sets the boolean operator of the QueryParser. In default mode (
    * {@link Operator#OR}) terms without any modifiers are considered optional:
    * for example <code>capital of Hungary</code> is equal to
-   * <code>capital OR of OR Hungary</code>.<br/>
+   * <code>capital OR of OR Hungary</code>.<br>
    * In {@link Operator#AND} mode terms are considered to be in conjunction: the
    * above mentioned query is parsed as <code>capital AND of AND Hungary</code>
    */
@@ -265,7 +255,7 @@ public class StandardQueryParser extends QueryParserHelper implements CommonQuer
   
   /**
    * By default, it uses
-   * {@link MultiTermQuery#CONSTANT_SCORE_AUTO_REWRITE_DEFAULT} when creating a
+   * {@link MultiTermQuery#CONSTANT_SCORE_REWRITE} when creating a
    * prefix, wildcard and range queries. This implementation is generally
    * preferable because it a) Runs faster b) Does not have the scarcity of terms
    * unduly influence score c) avoids any {@link TooManyListenersException}
@@ -307,9 +297,21 @@ public class StandardQueryParser extends QueryParserHelper implements CommonQuer
    * certain query is <code>null</code>
    * 
    * @param fields the fields used to expand the query
+   * @deprecated Use StandardQueryParser#getMultiFields() instead.
    */
+  @Deprecated
   public void getMultiFields(CharSequence[] fields) {
     getQueryConfigHandler().get(ConfigurationKeys.MULTI_FIELDS);
+  }
+
+  /**
+   * Returns the fields used to expand the query when the field for a
+   * certain query is <code>null</code>
+   *
+   * @return the fields used to expand the query
+   */
+  public CharSequence[] getMultiFields() {
+    return getQueryConfigHandler().get(ConfigurationKeys.MULTI_FIELDS);
   }
 
   /**

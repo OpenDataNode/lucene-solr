@@ -1,4 +1,3 @@
-package org.apache.lucene.search.vectorhighlight;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,14 +14,14 @@ package org.apache.lucene.search.vectorhighlight;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.lucene.search.vectorhighlight;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Set;
 
-import org.apache.lucene.index.DocsAndPositionsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
@@ -86,14 +85,14 @@ public class FieldTermStack {
     }
 
     final Terms vector = vectors.terms(fieldName);
-    if (vector == null) {
+    if (vector == null || vector.hasPositions() == false) {
       // null snippet
       return;
     }
 
     final CharsRefBuilder spare = new CharsRefBuilder();
-    final TermsEnum termsEnum = vector.iterator(null);
-    DocsAndPositionsEnum dpEnum = null;
+    final TermsEnum termsEnum = vector.iterator();
+    PostingsEnum dpEnum = null;
     BytesRef text;
     
     int numDocs = reader.maxDoc();
@@ -104,12 +103,7 @@ public class FieldTermStack {
       if (!termSet.contains(term)) {
         continue;
       }
-      dpEnum = termsEnum.docsAndPositions(null, dpEnum);
-      if (dpEnum == null) {
-        // null snippet
-        return;
-      }
-
+      dpEnum = termsEnum.postings(dpEnum, PostingsEnum.POSITIONS);
       dpEnum.nextDoc();
       
       // For weight look here: http://lucene.apache.org/core/3_6_0/api/core/org/apache/lucene/search/DefaultSimilarity.html

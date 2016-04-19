@@ -1,5 +1,3 @@
-package org.apache.solr.update;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,9 @@ package org.apache.solr.update;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.update;
+
+import java.lang.invoke.MethodHandles;
 
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -44,7 +45,7 @@ import org.slf4j.LoggerFactory;
  * Public for tests.
  */
 public final class CommitTracker implements Runnable {
-  protected final static Logger log = LoggerFactory.getLogger(CommitTracker.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   // scheduler delay for maxDoc-triggered autocommits
   public final int DOC_COMMIT_DELAY_MS = 1;
@@ -64,7 +65,7 @@ public final class CommitTracker implements Runnable {
   private final SolrCore core;
 
   private final boolean softCommit;
-  private final boolean openSearcher;
+  private boolean openSearcher;
   private final boolean waitSearcher = true;
 
   private String name;
@@ -80,7 +81,7 @@ public final class CommitTracker implements Runnable {
     this.softCommit = softCommit;
     this.openSearcher = openSearcher;
 
-    SolrCore.log.info(name + " AutoCommit: " + this);
+    log.info(name + " AutoCommit: " + this);
   }
 
   public boolean getOpenSearcher() {
@@ -89,10 +90,10 @@ public final class CommitTracker implements Runnable {
   
   public synchronized void close() {
     if (pending != null) {
-      pending.cancel(true);
+      pending.cancel(false);
       pending = null;
     }
-    scheduler.shutdownNow();
+    scheduler.shutdown();
   }
   
   /** schedule individual commits */
@@ -255,5 +256,10 @@ public final class CommitTracker implements Runnable {
   // only for testing - not thread safe
   public void setTimeUpperBound(long timeUpperBound) {
     this.timeUpperBound = timeUpperBound;
+  }
+  
+  // only for testing - not thread safe
+  public void setOpenSearcher(boolean openSearcher) {
+    this.openSearcher = openSearcher;
   }
 }

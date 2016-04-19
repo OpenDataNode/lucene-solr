@@ -14,24 +14,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr;
 
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
-import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.LuceneTestCase.Slow;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.schema.SchemaField;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This is like TestRandomFaceting, except it does a copyField on each
@@ -39,8 +39,9 @@ import org.junit.Test;
  * to the indexed facet results as if it were just another faceting method.
  */
 @Slow
-@SuppressCodecs({"Appending", "Lucene3x", "Lucene40", "Lucene41", "Lucene42"})
 public class TestRandomDVFaceting extends SolrTestCaseJ4 {
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   @BeforeClass
   public static void beforeTests() throws Exception {
@@ -114,27 +115,23 @@ public class TestRandomDVFaceting extends SolrTestCaseJ4 {
 
   @Test
   public void testRandomFaceting() throws Exception {
-    try {
-      Random rand = random();
-      int iter = atLeast(100);
-      init();
-      addMoreDocs(0);
-
-      for (int i=0; i<iter; i++) {
-        doFacetTests();
-
-        if (rand.nextInt(100) < 5) {
-          init();
-        }
-
-        addMoreDocs(rand.nextInt(indexSize) + 1);
-
-        if (rand.nextInt(100) < 50) {
-          deleteSomeDocs();
-        }
+    Random rand = random();
+    int iter = atLeast(100);
+    init();
+    addMoreDocs(0);
+    
+    for (int i=0; i<iter; i++) {
+      doFacetTests();
+      
+      if (rand.nextInt(100) < 5) {
+        init();
       }
-    } finally {
-      FieldCache.DEFAULT.purgeAllCaches();   // avoid FC insanity
+      
+      addMoreDocs(rand.nextInt(indexSize) + 1);
+      
+      if (rand.nextInt(100) < 50) {
+        deleteSomeDocs();
+      }
     }
   }
 
@@ -147,8 +144,8 @@ public class TestRandomDVFaceting extends SolrTestCaseJ4 {
 
   // NOTE: dv is not a "real" facet.method. when we see it, we facet on the dv field (*_dv)
   // but alias the result back as if we faceted on the regular indexed field for comparisons.
-  List<String> multiValuedMethods = Arrays.asList(new String[]{"enum","fc","dv"});
-  List<String> singleValuedMethods = Arrays.asList(new String[]{"enum","fc","fcs","dv"});
+  List<String> multiValuedMethods = Arrays.asList(new String[]{"enum","fc","dv","uif"});
+  List<String> singleValuedMethods = Arrays.asList(new String[]{"enum","fc","fcs","dv","uif"});
 
 
   void doFacetTests(FldType ftype) throws Exception {
@@ -241,7 +238,7 @@ public class TestRandomDVFaceting extends SolrTestCaseJ4 {
       **/
 
       if (validate) {
-        for (int i=1; i<methods.size(); i++) {
+        for (int i=1; i<responses.size(); i++) {
           String err = JSONTestUtil.match("/", responses.get(i), responses.get(0), 0.0);
           if (err != null) {
             log.error("ERROR: mismatch facet response: " + err +

@@ -1,5 +1,3 @@
-package org.apache.lucene.benchmark.byTask.tasks;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.benchmark.byTask.tasks;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.benchmark.byTask.tasks;
+
 
 import org.apache.lucene.analysis.util.AbstractAnalysisFactory;
 import org.apache.lucene.analysis.util.CharFilterFactory;
@@ -27,9 +27,11 @@ import org.apache.lucene.benchmark.byTask.PerfRunData;
 import org.apache.lucene.benchmark.byTask.utils.AnalyzerFactory;
 import org.apache.lucene.util.Version;
 
-import java.io.File;
 import java.io.StreamTokenizer;
 import java.io.StringReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -58,22 +60,22 @@ import java.util.regex.Pattern;
  *   <li>zero or more TokenFilterFactory's</li>
  * </ol>
  *
- * Each component analysis factory map specify <tt>luceneMatchVersion</tt> (defaults to
+ * Each component analysis factory may specify <tt>luceneMatchVersion</tt> (defaults to
  * {@link Version#LATEST}) and any of the args understood by the specified
  * *Factory class, in the above-describe param format.
- * <p/>
+ * <p>
  * Example:
  * <pre>
  *     -AnalyzerFactory(name:'strip html, fold to ascii, whitespace tokenize, max 10k tokens',
  *                      positionIncrementGap:100,
  *                      HTMLStripCharFilter,
  *                      MappingCharFilter(mapping:'mapping-FoldToASCII.txt'),
- *                      WhitespaceTokenizer(luceneMatchVersion:LUCENE_4_3_0),
+ *                      WhitespaceTokenizer(luceneMatchVersion:LUCENE_5_0_0),
  *                      TokenLimitFilter(maxTokenCount:10000, consumeAllTokens:false))
  *     [...]
  *     -NewAnalyzer('strip html, fold to ascii, whitespace tokenize, max 10k tokens')
  * </pre>
- * <p/>
+ * <p>
  * AnalyzerFactory will direct analysis component factories to look for resources
  * under the directory specified in the "work.dir" property.
  */
@@ -110,6 +112,7 @@ public class AnalyzerFactoryTask extends PerfTask {
    *               and 0+ TokenFilterFactory's
    */
   @Override
+  @SuppressWarnings("fallthrough")
   public void setParams(String params) {
     super.setParams(params);
     ArgType expectedArgType = ArgType.ANALYZER_ARG;
@@ -285,6 +288,7 @@ public class AnalyzerFactoryTask extends PerfTask {
    * @param stok stream tokenizer from which to draw analysis factory params
    * @param clazz analysis factory class to instantiate
    */
+  @SuppressWarnings("fallthrough")
   private void createAnalysisPipelineComponent
       (StreamTokenizer stok, Class<? extends AbstractAnalysisFactory> clazz) {
     Map<String,String> argMap = new HashMap<>();
@@ -364,9 +368,9 @@ public class AnalyzerFactoryTask extends PerfTask {
         throw new RuntimeException("Line #" + lineno(stok) + ": ", e);
       }
       if (instance instanceof ResourceLoaderAware) {
-        File baseDir = new File(getRunData().getConfig().get("work.dir", "work")).getAbsoluteFile();
-        if ( ! baseDir.isDirectory()) {
-          baseDir = new File(".").getAbsoluteFile();
+        Path baseDir = Paths.get(getRunData().getConfig().get("work.dir", "work"));
+        if (!Files.isDirectory(baseDir)) {
+          baseDir = Paths.get(".");
         }
         ((ResourceLoaderAware)instance).inform(new FilesystemResourceLoader(baseDir));
       }
@@ -391,7 +395,7 @@ public class AnalyzerFactoryTask extends PerfTask {
   /**
    * This method looks up a class with its fully qualified name (FQN), or a short-name
    * class-simplename, or with a package suffix, assuming "org.apache.lucene.analysis."
-   * as the package prefix (e.g. "standard.ClassicTokenizerFactory" ->
+   * as the package prefix (e.g. "standard.ClassicTokenizerFactory" -&gt;
    * "org.apache.lucene.analysis.standard.ClassicTokenizerFactory").
    *
    * If className contains a period, the class is first looked up as-is, assuming that it

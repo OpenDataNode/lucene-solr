@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.simpletext;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,12 @@ package org.apache.lucene.codecs.simpletext;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.simpletext;
+
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+import java.util.Collection;
+import java.util.Collections;
 
 import org.apache.lucene.codecs.StoredFieldsReader;
 import org.apache.lucene.index.FieldInfo;
@@ -32,6 +33,7 @@ import org.apache.lucene.store.ChecksumIndexInput;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
+import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
@@ -47,7 +49,7 @@ import static org.apache.lucene.codecs.simpletext.SimpleTextStoredFieldsWriter.*
 /**
  * reads plaintext stored fields
  * <p>
- * <b><font color="red">FOR RECREATIONAL USE ONLY</font></B>
+ * <b>FOR RECREATIONAL USE ONLY</b>
  * @lucene.experimental
  */
 public class SimpleTextStoredFieldsReader extends StoredFieldsReader {
@@ -76,7 +78,7 @@ public class SimpleTextStoredFieldsReader extends StoredFieldsReader {
         } catch (Throwable t) {} // ensure we throw our original exception
       }
     }
-    readIndex(si.getDocCount());
+    readIndex(si.maxDoc());
   }
   
   // used by clone
@@ -154,7 +156,9 @@ public class SimpleTextStoredFieldsReader extends StoredFieldsReader {
     readLine();
     assert StringHelper.startsWith(scratch.get(), VALUE);
     if (type == TYPE_STRING) {
-      visitor.stringField(fieldInfo, new String(scratch.bytes(), VALUE.length, scratch.length()-VALUE.length, StandardCharsets.UTF_8));
+      byte[] bytes = new byte[scratch.length() - VALUE.length];
+      System.arraycopy(scratch.bytes(), VALUE.length, bytes, 0, bytes.length);
+      visitor.stringField(fieldInfo, bytes);
     } else if (type == TYPE_BINARY) {
       byte[] copy = new byte[scratch.length()-VALUE.length];
       System.arraycopy(scratch.bytes(), VALUE.length, copy, 0, copy.length);
@@ -210,6 +214,16 @@ public class SimpleTextStoredFieldsReader extends StoredFieldsReader {
   public long ramBytesUsed() {
     return BASE_RAM_BYTES_USED + RamUsageEstimator.sizeOf(offsets)
         + RamUsageEstimator.sizeOf(scratch.bytes()) + RamUsageEstimator.sizeOf(scratchUTF16.chars());
+  }
+
+  @Override
+  public Collection<Accountable> getChildResources() {
+    return Collections.emptyList();
+  }
+
+  @Override
+  public String toString() {
+    return getClass().getSimpleName();
   }
 
   @Override

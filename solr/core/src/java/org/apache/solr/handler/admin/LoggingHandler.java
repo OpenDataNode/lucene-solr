@@ -6,7 +6,7 @@
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -14,9 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler.admin;
 
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -35,6 +35,7 @@ import org.apache.solr.logging.LoggerInfo;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.util.plugin.SolrCoreAware;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
@@ -44,7 +45,7 @@ import org.slf4j.LoggerFactory;
  * @since 4.0
  */
 public class LoggingHandler extends RequestHandlerBase implements SolrCoreAware {
-  static final org.slf4j.Logger log = LoggerFactory.getLogger(LoggingHandler.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private LogWatcher watcher;
   
@@ -67,7 +68,7 @@ public class LoggingHandler extends RequestHandlerBase implements SolrCoreAware 
   public void handleRequestBody(SolrQueryRequest req, SolrQueryResponse rsp) throws Exception {
     // Don't do anything if the framework is unknown
     if(watcher==null) {
-      rsp.add("error", "Logging Not Initalized");
+      rsp.add("error", "Logging Not Initialized");
       return;
     }
     rsp.add("watcher", watcher.getName());
@@ -121,7 +122,7 @@ public class LoggingHandler extends RequestHandlerBase implements SolrCoreAware 
         SimpleOrderedMap<Object> info = new SimpleOrderedMap<>();
         if(time>0) {
           info.add("since", time);
-          info.add("found", found);
+          info.add("found", found.get());
         }
         else {
           info.add("levels", watcher.getAllLevels()); // show for the first request
@@ -154,10 +155,5 @@ public class LoggingHandler extends RequestHandlerBase implements SolrCoreAware 
   @Override
   public String getDescription() {
     return "Logging Handler";
-  }
-
-  @Override
-  public String getSource() {
-    return null;
   }
 }

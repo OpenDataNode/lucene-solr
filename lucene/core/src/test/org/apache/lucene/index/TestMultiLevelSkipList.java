@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,14 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
-import java.io.Reader;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.lucene.analysis.*;
 import org.apache.lucene.analysis.tokenattributes.PayloadAttribute;
-import org.apache.lucene.codecs.lucene41.Lucene41PostingsFormat;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.store.Directory;
@@ -70,7 +68,7 @@ public class TestMultiLevelSkipList extends LuceneTestCase {
   public void testSimpleSkip() throws IOException {
     Directory dir = new CountingRAMDirectory(new RAMDirectory());
     IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(new PayloadAnalyzer())
-                                                .setCodec(TestUtil.alwaysPostingsFormat(new Lucene41PostingsFormat()))
+                                                .setCodec(TestUtil.alwaysPostingsFormat(TestUtil.getDefaultPostingsFormat()))
                                                 .setMergePolicy(newLogMergePolicy()));
     Term term = new Term("test", "a");
     for (int i = 0; i < 5000; i++) {
@@ -82,11 +80,11 @@ public class TestMultiLevelSkipList extends LuceneTestCase {
     writer.forceMerge(1);
     writer.close();
 
-    AtomicReader reader = getOnlySegmentReader(DirectoryReader.open(dir));
+    LeafReader reader = getOnlySegmentReader(DirectoryReader.open(dir));
     
     for (int i = 0; i < 2; i++) {
       counter = 0;
-      DocsAndPositionsEnum tp = reader.termPositionsEnum(term);
+      PostingsEnum tp = reader.postings(term, PostingsEnum.ALL);
       checkSkipTo(tp, 14, 185); // no skips
       checkSkipTo(tp, 17, 190); // one skip on level 0
       checkSkipTo(tp, 287, 200); // one skip on level 1, two on level 0
@@ -97,7 +95,7 @@ public class TestMultiLevelSkipList extends LuceneTestCase {
     }
   }
 
-  public void checkSkipTo(DocsAndPositionsEnum tp, int target, int maxCounter) throws IOException {
+  public void checkSkipTo(PostingsEnum tp, int target, int maxCounter) throws IOException {
     tp.advance(target);
     if (maxCounter < counter) {
       fail("Too many bytes read: " + counter + " vs " + maxCounter);
@@ -114,8 +112,8 @@ public class TestMultiLevelSkipList extends LuceneTestCase {
   private static class PayloadAnalyzer extends Analyzer {
     private final AtomicInteger payloadCount = new AtomicInteger(-1);
     @Override
-    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, true);
+    public TokenStreamComponents createComponents(String fieldName) {
+      Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, true);
       return new TokenStreamComponents(tokenizer, new PayloadFilter(payloadCount, tokenizer));
     }
 

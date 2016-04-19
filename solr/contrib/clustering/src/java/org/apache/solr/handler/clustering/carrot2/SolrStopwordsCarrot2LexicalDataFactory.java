@@ -1,5 +1,3 @@
-package org.apache.solr.handler.clustering.carrot2;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.handler.clustering.carrot2;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.clustering.carrot2;
 
 import java.util.Collection;
 import java.util.Set;
@@ -37,7 +36,6 @@ import org.carrot2.text.util.MutableCharArray;
 import org.carrot2.util.attribute.Attribute;
 import org.carrot2.util.attribute.Bindable;
 import org.carrot2.util.attribute.Input;
-import org.slf4j.Logger;
 
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
@@ -55,8 +53,6 @@ import com.google.common.collect.Multimap;
  */
 @Bindable
 public class SolrStopwordsCarrot2LexicalDataFactory implements ILexicalDataFactory {
-  final static Logger logger = org.slf4j.LoggerFactory
-      .getLogger(SolrStopwordsCarrot2LexicalDataFactory.class);
 
   @Init
   @Input

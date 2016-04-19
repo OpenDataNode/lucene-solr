@@ -1,5 +1,3 @@
-package org.apache.lucene.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,42 +14,41 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
+
 
 import java.io.DataInputStream;
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.apache.lucene.util.IOUtils;
-import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.OfflineSorter;
 import org.apache.lucene.util.OfflineSorter.BufferSize;
 import org.apache.lucene.util.OfflineSorter.ByteSequencesWriter;
 import org.apache.lucene.util.OfflineSorter.SortInfo;
-import org.apache.lucene.util.TestUtil;
+import org.apache.lucene.util.OfflineSorter;
 
 /**
  * Tests for on-disk merge sorting.
  */
 public class TestOfflineSorter extends LuceneTestCase {
-  private File tempDir;
+  private Path tempDir;
 
   @Override
   public void setUp() throws Exception {
     super.setUp();
     tempDir = createTempDir("mergesort");
-    TestUtil.rm(tempDir);
-    tempDir.mkdirs();
   }
   
   @Override
   public void tearDown() throws Exception {
-    if (tempDir != null)
-      TestUtil.rm(tempDir);
+    if (tempDir != null) {
+      IOUtils.rm(tempDir);
+    }
     super.tearDown();
   }
 
@@ -67,14 +64,14 @@ public class TestOfflineSorter extends LuceneTestCase {
 
   public void testIntermediateMerges() throws Exception {
     // Sort 20 mb worth of data with 1mb buffer, binary merging.
-    SortInfo info = checkSort(new OfflineSorter(OfflineSorter.DEFAULT_COMPARATOR, BufferSize.megabytes(1), OfflineSorter.defaultTempDir(), 2), 
+    SortInfo info = checkSort(new OfflineSorter(OfflineSorter.DEFAULT_COMPARATOR, BufferSize.megabytes(1), OfflineSorter.getDefaultTempDir(), 2), 
         generateRandom((int)OfflineSorter.MB * 20));
     assertTrue(info.mergeRounds > 10);
   }
 
   public void testSmallRandom() throws Exception {
     // Sort 20 mb worth of data with 1mb buffer.
-    SortInfo sortInfo = checkSort(new OfflineSorter(OfflineSorter.DEFAULT_COMPARATOR, BufferSize.megabytes(1), OfflineSorter.defaultTempDir(), OfflineSorter.MAX_TEMPFILES), 
+    SortInfo sortInfo = checkSort(new OfflineSorter(OfflineSorter.DEFAULT_COMPARATOR, BufferSize.megabytes(1), OfflineSorter.getDefaultTempDir(), OfflineSorter.MAX_TEMPFILES), 
         generateRandom((int)OfflineSorter.MB * 20));
     assertEquals(1, sortInfo.mergeRounds);
   }
@@ -82,17 +79,17 @@ public class TestOfflineSorter extends LuceneTestCase {
   @Nightly
   public void testLargerRandom() throws Exception {
     // Sort 100MB worth of data with 15mb buffer.
-    checkSort(new OfflineSorter(OfflineSorter.DEFAULT_COMPARATOR, BufferSize.megabytes(16), OfflineSorter.defaultTempDir(), OfflineSorter.MAX_TEMPFILES), 
+    checkSort(new OfflineSorter(OfflineSorter.DEFAULT_COMPARATOR, BufferSize.megabytes(16), OfflineSorter.getDefaultTempDir(), OfflineSorter.MAX_TEMPFILES), 
         generateRandom((int)OfflineSorter.MB * 100));
   }
 
-  private byte[][] generateRandom(int howMuchData) {
+  private byte[][] generateRandom(int howMuchDataInBytes) {
     ArrayList<byte[]> data = new ArrayList<>();
-    while (howMuchData > 0) {
-      byte [] current = new byte [random().nextInt(256)];
+    while (howMuchDataInBytes > 0) {
+      byte[] current = new byte[random().nextInt(256)];
       random().nextBytes(current);
       data.add(current);
-      howMuchData -= current.length;
+      howMuchDataInBytes -= current.length;
     }
     byte [][] bytes = data.toArray(new byte[data.size()][]);
     return bytes;
@@ -110,35 +107,41 @@ public class TestOfflineSorter extends LuceneTestCase {
       return left.length - right.length;
     }
   };
+
   /**
    * Check sorting data on an instance of {@link OfflineSorter}.
    */
   private SortInfo checkSort(OfflineSorter sort, byte[][] data) throws IOException {
-    File unsorted = writeAll("unsorted", data);
+    Path unsorted = writeAll("unsorted", data);
 
     Arrays.sort(data, unsignedByteOrderComparator);
-    File golden = writeAll("golden", data);
+    Path golden = writeAll("golden", data);
 
-    File sorted = new File(tempDir, "sorted");
-    SortInfo sortInfo = sort.sort(unsorted, sorted);
-    //System.out.println("Input size [MB]: " + unsorted.length() / (1024 * 1024));
-    //System.out.println(sortInfo);
+    Path sorted = Files.createTempFile(OfflineSorter.getDefaultTempDir(), "sorted", "");
+    SortInfo sortInfo;
+    try {
+      sortInfo = sort.sort(unsorted, sorted);
+      //System.out.println("Input size [MB]: " + unsorted.length() / (1024 * 1024));
+      //System.out.println(sortInfo);
+      assertFilesIdentical(golden, sorted);
+    } finally {
+      IOUtils.rm(unsorted, golden, sorted);
+    }
 
-    assertFilesIdentical(golden, sorted);
     return sortInfo;
   }
 
   /**
    * Make sure two files are byte-byte identical.
    */
-  private void assertFilesIdentical(File golden, File sorted) throws IOException {
-    assertEquals(golden.length(), sorted.length());
+  private void assertFilesIdentical(Path golden, Path sorted) throws IOException {
+    assertEquals(Files.size(golden), Files.size(sorted));
 
     byte [] buf1 = new byte [64 * 1024];
     byte [] buf2 = new byte [64 * 1024];
     int len;
-    DataInputStream is1 = new DataInputStream(new FileInputStream(golden));
-    DataInputStream is2 = new DataInputStream(new FileInputStream(sorted));
+    DataInputStream is1 = new DataInputStream(Files.newInputStream(golden));
+    DataInputStream is2 = new DataInputStream(Files.newInputStream(sorted));
     while ((len = is1.read(buf1)) > 0) {
       is2.readFully(buf2, 0, len);
       for (int i = 0; i < len; i++) {
@@ -148,8 +151,8 @@ public class TestOfflineSorter extends LuceneTestCase {
     IOUtils.close(is1, is2);
   }
 
-  private File writeAll(String name, byte[][] data) throws IOException {
-    File file = new File(tempDir, name);
+  private Path writeAll(String name, byte[][] data) throws IOException {
+    Path file = Files.createTempFile(tempDir, name, "");
     ByteSequencesWriter w = new OfflineSorter.ByteSequencesWriter(file);
     for (byte [] datum : data) {
       w.write(datum);
@@ -183,5 +186,33 @@ public class TestOfflineSorter extends LuceneTestCase {
       fail("min mb is 0.5");
     } catch (IllegalArgumentException e) {
     }
+  }
+
+  public void testThreadSafety() throws Exception {
+    Thread[] threads = new Thread[TestUtil.nextInt(random(), 4, 10)];
+    final AtomicBoolean failed = new AtomicBoolean();
+    final int iters = atLeast(1000);
+    for(int i=0;i<threads.length;i++) {
+      threads[i] = new Thread() {
+          @Override
+          public void run() {
+            try {
+              for(int iter=0;iter<iters && failed.get() == false;iter++) {
+                checkSort(new OfflineSorter(), generateRandom(1024));
+              }
+            } catch (Throwable th) {
+              failed.set(true);
+              throw new RuntimeException(th);
+            }
+          }
+        };
+      threads[i].start();
+    }
+
+    for(Thread thread : threads) {
+      thread.join();
+    }
+
+    assertFalse(failed.get());
   }
 }

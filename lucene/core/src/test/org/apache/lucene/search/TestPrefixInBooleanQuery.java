@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -85,30 +85,30 @@ public class TestPrefixInBooleanQuery extends LuceneTestCase {
   public void testPrefixQuery() throws Exception {
     Query query = new PrefixQuery(new Term(FIELD, "tang"));
     assertEquals("Number of matched documents", 2,
-                 searcher.search(query, null, 1000).totalHits);
+                 searcher.search(query, 1000).totalHits);
   }
   public void testTermQuery() throws Exception {
     Query query = new TermQuery(new Term(FIELD, "tangfulin"));
     assertEquals("Number of matched documents", 2,
-                 searcher.search(query, null, 1000).totalHits);
+                 searcher.search(query, 1000).totalHits);
   }
   public void testTermBooleanQuery() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(new TermQuery(new Term(FIELD, "tangfulin")),
               BooleanClause.Occur.SHOULD);
     query.add(new TermQuery(new Term(FIELD, "notexistnames")),
               BooleanClause.Occur.SHOULD);
     assertEquals("Number of matched documents", 2,
-                 searcher.search(query, null, 1000).totalHits);
+                 searcher.search(query.build(), 1000).totalHits);
 
   }
   public void testPrefixBooleanQuery() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(new PrefixQuery(new Term(FIELD, "tang")),
               BooleanClause.Occur.SHOULD);
     query.add(new TermQuery(new Term(FIELD, "notexistnames")),
               BooleanClause.Occur.SHOULD);
     assertEquals("Number of matched documents", 2,
-                 searcher.search(query, null, 1000).totalHits);
+                 searcher.search(query.build(), 1000).totalHits);
   }
 }

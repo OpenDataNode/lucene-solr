@@ -21,7 +21,7 @@ import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.docvalues.FloatDocValues;
 import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.handler.RequestHandlerUtils;
@@ -38,6 +38,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.lang.invoke.MethodHandles;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
@@ -55,7 +56,7 @@ public class FileFloatSource extends ValueSource {
   private final float defVal;
   private final String dataDir;
 
-  private static final Logger log = LoggerFactory.getLogger(FileFloatSource.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   /**
    * Creates a new FileFloatSource
@@ -77,7 +78,7 @@ public class FileFloatSource extends ValueSource {
   }
 
   @Override
-  public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+  public FunctionValues getValues(Map context, LeafReaderContext readerContext) throws IOException {
     final int off = readerContext.docBase;
     IndexReaderContext topLevelContext = ReaderUtil.getTopLevelContext(readerContext);
 
@@ -132,9 +133,9 @@ public class FileFloatSource extends ValueSource {
    * @param reader the IndexReader whose cache needs refreshing
    */
   public void refreshCache(IndexReader reader) {
-    log.info("Refreshing FlaxFileFloatSource cache for field {}", this.field.getName());
+    log.info("Refreshing FileFloatSource cache for field {}", this.field.getName());
     floatCache.refresh(reader, new Entry(this));
-    log.info("FlaxFileFloatSource cache for field {} reloaded", this.field.getName());
+    log.info("FileFloatSource cache for field {} reloaded", this.field.getName());
   }
 
   private final float[] getCachedFloats(IndexReader reader) {
@@ -248,7 +249,7 @@ public class FileFloatSource extends ValueSource {
       is = VersionedFile.getLatestFile(ffs.dataDir, fname);
     } catch (IOException e) {
       // log, use defaults
-      SolrCore.log.error("Error opening external value source file: " +e);
+      log.error("Error opening external value source file: " +e);
       return vals;
     }
 
@@ -267,11 +268,11 @@ public class FileFloatSource extends ValueSource {
 
     char delimiter='=';
 
-    BytesRef internalKey = new BytesRef();
+    BytesRefBuilder internalKey = new BytesRefBuilder();
 
     try {
-      TermsEnum termsEnum = MultiFields.getTerms(reader, idName).iterator(null);
-      DocsEnum docsEnum = null;
+      TermsEnum termsEnum = MultiFields.getTerms(reader, idName).iterator();
+      PostingsEnum postingsEnum = null;
 
       // removing deleted docs shouldn't matter
       // final Bits liveDocs = MultiFields.getLiveDocs(reader);
@@ -290,14 +291,14 @@ public class FileFloatSource extends ValueSource {
           fval=Float.parseFloat(val);
         } catch (Exception e) {
           if (++otherErrors<=10) {
-            SolrCore.log.error( "Error loading external value source + fileName + " + e
+            log.error( "Error loading external value source + fileName + " + e
               + (otherErrors<10 ? "" : "\tSkipping future errors for this file.")
             );
           }
           continue;  // go to next line in file.. leave values as default.
         }
 
-        if (!termsEnum.seekExact(internalKey)) {
+        if (!termsEnum.seekExact(internalKey.get())) {
           if (notFoundCount<10) {  // collect first 10 not found for logging
             notFound.add(key);
           }
@@ -305,23 +306,23 @@ public class FileFloatSource extends ValueSource {
           continue;
         }
 
-        docsEnum = termsEnum.docs(null, docsEnum, DocsEnum.FLAG_NONE);
+        postingsEnum = termsEnum.postings(postingsEnum, PostingsEnum.NONE);
         int doc;
-        while ((doc = docsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+        while ((doc = postingsEnum.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
           vals[doc] = fval;
         }
       }
 
     } catch (IOException e) {
       // log, use defaults
-      SolrCore.log.error("Error loading external value source: " +e);
+      log.error("Error loading external value source: " +e);
     } finally {
       // swallow exceptions on close so we don't override any
       // exceptions that happened in the loop
       try{r.close();}catch(Exception e){}
     }
 
-    SolrCore.log.info("Loaded external value source " + fname
+    log.info("Loaded external value source " + fname
       + (notFoundCount==0 ? "" : " :"+notFoundCount+" missing keys "+notFound)
     );
 
@@ -329,8 +330,7 @@ public class FileFloatSource extends ValueSource {
   }
 
   public static class ReloadCacheRequestHandler extends RequestHandlerBase {
-    
-    static final Logger log = LoggerFactory.getLogger(ReloadCacheRequestHandler.class);
+    private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     @Override
     public void handleRequestBody(SolrQueryRequest req, SolrQueryResponse rsp)
@@ -351,11 +351,6 @@ public class FileFloatSource extends ValueSource {
     @Override
     public String getDescription() {
       return "Reload readerCache request handler";
-    }
-
-    @Override
-    public String getSource() {
-      return null;
     }
   }
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.blockterms;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.codecs.blockterms;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.blockterms;
+
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -48,8 +48,6 @@ public abstract class TermsIndexReaderBase implements Closeable, Accountable {
 
   public abstract boolean supportsOrd();
 
-  public abstract int getDivisor();
-
   /** 
    * Similar to TermsEnum, except, the only "metadata" it
    * reports for a given indexed term is the long fileOffset
@@ -57,7 +55,7 @@ public abstract class TermsIndexReaderBase implements Closeable, Accountable {
    */
   public static abstract class FieldIndexEnum {
 
-    /** Seeks to "largest" indexed term that's <=
+    /** Seeks to "largest" indexed term that's &lt;=
      *  term; returns file pointer index (into the main
      *  terms index file) for that term */
     public abstract long seek(BytesRef term) throws IOException;

@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.util.Arrays;
 
@@ -46,7 +46,7 @@ public class FieldDoc extends ScoreDoc {
    * the <code>value</code> method corresponding
    * FieldComparator used to sort this field.
    * @see Sort
-   * @see IndexSearcher#search(Query,Filter,int,Sort)
+   * @see IndexSearcher#search(Query,int,Sort)
    */
   public Object[] fields;
 

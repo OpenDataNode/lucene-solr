@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.builders;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard.builders;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.builders;
 
 import org.apache.lucene.queryparser.flexible.core.QueryNodeException;
 import org.apache.lucene.queryparser.flexible.core.builders.QueryBuilder;
@@ -25,7 +24,7 @@ import org.apache.lucene.search.Query;
 
 /**
  * This interface should be implemented by every class that wants to build
- * {@link Query} objects from {@link QueryNode} objects. <br/>
+ * {@link Query} objects from {@link QueryNode} objects.
  * 
  * @see QueryBuilder
  * @see QueryTreeBuilder

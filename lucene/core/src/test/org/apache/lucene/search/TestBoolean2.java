@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 
 import java.util.Random;
@@ -30,11 +30,8 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.MockDirectoryWrapper;
-import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.TestUtil;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -71,7 +68,7 @@ public class TestBoolean2 extends LuceneTestCase {
     searcher.setSimilarity(new DefaultSimilarity());
 
     // Make big index
-    dir2 = new MockDirectoryWrapper(random(), new RAMDirectory(directory, IOContext.DEFAULT));
+    dir2 = new MockDirectoryWrapper(random(), TestUtil.ramCopyOf(directory));
 
     // First multiply small test index:
     mulFactor = 1;
@@ -83,7 +80,7 @@ public class TestBoolean2 extends LuceneTestCase {
       if (VERBOSE) {
         System.out.println("\nTEST: cycle...");
       }
-      final Directory copy = new MockDirectoryWrapper(random(), new RAMDirectory(dir2, IOContext.DEFAULT));
+      final Directory copy = new MockDirectoryWrapper(random(), TestUtil.ramCopyOf(dir2));
       RandomIndexWriter w = new RandomIndexWriter(random(), dir2);
       w.addIndexes(copy);
       docCount = w.maxDoc();
@@ -131,12 +128,15 @@ public class TestBoolean2 extends LuceneTestCase {
   };
 
   public void queriesTest(Query query, int[] expDocNrs) throws Exception {
-    TopScoreDocCollector collector = TopScoreDocCollector.create(1000, false);
-    searcher.search(query, null, collector);
+    // The asserting searcher will sometimes return the bulk scorer and
+    // sometimes return a default impl around the scorer so that we can
+    // compare BS1 and BS2
+    TopScoreDocCollector collector = TopScoreDocCollector.create(1000);
+    searcher.search(query, collector);
     ScoreDoc[] hits1 = collector.topDocs().scoreDocs;
 
-    collector = TopScoreDocCollector.create(1000, true);
-    searcher.search(query, null, collector);
+    collector = TopScoreDocCollector.create(1000);
+    searcher.search(query, collector);
     ScoreDoc[] hits2 = collector.topDocs().scoreDocs; 
 
     assertEquals(mulFactor * collector.totalHits,
@@ -147,100 +147,100 @@ public class TestBoolean2 extends LuceneTestCase {
 
   @Test
   public void testQueries01() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(new TermQuery(new Term(field, "w3")), BooleanClause.Occur.MUST);
     query.add(new TermQuery(new Term(field, "xx")), BooleanClause.Occur.MUST);
     int[] expDocNrs = {2,3};
-    queriesTest(query, expDocNrs);
+    queriesTest(query.build(), expDocNrs);
   }
 
   @Test
   public void testQueries02() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(new TermQuery(new Term(field, "w3")), BooleanClause.Occur.MUST);
     query.add(new TermQuery(new Term(field, "xx")), BooleanClause.Occur.SHOULD);
     int[] expDocNrs = {2,3,1,0};
-    queriesTest(query, expDocNrs);
+    queriesTest(query.build(), expDocNrs);
   }
 
   @Test
   public void testQueries03() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(new TermQuery(new Term(field, "w3")), BooleanClause.Occur.SHOULD);
     query.add(new TermQuery(new Term(field, "xx")), BooleanClause.Occur.SHOULD);
     int[] expDocNrs = {2,3,1,0};
-    queriesTest(query, expDocNrs);
+    queriesTest(query.build(), expDocNrs);
   }
 
   @Test
   public void testQueries04() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(new TermQuery(new Term(field, "w3")), BooleanClause.Occur.SHOULD);
     query.add(new TermQuery(new Term(field, "xx")), BooleanClause.Occur.MUST_NOT);
     int[] expDocNrs = {1,0};
-    queriesTest(query, expDocNrs);
+    queriesTest(query.build(), expDocNrs);
   }
 
   @Test
   public void testQueries05() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(new TermQuery(new Term(field, "w3")), BooleanClause.Occur.MUST);
     query.add(new TermQuery(new Term(field, "xx")), BooleanClause.Occur.MUST_NOT);
     int[] expDocNrs = {1,0};
-    queriesTest(query, expDocNrs);
+    queriesTest(query.build(), expDocNrs);
   }
 
   @Test
   public void testQueries06() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(new TermQuery(new Term(field, "w3")), BooleanClause.Occur.MUST);
     query.add(new TermQuery(new Term(field, "xx")), BooleanClause.Occur.MUST_NOT);
     query.add(new TermQuery(new Term(field, "w5")), BooleanClause.Occur.MUST_NOT);
     int[] expDocNrs = {1};
-    queriesTest(query, expDocNrs);
+    queriesTest(query.build(), expDocNrs);
   }
 
   @Test
   public void testQueries07() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(new TermQuery(new Term(field, "w3")), BooleanClause.Occur.MUST_NOT);
     query.add(new TermQuery(new Term(field, "xx")), BooleanClause.Occur.MUST_NOT);
     query.add(new TermQuery(new Term(field, "w5")), BooleanClause.Occur.MUST_NOT);
     int[] expDocNrs = {};
-    queriesTest(query, expDocNrs);
+    queriesTest(query.build(), expDocNrs);
   }
 
   @Test
   public void testQueries08() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(new TermQuery(new Term(field, "w3")), BooleanClause.Occur.MUST);
     query.add(new TermQuery(new Term(field, "xx")), BooleanClause.Occur.SHOULD);
     query.add(new TermQuery(new Term(field, "w5")), BooleanClause.Occur.MUST_NOT);
     int[] expDocNrs = {2,3,1};
-    queriesTest(query, expDocNrs);
+    queriesTest(query.build(), expDocNrs);
   }
 
   @Test
   public void testQueries09() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(new TermQuery(new Term(field, "w3")), BooleanClause.Occur.MUST);
     query.add(new TermQuery(new Term(field, "xx")), BooleanClause.Occur.MUST);
     query.add(new TermQuery(new Term(field, "w2")), BooleanClause.Occur.MUST);
     query.add(new TermQuery(new Term(field, "zz")), BooleanClause.Occur.SHOULD);
     int[] expDocNrs = {2, 3};
-    queriesTest(query, expDocNrs);
+    queriesTest(query.build(), expDocNrs);
   }
 
   @Test
   public void testQueries10() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(new TermQuery(new Term(field, "w3")), BooleanClause.Occur.MUST);
     query.add(new TermQuery(new Term(field, "xx")), BooleanClause.Occur.MUST);
     query.add(new TermQuery(new Term(field, "w2")), BooleanClause.Occur.MUST);
     query.add(new TermQuery(new Term(field, "zz")), BooleanClause.Occur.SHOULD);
 
     int[] expDocNrs = {2, 3};
-    Similarity oldSimilarity = searcher.getSimilarity();
+    Similarity oldSimilarity = searcher.getSimilarity(true);
     try {
       searcher.setSimilarity(new DefaultSimilarity(){
         @Override
@@ -248,7 +248,7 @@ public class TestBoolean2 extends LuceneTestCase {
           return overlap / ((float)maxOverlap - 1);
         }
       });
-      queriesTest(query, expDocNrs);
+      queriesTest(query.build(), expDocNrs);
     } finally {
       searcher.setSimilarity(oldSimilarity);
     }
@@ -267,7 +267,7 @@ public class TestBoolean2 extends LuceneTestCase {
       int num = atLeast(20);
       for (int i=0; i<num; i++) {
         int level = random().nextInt(3);
-        q1 = randBoolQuery(new Random(random().nextLong()), random().nextBoolean(), level, field, vals, null);
+        q1 = randBoolQuery(new Random(random().nextLong()), random().nextBoolean(), level, field, vals, null).build();
         
         // Can't sort by relevance since floating point numbers may not quite
         // match up.
@@ -276,30 +276,30 @@ public class TestBoolean2 extends LuceneTestCase {
         QueryUtils.check(random(), q1,searcher); // baseline sim
         try {
           // a little hackish, QueryUtils.check is too costly to do on bigSearcher in this loop.
-          searcher.setSimilarity(bigSearcher.getSimilarity()); // random sim
+          searcher.setSimilarity(bigSearcher.getSimilarity(true)); // random sim
           QueryUtils.check(random(), q1, searcher);
         } finally {
           searcher.setSimilarity(new DefaultSimilarity()); // restore
         }
 
         TopFieldCollector collector = TopFieldCollector.create(sort, 1000,
-            false, true, true, true);
+            false, true, true);
 
-        searcher.search(q1, null, collector);
+        searcher.search(q1, collector);
         ScoreDoc[] hits1 = collector.topDocs().scoreDocs;
 
         collector = TopFieldCollector.create(sort, 1000,
-            false, true, true, false);
+            false, true, true);
         
-        searcher.search(q1, null, collector);
+        searcher.search(q1, collector);
         ScoreDoc[] hits2 = collector.topDocs().scoreDocs;
         tot+=hits2.length;
         CheckHits.checkEqual(q1, hits1, hits2);
 
-        BooleanQuery q3 = new BooleanQuery();
+        BooleanQuery.Builder q3 = new BooleanQuery.Builder();
         q3.add(q1, BooleanClause.Occur.SHOULD);
         q3.add(new PrefixQuery(new Term("field2", "b")), BooleanClause.Occur.SHOULD);
-        TopDocs hits4 = bigSearcher.search(q3, 1);
+        TopDocs hits4 = bigSearcher.search(q3.build(), 1);
         assertEquals(mulFactor*collector.totalHits + NUM_EXTRA_DOCS/2, hits4.totalHits);
       }
 
@@ -316,13 +316,14 @@ public class TestBoolean2 extends LuceneTestCase {
   // used to set properties or change every BooleanQuery
   // generated from randBoolQuery.
   public static interface Callback {
-    public void postCreate(BooleanQuery q);
+    public void postCreate(BooleanQuery.Builder q);
   }
 
   // Random rnd is passed in so that the exact same random query may be created
   // more than once.
-  public static BooleanQuery randBoolQuery(Random rnd, boolean allowMust, int level, String field, String[] vals, Callback cb) {
-    BooleanQuery current = new BooleanQuery(rnd.nextInt()<0);
+  public static BooleanQuery.Builder randBoolQuery(Random rnd, boolean allowMust, int level, String field, String[] vals, Callback cb) {
+    BooleanQuery.Builder current = new BooleanQuery.Builder();
+    current.setDisableCoord(rnd.nextBoolean());
     for (int i=0; i<rnd.nextInt(vals.length)+1; i++) {
       int qType=0; // term query
       if (level>0) {
@@ -332,17 +333,13 @@ public class TestBoolean2 extends LuceneTestCase {
       if (qType < 3) {
         q = new TermQuery(new Term(field, vals[rnd.nextInt(vals.length)]));
       } else if (qType < 4) {
-        Term t1 = new Term(field, vals[rnd.nextInt(vals.length)]);
-        Term t2 = new Term(field, vals[rnd.nextInt(vals.length)]);
-        PhraseQuery pq = new PhraseQuery();
-        pq.add(t1);
-        pq.add(t2);
-        pq.setSlop(10); // increase possibility of matching
-        q = pq;
+        String t1 = vals[rnd.nextInt(vals.length)];
+        String t2 = vals[rnd.nextInt(vals.length)];
+        q = new PhraseQuery(10, field, t1, t2); // slop increases possibility of matching
       } else if (qType < 7) {
         q = new WildcardQuery(new Term(field, "w*"));
       } else {
-        q = randBoolQuery(rnd, allowMust, level-1, field, vals, cb);
+        q = randBoolQuery(rnd, allowMust, level-1, field, vals, cb).build();
       }
 
       int r = rnd.nextInt(10);

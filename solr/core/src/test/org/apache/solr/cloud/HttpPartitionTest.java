@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,35 +14,47 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
 import java.io.File;
+import java.io.IOException;
+import java.lang.invoke.MethodHandles;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.JSONTestUtil;
 import org.apache.solr.SolrTestCaseJ4.SuppressSSL;
+import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.request.CollectionAdminRequest;
 import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.client.solrj.request.UpdateRequest;
+import org.apache.solr.client.solrj.response.CollectionAdminResponse;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.cloud.ClusterState;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
+import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkCoreNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.util.NamedList;
-import org.junit.After;
-import org.junit.Before;
+import org.apache.solr.core.CoreContainer;
+import org.apache.solr.core.SolrCore;
+import org.apache.solr.update.UpdateLog;
+import org.apache.solr.util.MockCoreContainer.MockCoreDescriptor;
+import org.apache.solr.util.RTimer;
+import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,36 +67,19 @@ import org.slf4j.LoggerFactory;
 @SuppressSSL(bugUrl = "https://issues.apache.org/jira/browse/SOLR-5776")
 public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
   
-  protected static final transient Logger log =
-      LoggerFactory.getLogger(HttpPartitionTest.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   // To prevent the test assertions firing too fast before cluster state
   // recognizes (and propagates) partitions
   protected static final long sleepMsBeforeHealPartition = 2000L;
 
-  protected static final int maxWaitSecsToSeeAllActive = 30;
+  // give plenty of time for replicas to recover when running in slow Jenkins test envs
+  protected static final int maxWaitSecsToSeeAllActive = 90;
 
   public HttpPartitionTest() {
     super();
     sliceCount = 2;
-    shardCount = 3;
-  }
-  
-  @Before
-  @Override
-  public void setUp() throws Exception {
-    super.setUp();
-    System.setProperty("numShards", Integer.toString(sliceCount));
-  }
-  
-  @Override
-  @After
-  public void tearDown() throws Exception {    
-    try {
-      super.tearDown();
-    } catch (Exception exc) {}
-    
-    resetExceptionIgnores();
+    fixShardCount(3);
   }
   
   /**
@@ -100,8 +93,16 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
     return createProxiedJetty(solrHome, dataDir, shardList, solrConfigOverride, schemaOverride);
   }
 
-  @Override
-  public void doTest() throws Exception {
+  @Test
+  public void test() throws Exception {
+    waitForThingsToLevelOut(30000);
+
+    testLeaderInitiatedRecoveryCRUD();
+
+    // Tests that if we set a minRf that's not satisfied, no recovery is requested, but if minRf is satisfied,
+    // recovery is requested
+    testMinRf();
+
     waitForThingsToLevelOut(30000);
 
     // test a 1x2 collection
@@ -120,13 +121,158 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
 
     waitForThingsToLevelOut(30000);
 
-    log.info("HttpParitionTest succeeded ... shutting down now!");
+    log.info("HttpPartitionTest succeeded ... shutting down now!");
   }
-  
+
+  /**
+   * Tests handling of lir state znodes.
+   */
+  protected void testLeaderInitiatedRecoveryCRUD() throws Exception {
+    String testCollectionName = "c8n_crud_1x2";
+    String shardId = "shard1";
+    createCollectionRetry(testCollectionName, 1, 2, 1);
+    cloudClient.setDefaultCollection(testCollectionName);
+
+    final Replica leader = cloudClient.getZkStateReader().getLeaderRetry(testCollectionName, shardId);
+    JettySolrRunner leaderJetty = getJettyOnPort(getReplicaPort(leader));
+
+    CoreContainer cores = leaderJetty.getCoreContainer();
+    ZkController zkController = cores.getZkController();
+    assertNotNull("ZkController is null", zkController);
+
+    Replica notLeader =
+        ensureAllReplicasAreActive(testCollectionName, shardId, 1, 2, maxWaitSecsToSeeAllActive).get(0);
+
+    ZkCoreNodeProps replicaCoreNodeProps = new ZkCoreNodeProps(notLeader);
+    String replicaUrl = replicaCoreNodeProps.getCoreUrl();
+
+    MockCoreDescriptor cd = new MockCoreDescriptor() {
+      public CloudDescriptor getCloudDescriptor() {
+        return new CloudDescriptor(leader.getStr(ZkStateReader.CORE_NAME_PROP), new Properties(), this) {
+          @Override
+          public String getCoreNodeName() {
+            return leader.getName();
+          }
+          @Override
+          public boolean isLeader() {
+            return true;
+          }
+        };
+      }
+    };
+    
+    zkController.updateLeaderInitiatedRecoveryState(testCollectionName, shardId, notLeader.getName(), Replica.State.DOWN, cd, true);
+    Map<String,Object> lirStateMap = zkController.getLeaderInitiatedRecoveryStateObject(testCollectionName, shardId, notLeader.getName());
+    assertNotNull(lirStateMap);
+    assertSame(Replica.State.DOWN, Replica.State.getState((String) lirStateMap.get(ZkStateReader.STATE_PROP)));
+
+    // test old non-json format handling
+    SolrZkClient zkClient = zkController.getZkClient();
+    String znodePath = zkController.getLeaderInitiatedRecoveryZnodePath(testCollectionName, shardId, notLeader.getName());
+    zkClient.setData(znodePath, "down".getBytes(StandardCharsets.UTF_8), true);
+    lirStateMap = zkController.getLeaderInitiatedRecoveryStateObject(testCollectionName, shardId, notLeader.getName());
+    assertNotNull(lirStateMap);
+    assertSame(Replica.State.DOWN, Replica.State.getState((String) lirStateMap.get(ZkStateReader.STATE_PROP)));
+    zkClient.delete(znodePath, -1, false);
+
+    // try to clean up
+    try {
+      new CollectionAdminRequest.Delete()
+              .setCollectionName(testCollectionName).process(cloudClient);
+    } catch (Exception e) {
+      // don't fail the test
+      log.warn("Could not delete collection {} after test completed", testCollectionName);
+    }
+  }
+
+  protected void testMinRf() throws Exception {
+    // create a collection that has 1 shard and 3 replicas
+    String testCollectionName = "collMinRf_1x3";
+    createCollection(testCollectionName, 1, 3, 1);
+    cloudClient.setDefaultCollection(testCollectionName);
+
+    sendDoc(1, 2);
+
+    List<Replica> notLeaders =
+        ensureAllReplicasAreActive(testCollectionName, "shard1", 1, 3, maxWaitSecsToSeeAllActive);
+    assertTrue("Expected 2 non-leader replicas for collection " + testCollectionName
+            + " but found " + notLeaders.size() + "; clusterState: "
+            + printClusterStateInfo(testCollectionName),
+        notLeaders.size() == 2);
+
+    assertDocsExistInAllReplicas(notLeaders, testCollectionName, 1, 1);
+
+    // Now introduce a network partition between the leader and 1 replica, so a minRf of 2 is still achieved
+    SocketProxy proxy0 = getProxyForReplica(notLeaders.get(0));
+
+    proxy0.close();
+
+    // indexing during a partition
+    int achievedRf = sendDoc(2, 2);
+    assertEquals("Unexpected achieved replication factor", 2, achievedRf);
+
+    Thread.sleep(sleepMsBeforeHealPartition);
+
+    // Verify that the partitioned replica is DOWN
+    ZkStateReader zkr = cloudClient.getZkStateReader();
+    zkr.updateClusterState(); // force the state to be fresh
+    ClusterState cs = zkr.getClusterState();
+    Collection<Slice> slices = cs.getActiveSlices(testCollectionName);
+    Slice slice = slices.iterator().next();
+    Replica partitionedReplica = slice.getReplica(notLeaders.get(0).getName());
+    assertEquals("The partitioned replica did not get marked down",
+        Replica.State.DOWN.toString(), partitionedReplica.getStr(ZkStateReader.STATE_PROP));
+
+    proxy0.reopen();
+
+    notLeaders =
+        ensureAllReplicasAreActive(testCollectionName, "shard1", 1, 3, maxWaitSecsToSeeAllActive);
+
+    // Since minRf is achieved, we expect recovery, so we expect seeing 2 documents
+    assertDocsExistInAllReplicas(notLeaders, testCollectionName, 1, 2);
+
+    // Now introduce a network partition between the leader and both of its replicas, so a minRf of 2 is NOT achieved
+    proxy0 = getProxyForReplica(notLeaders.get(0));
+    proxy0.close();
+    SocketProxy proxy1 = getProxyForReplica(notLeaders.get(1));
+    proxy1.close();
+
+    achievedRf = sendDoc(3, 2);
+    assertEquals("Unexpected achieved replication factor", 1, achievedRf);
+
+    Thread.sleep(sleepMsBeforeHealPartition);
+
+    // Verify that the partitioned replicas are NOT DOWN since minRf wasn't achieved
+    ensureAllReplicasAreActive(testCollectionName, "shard1", 1, 3, 1);
+
+    proxy0.reopen();
+    proxy1.reopen();
+
+    notLeaders =
+        ensureAllReplicasAreActive(testCollectionName, "shard1", 1, 3, maxWaitSecsToSeeAllActive);
+
+    // Check that doc 3 is on the leader but not on the notLeaders
+    Replica leader = cloudClient.getZkStateReader().getLeaderRetry(testCollectionName, "shard1", 10000);
+    HttpSolrClient leaderSolr = getHttpSolrClient(leader, testCollectionName);
+    assertDocExists(leaderSolr, testCollectionName, "3");
+
+    for (Replica notLeader : notLeaders) {
+      HttpSolrClient notLeaderSolr = getHttpSolrClient(notLeader, testCollectionName);
+      assertDocNotExists(notLeaderSolr, testCollectionName, "3");
+    }
+
+    // Retry sending doc 3
+    achievedRf = sendDoc(3, 2);
+    assertEquals("Unexpected achieved replication factor", 3, achievedRf);
+
+    // Now doc 3 should be on all replicas
+    assertDocsExistInAllReplicas(notLeaders, testCollectionName, 1, 3);
+  }
+
   protected void testRf2() throws Exception {
     // create a collection that has 1 shard but 2 replicas
     String testCollectionName = "c8n_1x2";
-    createCollection(testCollectionName, 1, 2, 1);
+    createCollectionRetry(testCollectionName, 1, 2, 1);
     cloudClient.setDefaultCollection(testCollectionName);
     
     sendDoc(1);
@@ -160,7 +306,21 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
     
     // sent 3 docs in so far, verify they are on the leader and replica
     assertDocsExistInAllReplicas(notLeaders, testCollectionName, 1, 3);
-        
+
+    // Get the max version from the replica core to make sure it gets updated after recovery (see SOLR-7625)
+    JettySolrRunner replicaJetty = getJettyOnPort(getReplicaPort(notLeader));
+    CoreContainer coreContainer = replicaJetty.getCoreContainer();
+    ZkCoreNodeProps replicaCoreNodeProps = new ZkCoreNodeProps(notLeader);
+    String coreName = replicaCoreNodeProps.getCoreName();
+    Long maxVersionBefore = null;
+    try (SolrCore core = coreContainer.getCore(coreName)) {
+      assertNotNull("Core '"+coreName+"' not found for replica: "+notLeader.getName(), core);
+      UpdateLog ulog = core.getUpdateHandler().getUpdateLog();
+      maxVersionBefore = ulog.getCurrentMaxVersion();
+    }
+    assertNotNull("max version bucket seed not set for core " + coreName, maxVersionBefore);
+    log.info("Looked up max version bucket seed "+maxVersionBefore+" for core "+coreName);
+
     // now up the stakes and do more docs
     int numDocs = 1000;
     boolean hasPartition = false;
@@ -187,7 +347,15 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
     }
     
     notLeaders = ensureAllReplicasAreActive(testCollectionName, "shard1", 1, 2, maxWaitSecsToSeeAllActive);
-    
+
+    try (SolrCore core = coreContainer.getCore(coreName)) {
+      assertNotNull("Core '" + coreName + "' not found for replica: " + notLeader.getName(), core);
+      Long currentMaxVersion = core.getUpdateHandler().getUpdateLog().getCurrentMaxVersion();
+      log.info("After recovery, looked up NEW max version bucket seed " + currentMaxVersion +
+          " for core " + coreName + ", was: " + maxVersionBefore);
+      assertTrue("max version bucket seed not updated after recovery!", currentMaxVersion > maxVersionBefore);
+    }
+
     // verify all docs received
     assertDocsExistInAllReplicas(notLeaders, testCollectionName, 1, numDocs + 3);
 
@@ -195,9 +363,8 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
 
     // try to clean up
     try {
-      CollectionAdminRequest req = new CollectionAdminRequest.Delete();
-      req.setCollectionName(testCollectionName);
-      req.process(cloudClient);
+      new CollectionAdminRequest.Delete()
+              .setCollectionName(testCollectionName).process(cloudClient);
     } catch (Exception e) {
       // don't fail the test
       log.warn("Could not delete collection {} after test completed", testCollectionName);
@@ -207,11 +374,12 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
   protected void testRf3() throws Exception {
     // create a collection that has 1 shard but 2 replicas
     String testCollectionName = "c8n_1x3";
-    createCollection(testCollectionName, 1, 3, 1);
+    createCollectionRetry(testCollectionName, 1, 3, 1);
+    
     cloudClient.setDefaultCollection(testCollectionName);
     
     sendDoc(1);
-    
+
     List<Replica> notLeaders = 
         ensureAllReplicasAreActive(testCollectionName, "shard1", 1, 3, maxWaitSecsToSeeAllActive);
     assertTrue("Expected 2 replicas for collection " + testCollectionName
@@ -251,7 +419,7 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
 
     // try to clean up
     try {
-      CollectionAdminRequest req = new CollectionAdminRequest.Delete();
+      CollectionAdminRequest.Delete req = new CollectionAdminRequest.Delete();
       req.setCollectionName(testCollectionName);
       req.process(cloudClient);
     } catch (Exception e) {
@@ -264,7 +432,7 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
   protected void testLeaderZkSessionLoss() throws Exception {
 
     String testCollectionName = "c8n_1x2_leader_session_loss";
-    createCollection(testCollectionName, 1, 2, 1);
+    createCollectionRetry(testCollectionName, 1, 2, 1);
     cloudClient.setDefaultCollection(testCollectionName);
 
     sendDoc(1);
@@ -283,7 +451,7 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
         testCollectionName+"; clusterState: "+printClusterStateInfo(testCollectionName), leader);
     JettySolrRunner leaderJetty = getJettyOnPort(getReplicaPort(leader));
 
-    HttpSolrServer leaderSolr = getHttpSolrServer(leader, testCollectionName);
+
     SolrInputDocument doc = new SolrInputDocument();
     doc.addField(id, String.valueOf(2));
     doc.addField("a_t", "hello" + 2);
@@ -314,27 +482,22 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
     // TODO: This test logic seems to be timing dependent and fails on Jenkins
     // need to come up with a better approach
     log.info("Sending doc 2 to old leader "+leader.getName());
-    try {
+    try ( HttpSolrClient leaderSolr = getHttpSolrClient(leader, testCollectionName)) {
+    
       leaderSolr.add(doc);
-      leaderSolr.shutdown();
+      leaderSolr.close();
 
       // if the add worked, then the doc must exist on the new leader
-      HttpSolrServer newLeaderSolr = getHttpSolrServer(currentLeader, testCollectionName);
-      try {
+      try (HttpSolrClient newLeaderSolr = getHttpSolrClient(currentLeader, testCollectionName)) {
         assertDocExists(newLeaderSolr, testCollectionName, "2");
-      } finally {
-        newLeaderSolr.shutdown();
       }
 
     } catch (SolrException exc) {
       // this is ok provided the doc doesn't exist on the current leader
-      leaderSolr = getHttpSolrServer(currentLeader, testCollectionName);
-      try {
-        leaderSolr.add(doc); // this should work
-      } finally {
-        leaderSolr.shutdown();
+      try (HttpSolrClient client = getHttpSolrClient(currentLeader, testCollectionName)) {
+        client.add(doc); // this should work
       }
-    }
+    } 
 
     List<Replica> participatingReplicas = getActiveOrRecoveringReplicas(testCollectionName, "shard1");
     Set<String> replicasToCheck = new HashSet<>();
@@ -347,7 +510,7 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
 
     // try to clean up
     try {
-      CollectionAdminRequest req = new CollectionAdminRequest.Delete();
+      CollectionAdminRequest.Delete req = new CollectionAdminRequest.Delete();
       req.setCollectionName(testCollectionName);
       req.process(cloudClient);
     } catch (Exception e) {
@@ -364,8 +527,8 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
     for (Slice shard : cs.getActiveSlices(testCollectionName)) {
       if (shard.getName().equals(shardId)) {
         for (Replica replica : shard.getReplicas()) {
-          String replicaState = replica.getStr(ZkStateReader.STATE_PROP);
-          if (ZkStateReader.ACTIVE.equals(replicaState) || ZkStateReader.RECOVERING.equals(replicaState)) {
+          final Replica.State state = replica.getState();
+          if (state == Replica.State.ACTIVE || state == Replica.State.RECOVERING) {
             activeReplicas.put(replica.getName(), replica);
           }
         }
@@ -379,61 +542,79 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
   protected void assertDocsExistInAllReplicas(List<Replica> notLeaders,
       String testCollectionName, int firstDocId, int lastDocId)
       throws Exception {
-    Replica leader = 
+    Replica leader =
         cloudClient.getZkStateReader().getLeaderRetry(testCollectionName, "shard1", 10000);
-    HttpSolrServer leaderSolr = getHttpSolrServer(leader, testCollectionName);
-    List<HttpSolrServer> replicas = 
-        new ArrayList<HttpSolrServer>(notLeaders.size());
-    
+    HttpSolrClient leaderSolr = getHttpSolrClient(leader, testCollectionName);
+    List<HttpSolrClient> replicas =
+        new ArrayList<HttpSolrClient>(notLeaders.size());
+
     for (Replica r : notLeaders) {
-      replicas.add(getHttpSolrServer(r, testCollectionName));
+      replicas.add(getHttpSolrClient(r, testCollectionName));
     }
     try {
       for (int d = firstDocId; d <= lastDocId; d++) {
         String docId = String.valueOf(d);
         assertDocExists(leaderSolr, testCollectionName, docId);
-        for (HttpSolrServer replicaSolr : replicas) {
+        for (HttpSolrClient replicaSolr : replicas) {
           assertDocExists(replicaSolr, testCollectionName, docId);
         }
       }
     } finally {
       if (leaderSolr != null) {
-        leaderSolr.shutdown();
+        leaderSolr.close();
       }
-      for (HttpSolrServer replicaSolr : replicas) {
-        replicaSolr.shutdown();
+      for (HttpSolrClient replicaSolr : replicas) {
+        replicaSolr.close();
       }
     }
   }
-  
-  protected HttpSolrServer getHttpSolrServer(Replica replica, String coll) throws Exception {
+
+  protected HttpSolrClient getHttpSolrClient(Replica replica, String coll) throws Exception {
     ZkCoreNodeProps zkProps = new ZkCoreNodeProps(replica);
     String url = zkProps.getBaseUrl() + "/" + coll;
-    return new HttpSolrServer(url);
+    return new HttpSolrClient(url);
+  }
+
+  protected int sendDoc(int docId) throws Exception {
+    return sendDoc(docId, null);
   }
   
-  protected void sendDoc(int docId) throws Exception {
-    UpdateRequest up = new UpdateRequest();
-    up.setParam(UpdateRequest.MIN_REPFACT, String.valueOf(2));
+  protected int sendDoc(int docId, Integer minRf) throws Exception {
     SolrInputDocument doc = new SolrInputDocument();
     doc.addField(id, String.valueOf(docId));
     doc.addField("a_t", "hello" + docId);
+
+    UpdateRequest up = new UpdateRequest();
+    if (minRf != null) {
+      up.setParam(UpdateRequest.MIN_REPFACT, String.valueOf(minRf));
+    }
     up.add(doc);
-    int minAchievedRf =
-        cloudClient.getMinAchievedReplicationFactor(cloudClient.getDefaultCollection(), cloudClient.request(up));
+
+    return cloudClient.getMinAchievedReplicationFactor(cloudClient.getDefaultCollection(), cloudClient.request(up));
   }
-  
+
   /**
    * Query the real-time get handler for a specific doc by ID to verify it
    * exists in the provided server, using distrib=false so it doesn't route to another replica.
    */
   @SuppressWarnings("rawtypes")
-  protected void assertDocExists(HttpSolrServer solr, String coll, String docId) throws Exception {
-    QueryRequest qr = new QueryRequest(params("qt", "/get", "id", docId, "distrib", "false"));
-    NamedList rsp = solr.request(qr);
+  protected void assertDocExists(HttpSolrClient solr, String coll, String docId) throws Exception {
+    NamedList rsp = realTimeGetDocId(solr, docId);
     String match = JSONTestUtil.matchObj("/id", rsp.get("doc"), new Integer(docId));
     assertTrue("Doc with id=" + docId + " not found in " + solr.getBaseURL()
         + " due to: " + match + "; rsp="+rsp, match == null);
+  }
+
+  protected void assertDocNotExists(HttpSolrClient solr, String coll, String docId) throws Exception {
+    NamedList rsp = realTimeGetDocId(solr, docId);
+    String match = JSONTestUtil.matchObj("/id", rsp.get("doc"), new Integer(docId));
+    assertTrue("Doc with id=" + docId + " is found in " + solr.getBaseURL()
+        + " due to: " + match + "; rsp="+rsp, match != null);
+  }
+
+  private NamedList realTimeGetDocId(HttpSolrClient solr, String docId) throws SolrServerException, IOException {
+    QueryRequest qr = new QueryRequest(params("qt", "/get", "id", docId, "distrib", "false"));
+    return solr.request(qr);
   }
 
   protected int getReplicaPort(Replica replica) {
@@ -445,10 +626,10 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
   }
 
   protected void waitToSeeReplicasActive(String testCollectionName, String shardId, Set<String> replicasToCheck, int maxWaitSecs) throws Exception {
-    long startMs = System.currentTimeMillis();
+    final RTimer timer = new RTimer();
 
     ZkStateReader zkr = cloudClient.getZkStateReader();
-    zkr.updateClusterState(true); // force the state to be fresh
+    zkr.updateClusterState(); // force the state to be fresh
 
     ClusterState cs = zkr.getClusterState();
     Collection<Slice> slices = cs.getActiveSlices(testCollectionName);
@@ -458,7 +639,7 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
     while (waitMs < maxWaitMs && !allReplicasUp) {
       // refresh state every 2 secs
       if (waitMs % 2000 == 0)
-        cloudClient.getZkStateReader().updateClusterState(true);
+        cloudClient.getZkStateReader().updateClusterState();
 
       cs = cloudClient.getZkStateReader().getClusterState();
       assertNotNull(cs);
@@ -471,9 +652,9 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
         if (!replicasToCheck.contains(replica.getName()))
           continue;
 
-        String replicaState = replica.getStr(ZkStateReader.STATE_PROP);
-        if (!ZkStateReader.ACTIVE.equals(replicaState)) {
-          log.info("Replica " + replica.getName() + " is currently " + replicaState);
+        final Replica.State state = replica.getState();
+        if (state != Replica.State.ACTIVE) {
+          log.info("Replica " + replica.getName() + " is currently " + state);
           allReplicasUp = false;
         }
       }
@@ -490,7 +671,6 @@ public class HttpPartitionTest extends AbstractFullDistribZkTestBase {
       fail("Didn't see replicas "+ replicasToCheck +
           " come up within " + maxWaitMs + " ms! ClusterState: " + printClusterStateInfo(testCollectionName));
 
-    long diffMs = (System.currentTimeMillis() - startMs);
-    log.info("Took " + diffMs + " ms to see replicas ["+replicasToCheck+"] become active.");
+    log.info("Took {} ms to see replicas [{}] become active.", timer.getTime(), replicasToCheck);
   }
 }

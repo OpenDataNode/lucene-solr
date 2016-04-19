@@ -1,5 +1,3 @@
-package org.apache.lucene.demo.facet;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,18 +14,18 @@ package org.apache.lucene.demo.facet;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.demo.facet;
+
 
 import java.util.List;
 
 import org.apache.lucene.facet.FacetResult;
 import org.apache.lucene.facet.taxonomy.FacetLabel;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.LuceneTestCase;
 import org.junit.Test;
 
 
 // We require sorted set DVs:
-@SuppressCodecs({"Lucene40", "Lucene41", "Appending", "Lucene3x"})
 public class TestSimpleSortedSetFacetsExample extends LuceneTestCase {
 
   @Test

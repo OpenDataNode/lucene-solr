@@ -1,5 +1,3 @@
-package org.apache.solr.highlight;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,10 @@ package org.apache.solr.highlight;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.highlight;
 
-import org.apache.lucene.document.Document;
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.document.Document;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.postingshighlight.DefaultPassageFormatter;
 import org.apache.lucene.search.postingshighlight.Passage;
@@ -107,9 +106,6 @@ import java.util.Set;
  * @lucene.experimental 
  */
 public class PostingsSolrHighlighter extends SolrHighlighter implements PluginInfoInitialized {
-
-  @Override
-  public void initalize(SolrConfig config) {}
   
   @Override
   public void init(PluginInfo info) {}
@@ -161,7 +157,7 @@ public class PostingsSolrHighlighter extends SolrHighlighter implements PluginIn
       for (String field : fieldNames) {
         String snippet = snippets.get(field)[i];
         // box in an array to match the format of existing highlighters, 
-        // even though its always one element.
+        // even though it's always one element.
         if (snippet == null) {
           summary.add(field, new String[0]);
         } else {

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.ckb;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,17 @@ package org.apache.lucene.analysis.ckb;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.ckb;
+
 
 import static org.apache.lucene.analysis.VocabularyAssert.assertVocabulary;
 
 import java.io.IOException;
-import java.io.Reader;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
+import org.apache.lucene.analysis.MockTokenizer;
+import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.core.KeywordTokenizer;
 
@@ -31,7 +32,19 @@ import org.apache.lucene.analysis.core.KeywordTokenizer;
  * Test the Sorani Stemmer.
  */
 public class TestSoraniStemFilter extends BaseTokenStreamTestCase {
-  SoraniAnalyzer a = new SoraniAnalyzer();
+  Analyzer a;
+  
+  @Override
+  public void setUp() throws Exception {
+    super.setUp();
+    a = new SoraniAnalyzer();
+  }
+  
+  @Override
+  public void tearDown() throws Exception {
+    a.close();
+    super.tearDown();
+  }
   
   public void testIndefiniteSingular() throws Exception {
     checkOneTerm(a, "پیاوێک", "پیاو"); // -ek
@@ -84,17 +97,30 @@ public class TestSoraniStemFilter extends BaseTokenStreamTestCase {
   public void testEmptyTerm() throws IOException {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new KeywordTokenizer(reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new KeywordTokenizer();
         return new TokenStreamComponents(tokenizer, new SoraniStemFilter(tokenizer));
       }
     };
     checkOneTerm(a, "", "");
+    a.close();
   }
   
   /** test against a basic vocabulary file */
   public void testVocabulary() throws Exception {
     // top 8k words or so: freq > 1000
-    assertVocabulary(a, getDataFile("ckbtestdata.zip"), "testdata.txt");
+    
+    // just normalization+stem, we are testing that the stemming doesn't break.
+    Analyzer a = new Analyzer() {
+      @Override
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, true);
+        TokenStream stream = new SoraniNormalizationFilter(tokenizer);
+        stream = new SoraniStemFilter(stream);
+        return new TokenStreamComponents(tokenizer, stream);
+      }
+    };
+    assertVocabulary(a, getDataPath("ckbtestdata.zip"), "testdata.txt");
+    a.close();
   }
 }

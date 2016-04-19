@@ -1,5 +1,3 @@
-package org.apache.solr.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,18 +14,27 @@ package org.apache.solr.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search;
 
 import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.common.util.ExecutorUtil;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.util.ConcurrentLFUCache;
+import org.apache.solr.util.DefaultSolrThreadFactory;
 import org.apache.solr.util.RefCounted;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 
 /**
@@ -37,6 +44,8 @@ import java.util.Map;
  * @since solr 3.6
  */
 public class TestLFUCache extends SolrTestCaseJ4 {
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   @BeforeClass
   public static void beforeClass() throws Exception {
@@ -358,6 +367,41 @@ public class TestLFUCache extends SolrTestCaseJ4 {
     } finally {
       cacheNoDecay.destroy();
     }
+  }
+
+  @Test
+  public void testConcurrentAccess() throws InterruptedException {
+    /* Set up a thread pool with twice as many threads as there are CPUs. */
+    final ConcurrentLFUCache<Integer,Long> cache = new ConcurrentLFUCache<>(10, 9);
+    ExecutorService executorService = ExecutorUtil.newMDCAwareFixedThreadPool(10,
+        new DefaultSolrThreadFactory("testConcurrentAccess"));
+    final AtomicReference<Throwable> error = new AtomicReference<>();
+    
+    /*
+     * Use the thread pool to execute at least two million puts into the cache.
+     * Without the fix on SOLR-7585, NoSuchElementException is thrown.
+     * Simultaneous calls to markAndSweep are protected from each other by a
+     * lock, so they run sequentially, and due to a problem in the previous
+     * design, the cache eviction doesn't work right.
+     */
+    for (int i = 0; i < atLeast(2_000_000); ++i) {
+      executorService.submit(new Runnable() {
+        @Override
+        public void run() {
+          try {
+            cache.put(random().nextInt(100), random().nextLong());
+          } catch (Throwable t) {
+            error.compareAndSet(null, t);
+          }
+        }
+      });
+    }
+    
+    executorService.shutdown();
+    executorService.awaitTermination(1, TimeUnit.MINUTES);
+    
+    // then:
+    assertNull("Exception during concurrent access: " + error.get(), error.get());
   }
 
 // From the original LRU cache tests, they're commented out there too because they take a while.

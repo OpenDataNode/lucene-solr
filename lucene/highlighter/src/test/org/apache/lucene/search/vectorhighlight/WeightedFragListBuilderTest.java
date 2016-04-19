@@ -1,6 +1,4 @@
-package org.apache.lucene.search.vectorhighlight;
-
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,6 +14,7 @@ package org.apache.lucene.search.vectorhighlight;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.vectorhighlight;
 
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
@@ -31,11 +30,11 @@ public class WeightedFragListBuilderTest extends AbstractTestCase {
   }
 
   public void test2SubInfos() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add( pqF( "the", "both" ), Occur.MUST );
     query.add( tq( "examples" ), Occur.MUST );
 
-    testCase( query, 1000,
+    testCase( query.build(), 1000,
         "subInfos=(examples((19,27))examples((66,74))theboth((195,203)))/1.8411169(0,1000)",
         1.8411169 );
   }

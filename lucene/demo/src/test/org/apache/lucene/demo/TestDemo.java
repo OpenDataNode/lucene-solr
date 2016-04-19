@@ -1,5 +1,3 @@
-package org.apache.lucene.demo;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,24 +14,27 @@ package org.apache.lucene.demo;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.demo;
+
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.PrintStream;
 import java.nio.charset.Charset;
+import java.nio.file.Path;
 
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.LuceneTestCase.SuppressSysoutChecks;
 
 public class TestDemo extends LuceneTestCase {
 
-  private void testOneSearch(File indexPath, String query, int expectedHitCount) throws Exception {
+  private void testOneSearch(Path indexPath, String query, int expectedHitCount) throws Exception {
     PrintStream outSave = System.out;
     try {
       ByteArrayOutputStream bytes = new ByteArrayOutputStream();
       PrintStream fakeSystemOut = new PrintStream(bytes, false, Charset.defaultCharset().name());
       System.setOut(fakeSystemOut);
-      SearchFiles.main(new String[] {"-query", query, "-index", indexPath.getPath()});
+      SearchFiles.main(new String[] {"-query", query, "-index", indexPath.toString()});
       fakeSystemOut.flush();
       String output = bytes.toString(Charset.defaultCharset().name()); // intentionally use default encoding
       assertTrue("output=" + output, output.contains(expectedHitCount + " total matching documents"));
@@ -43,9 +44,9 @@ public class TestDemo extends LuceneTestCase {
   }
 
   public void testIndexSearch() throws Exception {
-    File dir = getDataFile("test-files/docs");
-    File indexDir = createTempDir("ContribDemoTest");
-    IndexFiles.main(new String[] { "-create", "-docs", dir.getPath(), "-index", indexDir.getPath()});
+    Path dir = getDataPath("test-files/docs");
+    Path indexDir = createTempDir("ContribDemoTest");
+    IndexFiles.main(new String[] { "-create", "-docs", dir.toString(), "-index", indexDir.toString()});
     testOneSearch(indexDir, "apache", 3);
     testOneSearch(indexDir, "patent", 8);
     testOneSearch(indexDir, "lucene", 0);

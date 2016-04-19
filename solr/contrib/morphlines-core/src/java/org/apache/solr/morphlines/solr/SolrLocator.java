@@ -16,13 +16,20 @@
  */
 package org.apache.solr.morphlines.solr;
 
+import javax.xml.parsers.ParserConfigurationException;
 import java.io.File;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
+import java.nio.file.Paths;
 
-import javax.xml.parsers.ParserConfigurationException;
-
-import org.apache.solr.client.solrj.SolrServer;
-import org.apache.solr.client.solrj.impl.CloudSolrServer;
+import com.google.common.base.Preconditions;
+import com.google.common.io.Files;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.ConfigRenderOptions;
+import com.typesafe.config.ConfigUtil;
+import org.apache.solr.client.solrj.SolrClient;
+import org.apache.solr.client.solrj.impl.CloudSolrClient;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.SolrResourceLoader;
@@ -37,13 +44,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
-
-import com.google.common.base.Preconditions;
-import com.google.common.io.Files;
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-import com.typesafe.config.ConfigRenderOptions;
-import com.typesafe.config.ConfigUtil;
 
 /**
  * Set of configuration parameters that identify the location and schema of a Solr server or
@@ -60,7 +60,7 @@ public class SolrLocator {
   private String solrHomeDir;
   private int batchSize = 1000;
   
-  private static final Logger LOG = LoggerFactory.getLogger(SolrLocator.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   protected SolrLocator(MorphlineContext context) {
     Preconditions.checkNotNull(context);
@@ -92,21 +92,21 @@ public class SolrLocator {
       if (collectionName == null || collectionName.length() == 0) {
         throw new MorphlineCompilationException("Parameter 'zkHost' requires that you also pass parameter 'collection'", config);
       }
-      CloudSolrServer cloudSolrServer = new CloudSolrServer(zkHost);
-      cloudSolrServer.setDefaultCollection(collectionName);
-      cloudSolrServer.connect();
-      return new SolrServerDocumentLoader(cloudSolrServer, batchSize);
+      CloudSolrClient cloudSolrClient = new CloudSolrClient(zkHost);
+      cloudSolrClient.setDefaultCollection(collectionName);
+      cloudSolrClient.connect();
+      return new SolrClientDocumentLoader(cloudSolrClient, batchSize);
     } else {
       if (solrUrl == null || solrUrl.length() == 0) {
         throw new MorphlineCompilationException("Missing parameter 'solrUrl'", config);
       }
       int solrServerNumThreads = 2;
       int solrServerQueueLength = solrServerNumThreads;
-      SolrServer server = new SafeConcurrentUpdateSolrServer(solrUrl, solrServerQueueLength, solrServerNumThreads);
+      SolrClient server = new SafeConcurrentUpdateSolrClient(solrUrl, solrServerQueueLength, solrServerNumThreads);
       // SolrServer server = new HttpSolrServer(solrServerUrl);
       // SolrServer server = new ConcurrentUpdateSolrServer(solrServerUrl, solrServerQueueLength, solrServerNumThreads);
       // server.setParser(new XMLResponseParser()); // binary parser is used by default
-      return new SolrServerDocumentLoader(server, batchSize);
+      return new SolrClientDocumentLoader(server, batchSize);
     }
   }
 
@@ -142,11 +142,7 @@ public class SolrLocator {
           downloadedSolrHomeDir = Files.createTempDir();
           downloadedSolrHomeDir = zki.downloadConfigDir(zkClient, configName, downloadedSolrHomeDir);
           mySolrHomeDir = downloadedSolrHomeDir.getAbsolutePath();
-        } catch (KeeperException e) {
-          throw new MorphlineCompilationException("Cannot download schema.xml from ZooKeeper", config, e);
-        } catch (InterruptedException e) {
-          throw new MorphlineCompilationException("Cannot download schema.xml from ZooKeeper", config, e);
-        } catch (IOException e) {
+        } catch (KeeperException | InterruptedException | IOException e) {
           throw new MorphlineCompilationException("Cannot download schema.xml from ZooKeeper", config, e);
         } finally {
           zkClient.close();
@@ -155,7 +151,7 @@ public class SolrLocator {
       
       LOG.debug("SolrLocator loading IndexSchema from dir {}", mySolrHomeDir);
       try {
-        SolrResourceLoader loader = new SolrResourceLoader(mySolrHomeDir);
+        SolrResourceLoader loader = new SolrResourceLoader(Paths.get(mySolrHomeDir));
         SolrConfig solrConfig = new SolrConfig(loader, "solrconfig.xml", null);
         InputSource is = new InputSource(loader.openSchema("schema.xml"));
         is.setSystemId(SystemIdResolver.createSystemIdFromResourceName("schema.xml"));
@@ -163,11 +159,7 @@ public class SolrLocator {
         IndexSchema schema = new IndexSchema(solrConfig, "schema.xml", is);
         validateSchema(schema);
         return schema;
-      } catch (ParserConfigurationException e) {
-        throw new MorphlineRuntimeException(e);
-      } catch (IOException e) {
-        throw new MorphlineRuntimeException(e);
-      } catch (SAXException e) {
+      } catch (ParserConfigurationException | IOException | SAXException e) {
         throw new MorphlineRuntimeException(e);
       }
     } finally {

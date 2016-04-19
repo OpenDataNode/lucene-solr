@@ -1,22 +1,21 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements. See the NOTICE file distributed with this
- * work for additional information regarding copyright ownership. The ASF
- * licenses this file to You under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- * 
- * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- * License for the specific language governing permissions and limitations under
- * the License.
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
-import java.lang.reflect.Field;
+package org.apache.lucene.index;
+
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -24,8 +23,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.lucene.index.DocumentsWriterDeleteQueue.DeleteSlice;
+import org.apache.lucene.index.PrefixCodedTerms.TermIterator;
 import org.apache.lucene.search.TermQuery;
-import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.ThreadInterruptedException;
@@ -75,9 +74,10 @@ public class TestDocumentsWriterDeleteQueue extends LuceneTestCase {
     assertEquals(uniqueValues, bd2.terms.keySet());
     HashSet<Term> frozenSet = new HashSet<>();
     BytesRefBuilder bytesRef = new BytesRefBuilder();
-    for (Term t : queue.freezeGlobalBuffer(null).termsIterable()) {
-      bytesRef.copyBytes(t.bytes);
-      frozenSet.add(new Term(t.field, bytesRef.toBytesRef()));
+    TermIterator iter = queue.freezeGlobalBuffer(null).termIterator();
+    while (iter.next() != null) {
+      bytesRef.copyBytes(iter.bytes);
+      frozenSet.add(new Term(iter.field(), bytesRef.toBytesRef()));
     }
     assertEquals(uniqueValues, frozenSet);
     assertEquals("num deletes must be 0 after freeze", 0, queue
@@ -98,16 +98,12 @@ public class TestDocumentsWriterDeleteQueue extends LuceneTestCase {
     queue.clear();
     assertFalse(queue.anyChanges());
     final int size = 200 + random().nextInt(500) * RANDOM_MULTIPLIER;
-    int termsSinceFreeze = 0;
-    int queriesSinceFreeze = 0;
     for (int i = 0; i < size; i++) {
       Term term = new Term("id", "" + i);
       if (random().nextInt(10) == 0) {
         queue.addDelete(new TermQuery(term));
-        queriesSinceFreeze++;
       } else {
         queue.addDelete(term);
-        termsSinceFreeze++;
       }
       assertTrue(queue.anyChanges());
       if (random().nextInt(10) == 0) {
@@ -136,7 +132,7 @@ public class TestDocumentsWriterDeleteQueue extends LuceneTestCase {
       assertTrue(queue.anyChanges());
       if (random().nextInt(5) == 0) {
         FrozenBufferedUpdates freezeGlobalBuffer = queue.freezeGlobalBuffer(null);
-        assertEquals(termsSinceFreeze, freezeGlobalBuffer.termCount);
+        assertEquals(termsSinceFreeze, freezeGlobalBuffer.terms.size());
         assertEquals(queriesSinceFreeze, freezeGlobalBuffer.queries.length);
         queriesSinceFreeze = 0;
         termsSinceFreeze = 0;
@@ -149,10 +145,7 @@ public class TestDocumentsWriterDeleteQueue extends LuceneTestCase {
       NoSuchFieldException, IllegalArgumentException, IllegalAccessException,
       InterruptedException {
     final DocumentsWriterDeleteQueue queue = new DocumentsWriterDeleteQueue();
-    Field field = DocumentsWriterDeleteQueue.class
-        .getDeclaredField("globalBufferLock");
-    field.setAccessible(true);
-    ReentrantLock lock = (ReentrantLock) field.get(queue);
+    ReentrantLock lock = queue.globalBufferLock;
     lock.lock();
     Thread t = new Thread() {
       @Override
@@ -168,7 +161,7 @@ public class TestDocumentsWriterDeleteQueue extends LuceneTestCase {
     assertTrue("changes in global buffer", queue.anyChanges());
     FrozenBufferedUpdates freezeGlobalBuffer = queue.freezeGlobalBuffer(null);
     assertTrue(freezeGlobalBuffer.any());
-    assertEquals(1, freezeGlobalBuffer.termCount);
+    assertEquals(1, freezeGlobalBuffer.terms.size());
     assertFalse("all changes applied", queue.anyChanges());
   }
 
@@ -204,10 +197,13 @@ public class TestDocumentsWriterDeleteQueue extends LuceneTestCase {
     queue.tryApplyGlobalSlice();
     Set<Term> frozenSet = new HashSet<>();
     BytesRefBuilder builder = new BytesRefBuilder();
-    for (Term t : queue.freezeGlobalBuffer(null).termsIterable()) {
-      builder.copyBytes(t.bytes);
-      frozenSet.add(new Term(t.field, builder.toBytesRef()));
+
+    TermIterator iter = queue.freezeGlobalBuffer(null).termIterator();
+    while (iter.next() != null) {
+      builder.copyBytes(iter.bytes);
+      frozenSet.add(new Term(iter.field(), builder.toBytesRef()));
     }
+
     assertEquals("num deletes must be 0 after freeze", 0, queue
         .numGlobalTermDeletes());
     assertEquals(uniqueValues.size(), frozenSet.size());

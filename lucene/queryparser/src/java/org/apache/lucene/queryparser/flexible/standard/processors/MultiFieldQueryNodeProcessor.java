@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.processors;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,7 +14,9 @@ package org.apache.lucene.queryparser.flexible.standard.processors;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.processors;
 
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -32,15 +32,15 @@ import org.apache.lucene.queryparser.flexible.standard.config.StandardQueryConfi
 
 /**
  * This processor is used to expand terms so the query looks for the same term
- * in different fields. It also boosts a query based on its field. <br/>
- * <br/>
+ * in different fields. It also boosts a query based on its field. <br>
+ * <br>
  * This processor looks for every {@link FieldableNode} contained in the query
  * node tree. If a {@link FieldableNode} is found, it checks if there is a
  * {@link ConfigurationKeys#MULTI_FIELDS} defined in the {@link QueryConfigHandler}. If
  * there is, the {@link FieldableNode} is cloned N times and the clones are
  * added to a {@link BooleanQueryNode} together with the original node. N is
  * defined by the number of fields that it will be expanded to. The
- * {@link BooleanQueryNode} is returned. <br/>
+ * {@link BooleanQueryNode} is returned.
  * 
  * @see ConfigurationKeys#MULTI_FIELDS
  */
@@ -91,32 +91,25 @@ public class MultiFieldQueryNodeProcessor extends QueryNodeProcessorImpl {
 
           if (fields.length == 1) {
             return fieldNode;
-
           } else {
-            LinkedList<QueryNode> children = new LinkedList<>();
-            children.add(fieldNode);
+            List<QueryNode> children = new ArrayList<>(fields.length);
 
+            children.add(fieldNode);
             for (int i = 1; i < fields.length; i++) {
               try {
                 fieldNode = (FieldableNode) fieldNode.cloneTree();
                 fieldNode.setField(fields[i]);
 
                 children.add(fieldNode);
-
               } catch (CloneNotSupportedException e) {
-                // should never happen
+                throw new RuntimeException(e);
               }
-
             }
 
             return new GroupQueryNode(new OrQueryNode(children));
-
           }
-
         }
-
       }
-
     }
 
     return node;
@@ -126,9 +119,6 @@ public class MultiFieldQueryNodeProcessor extends QueryNodeProcessorImpl {
   @Override
   protected List<QueryNode> setChildrenOrder(List<QueryNode> children)
       throws QueryNodeException {
-
     return children;
-
   }
-
 }

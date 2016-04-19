@@ -1,20 +1,19 @@
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements. See the NOTICE file distributed with this
- * work for additional information regarding copyright ownership. The ASF
- * licenses this file to You under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- * 
- * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- * License for the specific language governing permissions and limitations under
- * the License.
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
-
 package org.apache.solr.handler.dataimport.config;
 
 import static org.apache.solr.handler.dataimport.DataImportHandlerException.SEVERE;
@@ -29,7 +28,6 @@ import java.util.Set;
 
 import org.apache.solr.handler.dataimport.DataImportHandlerException;
 import org.apache.solr.handler.dataimport.DataImporter;
-import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
 import org.w3c.dom.Element;
 
@@ -41,6 +39,7 @@ public class Entity {
   private final String processorName;
   private final Entity parentEntity;
   private final boolean docRoot;
+  private final boolean child;
   private final List<Entity> children;
   private final List<EntityField> fields;
   private final Map<String,Set<EntityField>> colNameVsField;
@@ -76,6 +75,9 @@ public class Entity {
     } else {
       docRoot = false;
     }
+    
+    String childValue = ConfigParseUtil.getStringAttribute(element, ConfigNameConstants.CHILD, null);
+    child = "true".equals(childValue);
     
     Map<String,String> modAttributes = ConfigParseUtil
         .getAllAttributes(element);
@@ -218,5 +220,9 @@ public class Entity {
   
   public List<Map<String,String>> getAllFieldsList() {
     return allFieldAttributes;
+  }
+
+  public boolean isChild() {
+    return child;
   }
 }

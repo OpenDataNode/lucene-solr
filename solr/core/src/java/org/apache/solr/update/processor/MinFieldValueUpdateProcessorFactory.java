@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update.processor;
 
 import static org.apache.solr.common.SolrException.ErrorCode.*;
@@ -41,7 +40,7 @@ import java.util.Iterator;
  * values (ie: <code>64, 128, 1024</code>) in the field 
  * <code>smallestFileSize</code> then only the smallest value 
  * (ie: <code>64</code>) will be kept in that field.
- * <p>
+ * <br>
  *
  * <pre class="prettyprint">
  *  &lt;processor class="solr.MinFieldValueUpdateProcessorFactory"&gt;

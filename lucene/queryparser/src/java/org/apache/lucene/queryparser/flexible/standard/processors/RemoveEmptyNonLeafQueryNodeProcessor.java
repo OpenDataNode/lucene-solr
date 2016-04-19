@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.processors;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard.processors;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.processors;
 
 import java.util.LinkedList;
 import java.util.List;
@@ -30,11 +29,11 @@ import org.apache.lucene.queryparser.flexible.core.processors.QueryNodeProcessor
 /**
  * This processor removes every {@link QueryNode} that is not a leaf and has not
  * children. If after processing the entire tree the root node is not a leaf and
- * has no children, a {@link MatchNoDocsQueryNode} object is returned. <br/>
- * <br/>
+ * has no children, a {@link MatchNoDocsQueryNode} object is returned.
+ * <br>
  * This processor is used at the end of a pipeline to avoid invalid query node
  * tree structures like a {@link GroupQueryNode} or {@link ModifierQueryNode}
- * with no children. <br/>
+ * with no children.
  * 
  * @see QueryNode
  * @see MatchNoDocsQueryNode

@@ -1,5 +1,3 @@
-package org.apache.lucene.facet.taxonomy;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.facet.taxonomy;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet.taxonomy;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -203,7 +202,8 @@ public class TestSearcherTaxonomyManager extends FacetTestCase {
       System.out.println("TEST: now stop");
     }
 
-    IOUtils.close(mgr, tw, w, taxoDir, dir);
+    w.close();
+    IOUtils.close(mgr, tw, taxoDir, dir);
   }
   
   public void testDirectory() throws Exception {
@@ -255,7 +255,8 @@ public class TestSearcherTaxonomyManager extends FacetTestCase {
       System.out.println("TEST: now stop");
     }
 
-    IOUtils.close(mgr, tw, w, taxoDir, indexDir);
+    w.close();
+    IOUtils.close(mgr, tw, taxoDir, indexDir);
   }
   
   public void testReplaceTaxonomyNRT() throws Exception {
@@ -280,7 +281,8 @@ public class TestSearcherTaxonomyManager extends FacetTestCase {
       // expected
     }
 
-    IOUtils.close(mgr, tw, w, taxoDir, dir);
+    w.close();
+    IOUtils.close(mgr, tw, taxoDir, dir);
   }
   
   public void testReplaceTaxonomyDirectory() throws Exception {
@@ -318,7 +320,8 @@ public class TestSearcherTaxonomyManager extends FacetTestCase {
       mgr.release(pair);
     }
 
-    IOUtils.close(mgr, tw, w, taxoDir, indexDir);
+    w.close();
+    IOUtils.close(mgr, tw, taxoDir, indexDir);
   }
 
 }

@@ -14,10 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr;
 
-import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.common.params.ModifiableSolrParams;
@@ -25,11 +23,16 @@ import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.schema.SchemaField;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.lang.invoke.MethodHandles;
 import java.util.*;
 
 @Slow
 public class TestRandomFaceting extends SolrTestCaseJ4 {
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   public static final String FOO_STRING_FIELD = "foo_s1";
   public static final String SMALL_STRING_FIELD = "small_s1";
@@ -113,27 +116,23 @@ public class TestRandomFaceting extends SolrTestCaseJ4 {
 
   @Test
   public void testRandomFaceting() throws Exception {
-    try {
-      Random rand = random();
-      int iter = atLeast(100);
-      init();
-      addMoreDocs(0);
-
-      for (int i=0; i<iter; i++) {
-        doFacetTests();
-
-        if (rand.nextInt(100) < 5) {
-          init();
-        }
-
-        addMoreDocs(rand.nextInt(indexSize) + 1);
-
-        if (rand.nextInt(100) < 50) {
-          deleteSomeDocs();
-        }
+    Random rand = random();
+    int iter = atLeast(100);
+    init();
+    addMoreDocs(0);
+    
+    for (int i=0; i<iter; i++) {
+      doFacetTests();
+      
+      if (rand.nextInt(100) < 5) {
+        init();
       }
-    } finally {
-      FieldCache.DEFAULT.purgeAllCaches();   // avoid FC insanity
+      
+      addMoreDocs(rand.nextInt(indexSize) + 1);
+      
+      if (rand.nextInt(100) < 50) {
+        deleteSomeDocs();
+      }
     }
   }
 

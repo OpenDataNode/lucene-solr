@@ -1,4 +1,3 @@
-package org.apache.solr.rest.schema;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,12 +14,7 @@ package org.apache.solr.rest.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import java.io.File;
-import java.util.SortedMap;
-import java.util.TreeMap;
-import java.util.regex.Pattern;
-
+package org.apache.solr.rest.schema;
 import org.apache.commons.io.FileUtils;
 import org.apache.solr.util.RestTestBase;
 import org.eclipse.jetty.servlet.ServletHolder;
@@ -28,6 +22,11 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.restlet.ext.servlet.ServerServlet;
+
+import java.io.File;
+import java.util.SortedMap;
+import java.util.TreeMap;
+import java.util.regex.Pattern;
 
 public class TestManagedSchemaFieldResource extends RestTestBase {
 
@@ -40,7 +39,7 @@ public class TestManagedSchemaFieldResource extends RestTestBase {
 
   @Before
   public void before() throws Exception {
-    tmpSolrHome = createTempDir();
+    tmpSolrHome = createTempDir().toFile();
     tmpConfDir = new File(tmpSolrHome, confDir);
     FileUtils.copyDirectory(new File(TEST_HOME()), tmpSolrHome.getAbsoluteFile());
 
@@ -62,7 +61,10 @@ public class TestManagedSchemaFieldResource extends RestTestBase {
       jetty.stop();
       jetty = null;
     }
-    server = null;
+    client = null;
+    if (restTestHarness != null) {
+      restTestHarness.close();
+    }
     restTestHarness = null;
   }
   

@@ -1,4 +1,3 @@
-package org.apache.solr.handler.component;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,11 +14,10 @@ package org.apache.solr.handler.component;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.handler.component;
 import org.apache.lucene.index.*;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
-import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.CharsRefBuilder;
 import org.apache.lucene.util.StringHelper;
 import org.apache.solr.common.SolrException;
@@ -118,16 +116,16 @@ public class TermsComponent extends SearchComponent {
     boolean raw = params.getBool(TermsParams.TERMS_RAW, false);
 
 
-    final AtomicReader indexReader = rb.req.getSearcher().getAtomicReader();
+    final LeafReader indexReader = rb.req.getSearcher().getLeafReader();
     Fields lfields = indexReader.fields();
 
     for (String field : fields) {
       NamedList<Integer> fieldTerms = new NamedList<>();
       termsResult.add(field, fieldTerms);
 
-      Terms terms = lfields == null ? null : lfields.terms(field);
+      Terms terms = lfields.terms(field);
       if (terms == null) {
-        // no terms for this field
+        // field does not exist
         continue;
       }
 
@@ -139,9 +137,9 @@ public class TermsComponent extends SearchComponent {
 
       BytesRef upperBytes = null;
       if (upperStr != null) {
-        BytesRef b = new BytesRef();
+        BytesRefBuilder b = new BytesRefBuilder();
         ft.readableToIndexed(upperStr, b);
-        upperBytes = b;
+        upperBytes = b.get();
       }
 
       BytesRef lowerBytes;
@@ -155,14 +153,14 @@ public class TermsComponent extends SearchComponent {
           // perhaps we detect if the FieldType is non-character and expect hex if so?
           lowerBytes = new BytesRef(lowerStr);
         } else {
-          BytesRef b = new BytesRef();
+          BytesRefBuilder b = new BytesRefBuilder();
           ft.readableToIndexed(lowerStr, b);
-          lowerBytes = b;
+          lowerBytes = b.get();
         }
       }
 
 
-     TermsEnum termsEnum = terms.iterator(null);
+     TermsEnum termsEnum = terms.iterator();
      BytesRef term = null;
 
       if (lowerBytes != null) {
@@ -182,7 +180,7 @@ public class TermsComponent extends SearchComponent {
 
       int i = 0;
       BoundedTreeSet<CountPair<BytesRef, Integer>> queue = (sort ? new BoundedTreeSet<CountPair<BytesRef, Integer>>(limit) : null);
-      CharsRef external = new CharsRef();
+      CharsRefBuilder external = new CharsRefBuilder();
       while (term != null && (i<limit || sort)) {
         boolean externalized = false; // did we fill in "external" yet for this term?
 
@@ -194,7 +192,7 @@ public class TermsComponent extends SearchComponent {
           // TODO: support "raw" mode?
           ft.indexedToReadable(term, external);
           externalized = true;
-          if (!pattern.matcher(external).matches()) {
+          if (!pattern.matcher(external.get()).matches()) {
             term = termsEnum.next();
             continue;
           }
@@ -475,11 +473,6 @@ public class TermsComponent extends SearchComponent {
 
       return arr;
     }
-  }
-
-  @Override
-  public String getSource() {
-    return null;
   }
 
   @Override

@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -24,7 +24,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -45,11 +44,9 @@ import org.apache.lucene.index.TrackingIndexWriter;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.NRTCachingDirectory;
 import org.apache.lucene.util.IOUtils;
-import org.apache.lucene.util.LuceneTestCase.AwaitsFix;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.ThreadInterruptedException;
-import org.apache.lucene.util.Version;
 
 @SuppressCodecs({ "SimpleText", "Memory", "Direct" })
 public class TestControlledRealTimeReopenThread extends ThreadedIndexingAndSearchingTestCase {
@@ -105,6 +102,7 @@ public class TestControlledRealTimeReopenThread extends ThreadedIndexingAndSearc
         System.out.println(Thread.currentThread().getName() + ": nrt: verify " + id);
       }
       nrtDeletesThread.waitForGeneration(gen);
+      assertTrue(gen <= nrtDeletesThread.getSearchingGen());
       final IndexSearcher s = nrtDeletes.acquire();
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: got searcher=" + s);
@@ -128,6 +126,7 @@ public class TestControlledRealTimeReopenThread extends ThreadedIndexingAndSearc
         System.out.println(Thread.currentThread().getName() + ": nrt: verify " + id);
       }
       nrtNoDeletesThread.waitForGeneration(gen);
+      assertTrue(gen <= nrtNoDeletesThread.getSearchingGen());
       final IndexSearcher s = nrtNoDeletes.acquire();
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: got searcher=" + s);
@@ -151,6 +150,7 @@ public class TestControlledRealTimeReopenThread extends ThreadedIndexingAndSearc
         System.out.println(Thread.currentThread().getName() + ": nrt: verify " + id);
       }
       nrtNoDeletesThread.waitForGeneration(gen);
+      assertTrue(gen <= nrtNoDeletesThread.getSearchingGen());
       final IndexSearcher s = nrtNoDeletes.acquire();
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: got searcher=" + s);
@@ -173,6 +173,7 @@ public class TestControlledRealTimeReopenThread extends ThreadedIndexingAndSearc
         System.out.println(Thread.currentThread().getName() + ": nrt: verify " + id);
       }
       nrtDeletesThread.waitForGeneration(gen);
+      assertTrue(gen <= nrtDeletesThread.getSearchingGen());
       final IndexSearcher s = nrtDeletes.acquire();
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: got searcher=" + s);
@@ -195,6 +196,7 @@ public class TestControlledRealTimeReopenThread extends ThreadedIndexingAndSearc
         System.out.println(Thread.currentThread().getName() + ": nrt: verify del " + id);
       }
       nrtDeletesThread.waitForGeneration(gen);
+      assertTrue(gen <= nrtDeletesThread.getSearchingGen());
       final IndexSearcher s = nrtDeletes.acquire();
       if (VERBOSE) {
         System.out.println(Thread.currentThread().getName() + ": nrt: got searcher=" + s);
@@ -221,7 +223,7 @@ public class TestControlledRealTimeReopenThread extends ThreadedIndexingAndSearc
 
     final SearcherFactory sf = new SearcherFactory() {
         @Override
-        public IndexSearcher newSearcher(IndexReader r) throws IOException {
+        public IndexSearcher newSearcher(IndexReader r, IndexReader previous) throws IOException {
           TestControlledRealTimeReopenThread.this.warmCalled = true;
           IndexSearcher s = new IndexSearcher(r, es);
           s.search(new TermQuery(new Term("body", "united")), 10);
@@ -230,7 +232,7 @@ public class TestControlledRealTimeReopenThread extends ThreadedIndexingAndSearc
       };
 
     nrtNoDeletes = new SearcherManager(writer, false, sf);
-    nrtDeletes = new SearcherManager(writer, true, sf);
+    nrtDeletes = new SearcherManager(writer, sf);
                          
     nrtDeletesThread = new ControlledRealTimeReopenThread<>(genWriter, nrtDeletes, maxReopenSec, minReopenSec);
     nrtDeletesThread.setName("NRTDeletes Reopen Thread");
@@ -371,7 +373,8 @@ public class TestControlledRealTimeReopenThread extends ThreadedIndexingAndSearc
     }
     thread.close();
     thread.join();
-    IOUtils.close(manager, _writer, d);
+    _writer.close();
+    IOUtils.close(manager, d);
   }
   
   public static class LatchedIndexWriter extends IndexWriter {
@@ -391,9 +394,9 @@ public class TestControlledRealTimeReopenThread extends ThreadedIndexingAndSearc
 
     @Override
     public void updateDocument(Term term,
-        Iterable<? extends IndexableField> doc, Analyzer analyzer)
+        Iterable<? extends IndexableField> doc)
         throws IOException {
-      super.updateDocument(term, doc, analyzer);
+      super.updateDocument(term, doc);
       try {
         if (waitAfterUpdate) {
           signal.countDown();
@@ -414,7 +417,7 @@ public class TestControlledRealTimeReopenThread extends ThreadedIndexingAndSearc
 
     final SearcherFactory theEvilOne = new SearcherFactory() {
       @Override
-      public IndexSearcher newSearcher(IndexReader ignored) {
+      public IndexSearcher newSearcher(IndexReader ignored, IndexReader previous) {
         return LuceneTestCase.newSearcher(other);
       }
       };
@@ -432,9 +435,9 @@ public class TestControlledRealTimeReopenThread extends ThreadedIndexingAndSearc
 
   public void testListenerCalled() throws Exception {
     Directory dir = newDirectory();
-    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, null));
+    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(null));
     final AtomicBoolean afterRefreshCalled = new AtomicBoolean(false);
-    SearcherManager sm = new SearcherManager(iw, true, new SearcherFactory());
+    SearcherManager sm = new SearcherManager(iw, new SearcherFactory());
     sm.addListener(new ReferenceManager.RefreshListener() {
       @Override
       public void beforeRefresh() {
@@ -476,12 +479,12 @@ public class TestControlledRealTimeReopenThread extends ThreadedIndexingAndSearc
 
     final SnapshotDeletionPolicy sdp = new SnapshotDeletionPolicy(new KeepOnlyLastCommitDeletionPolicy());
     final Directory dir = new NRTCachingDirectory(newFSDirectory(createTempDir("nrt")), 5, 128);
-    IndexWriterConfig config = new IndexWriterConfig(Version.LUCENE_4_6,
-                                                     new MockAnalyzer(random()));
+    IndexWriterConfig config = new IndexWriterConfig(new MockAnalyzer(random()));
+    config.setCommitOnClose(true);
     config.setIndexDeletionPolicy(sdp);
     config.setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND);
     final IndexWriter iw = new IndexWriter(dir, config);
-    SearcherManager sm = new SearcherManager(iw, true, new SearcherFactory());
+    SearcherManager sm = new SearcherManager(iw, new SearcherFactory());
     final TrackingIndexWriter tiw = new TrackingIndexWriter(iw);
     ControlledRealTimeReopenThread<IndexSearcher> controlledRealTimeReopenThread =
       new ControlledRealTimeReopenThread<>(tiw, sm, maxStaleSecs, 0);

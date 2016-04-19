@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,22 +14,25 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
+
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
-import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.store.RAMDirectory;      // javadocs
 import org.apache.lucene.util.Accountable;
+import org.apache.lucene.util.Accountables;
 import org.apache.lucene.util.IOUtils;
 
 // TODO
 //   - let subclass dictate policy...?
 //   - rename to MergeCacheingDir?  NRTCachingDir
 
-// :Post-Release-Update-Version.LUCENE_X_Y: (in <pre> block in javadoc below)
 /**
  * Wraps a {@link RAMDirectory}
  * around any provided delegate directory, to
@@ -50,14 +51,14 @@ import org.apache.lucene.util.IOUtils;
  * <p>Here's a simple example usage:
  *
  * <pre class="prettyprint">
- *   Directory fsDir = FSDirectory.open(new File("/path/to/index"));
+ *   Directory fsDir = FSDirectory.open(new File("/path/to/index").toPath());
  *   NRTCachingDirectory cachedFSDir = new NRTCachingDirectory(fsDir, 5.0, 60.0);
- *   IndexWriterConfig conf = new IndexWriterConfig(Version.LUCENE_4_10_0, analyzer);
+ *   IndexWriterConfig conf = new IndexWriterConfig(analyzer);
  *   IndexWriter writer = new IndexWriter(cachedFSDir, conf);
  * </pre>
  *
  * <p>This will cache all newly flushed segments, all merges
- * whose expected segment size is <= 5 MB, unless the net
+ * whose expected segment size is {@code <= 5 MB}, unless the net
  * cached bytes exceeds 60 MB at which point all writes will
  * not be cached (until the net bytes falls below 60 MB).</p>
  *
@@ -76,9 +77,9 @@ public class NRTCachingDirectory extends FilterDirectory implements Accountable 
 
   /**
    *  We will cache a newly created output if 1) it's a
-   *  flush or a merge and the estimated size of the merged segment is <=
-   *  maxMergeSizeMB, and 2) the total cached bytes is <=
-   *  maxCachedMB */
+   *  flush or a merge and the estimated size of the merged segment is 
+   *  {@code <= maxMergeSizeMB}, and 2) the total cached bytes is 
+   *  {@code <= maxCachedMB} */
   public NRTCachingDirectory(Directory delegate, double maxMergeSizeMB, double maxCachedMB) {
     super(delegate);
     maxMergeSizeBytes = (long) (maxMergeSizeMB*1024*1024);
@@ -97,30 +98,10 @@ public class NRTCachingDirectory extends FilterDirectory implements Accountable 
     for(String f : cache.listAll()) {
       files.add(f);
     }
-    // LUCENE-1468: our NRTCachingDirectory will actually exist (RAMDir!),
-    // but if the underlying delegate is an FSDir and mkdirs() has not
-    // yet been called, because so far everything is a cached write,
-    // in this case, we don't want to throw a NoSuchDirectoryException
-    try {
-      for(String f : in.listAll()) {
-        // Cannot do this -- if lucene calls createOutput but
-        // file already exists then this falsely trips:
-        //assert !files.contains(f): "file \"" + f + "\" is in both dirs";
-        files.add(f);
-      }
-    } catch (NoSuchDirectoryException ex) {
-      // however, if there are no cached files, then the directory truly
-      // does not "exist"
-      if (files.isEmpty()) {
-        throw ex;
-      }
+    for(String f : in.listAll()) {
+      files.add(f);
     }
     return files.toArray(new String[files.size()]);
-  }
-
-  @Override
-  public synchronized boolean fileExists(String name) throws IOException {
-    return cache.fileExists(name) || in.fileExists(name);
   }
 
   @Override
@@ -128,7 +109,7 @@ public class NRTCachingDirectory extends FilterDirectory implements Accountable 
     if (VERBOSE) {
       System.out.println("nrtdir.deleteFile name=" + name);
     }
-    if (cache.fileExists(name)) {
+    if (cache.fileNameExists(name)) {
       cache.deleteFile(name);
     } else {
       in.deleteFile(name);
@@ -137,7 +118,7 @@ public class NRTCachingDirectory extends FilterDirectory implements Accountable 
 
   @Override
   public synchronized long fileLength(String name) throws IOException {
-    if (cache.fileExists(name)) {
+    if (cache.fileNameExists(name)) {
       return cache.fileLength(name);
     } else {
       return in.fileLength(name);
@@ -185,11 +166,19 @@ public class NRTCachingDirectory extends FilterDirectory implements Accountable 
   }
 
   @Override
+  public void renameFile(String source, String dest) throws IOException {
+    // NOTE: uncache is unnecessary for lucene's usage, as we always sync() before renaming.
+    unCache(source);
+    in.renameFile(source, dest);
+  }
+
+
+  @Override
   public synchronized IndexInput openInput(String name, IOContext context) throws IOException {
     if (VERBOSE) {
       System.out.println("nrtdir.openInput name=" + name);
     }
-    if (cache.fileExists(name)) {
+    if (cache.fileNameExists(name)) {
       if (VERBOSE) {
         System.out.println("  from cache");
       }
@@ -208,11 +197,21 @@ public class NRTCachingDirectory extends FilterDirectory implements Accountable 
     // it for defensive reasons... or in case the app is
     // doing something custom (creating outputs directly w/o
     // using IndexWriter):
-    for(String fileName : cache.listAll()) {
-      unCache(fileName);
+    boolean success = false;
+    try {
+      if (cache.isOpen) {
+        for(String fileName : cache.listAll()) {
+          unCache(fileName);
+        }
+      }
+      success = true;
+    } finally {
+      if (success) {
+        IOUtils.close(cache, in);
+      } else {
+        IOUtils.closeWhileHandlingException(cache, in);
+      }
     }
-    cache.close();
-    in.close();
   }
 
   /** Subclass can override this to customize logic; return
@@ -227,7 +226,7 @@ public class NRTCachingDirectory extends FilterDirectory implements Accountable 
       bytes = context.flushInfo.estimatedSegmentSize;
     }
 
-    return !name.equals(IndexFileNames.SEGMENTS_GEN) && (bytes <= maxMergeSizeBytes) && (bytes + cache.ramBytesUsed()) <= maxCachedBytes;
+    return (bytes <= maxMergeSizeBytes) && (bytes + cache.ramBytesUsed()) <= maxCachedBytes;
   }
 
   private final Object uncacheLock = new Object();
@@ -239,7 +238,7 @@ public class NRTCachingDirectory extends FilterDirectory implements Accountable 
       if (VERBOSE) {
         System.out.println("nrtdir.unCache name=" + fileName);
       }
-      if (!cache.fileExists(fileName)) {
+      if (!cache.fileNameExists(fileName)) {
         // Another thread beat us...
         return;
       }
@@ -256,7 +255,7 @@ public class NRTCachingDirectory extends FilterDirectory implements Accountable 
       // Lock order: uncacheLock -> this
       synchronized(this) {
         // Must sync here because other sync methods have
-        // if (cache.fileExists(name)) { ... } else { ... }:
+        // if (cache.fileNameExists(name)) { ... } else { ... }:
         cache.deleteFile(fileName);
       }
     }
@@ -265,5 +264,10 @@ public class NRTCachingDirectory extends FilterDirectory implements Accountable 
   @Override
   public long ramBytesUsed() {
     return cache.ramBytesUsed();
+  }
+  
+  @Override
+  public Collection<Accountable> getChildResources() {
+    return Collections.singleton(Accountables.namedAccountable("cache", cache));
   }
 }

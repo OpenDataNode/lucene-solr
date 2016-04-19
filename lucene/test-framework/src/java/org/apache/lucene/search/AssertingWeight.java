@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,37 +14,36 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
 import java.io.IOException;
 import java.util.Random;
+import java.util.Set;
 
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.util.Bits;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
 
 class AssertingWeight extends Weight {
 
-  static Weight wrap(Random random, Weight other) {
-    return other instanceof AssertingWeight ? other : new AssertingWeight(random, other);
-  }
-
-  final boolean scoresDocsOutOfOrder;
   final Random random;
   final Weight in;
+  final boolean needsScores;
 
-  AssertingWeight(Random random, Weight in) {
+  AssertingWeight(Random random, Weight in, boolean needsScores) {
+    super(in.getQuery());
     this.random = random;
     this.in = in;
-    scoresDocsOutOfOrder = in.scoresDocsOutOfOrder() || random.nextBoolean();
+    this.needsScores = needsScores;
   }
 
   @Override
-  public Explanation explain(AtomicReaderContext context, int doc) throws IOException {
+  public void extractTerms(Set<Term> terms) {
+    in.extractTerms(terms);
+  }
+
+  @Override
+  public Explanation explain(LeafReaderContext context, int doc) throws IOException {
     return in.explain(context, doc);
-  }
-
-  @Override
-  public Query getQuery() {
-    return in.getQuery();
   }
 
   @Override
@@ -55,49 +52,24 @@ class AssertingWeight extends Weight {
   }
 
   @Override
-  public void normalize(float norm, float topLevelBoost) {
-    in.normalize(norm, topLevelBoost);
+  public void normalize(float norm, float boost) {
+    in.normalize(norm, boost);
   }
 
   @Override
-  public Scorer scorer(AtomicReaderContext context, Bits acceptDocs) throws IOException {
-    // if the caller asks for in-order scoring or if the weight does not support
-    // out-of order scoring then collection will have to happen in-order.
-    final Scorer inScorer = in.scorer(context, acceptDocs);
-    return AssertingScorer.wrap(new Random(random.nextLong()), inScorer);
+  public Scorer scorer(LeafReaderContext context) throws IOException {
+    final Scorer inScorer = in.scorer(context);
+    assert inScorer == null || inScorer.docID() == -1;
+    return AssertingScorer.wrap(new Random(random.nextLong()), inScorer, needsScores);
   }
 
   @Override
-  public BulkScorer bulkScorer(AtomicReaderContext context, boolean scoreDocsInOrder, Bits acceptDocs) throws IOException {
-    // if the caller asks for in-order scoring or if the weight does not support
-    // out-of order scoring then collection will have to happen in-order.
-    BulkScorer inScorer = in.bulkScorer(context, scoreDocsInOrder, acceptDocs);
+  public BulkScorer bulkScorer(LeafReaderContext context) throws IOException {
+    BulkScorer inScorer = in.bulkScorer(context);
     if (inScorer == null) {
       return null;
     }
 
-    if (AssertingBulkScorer.shouldWrap(inScorer)) {
-      // The incoming scorer already has a specialized
-      // implementation for BulkScorer, so we should use it:
-      inScorer = AssertingBulkScorer.wrap(new Random(random.nextLong()), inScorer);
-    } else if (random.nextBoolean()) {
-      // Let super wrap this.scorer instead, so we use
-      // AssertingScorer:
-      inScorer = super.bulkScorer(context, scoreDocsInOrder, acceptDocs);
-    }
-
-    if (scoreDocsInOrder == false && random.nextBoolean()) {
-      // The caller claims it can handle out-of-order
-      // docs; let's confirm that by pulling docs and
-      // randomly shuffling them before collection:
-      inScorer = new AssertingBulkOutOfOrderScorer(new Random(random.nextLong()), inScorer);
-    }
-    return inScorer;
-  }
-
-  @Override
-  public boolean scoresDocsOutOfOrder() {
-    return scoresDocsOutOfOrder;
+    return AssertingBulkScorer.wrap(new Random(random.nextLong()), inScorer, context.reader().maxDoc());
   }
 }
-

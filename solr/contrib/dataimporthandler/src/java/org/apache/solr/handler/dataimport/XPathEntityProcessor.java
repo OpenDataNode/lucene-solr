@@ -34,6 +34,7 @@ import javax.xml.transform.stream.StreamSource;
 import java.io.CharArrayReader;
 import java.io.CharArrayWriter;
 import java.io.Reader;
+import java.lang.invoke.MethodHandles;
 import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -43,10 +44,10 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * <p> An implementation of {@link EntityProcessor} which uses a streaming xpath parser to extract values out of XML documents.
- * It is typically used in conjunction with {@link URLDataSource} or {@link FileDataSource}. </p> <p/> <p> Refer to <a
+ * It is typically used in conjunction with {@link URLDataSource} or {@link FileDataSource}. </p> <p> Refer to <a
  * href="http://wiki.apache.org/solr/DataImportHandler">http://wiki.apache.org/solr/DataImportHandler</a> for more
  * details. </p>
- * <p/>
+ * <p>
  * <b>This API is experimental and may change in the future.</b>
  *
  *
@@ -54,7 +55,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * @since solr 1.3
  */
 public class XPathEntityProcessor extends EntityProcessorBase {
-  private static final Logger LOG = LoggerFactory.getLogger(XPathEntityProcessor.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   private static final XMLErrorLogger xmllog = new XMLErrorLogger(LOG);
 
   private static final Map<String, Object> END_MARKER = new HashMap<>();
@@ -301,7 +302,7 @@ public class XPathEntityProcessor extends EntityProcessorBase {
           data = caw.getReader();
         } catch (TransformerException e) {
           if (ABORT.equals(onError)) {
-            wrapAndThrow(SEVERE, e, "Exception in applying XSL Transformeation");
+            wrapAndThrow(SEVERE, e, "Exception in applying XSL Transformation");
           } else if (SKIP.equals(onError)) {
             wrapAndThrow(DataImportHandlerException.SKIP, e);
           } else {

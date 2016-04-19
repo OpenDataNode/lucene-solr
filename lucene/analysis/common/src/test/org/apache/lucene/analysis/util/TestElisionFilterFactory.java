@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,15 @@ package org.apache.lucene.analysis.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.util;
+
 
 import java.io.Reader;
 import java.io.StringReader;
 
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
 
 /**
  * Simple tests to ensure the French elision filter factory is working.
@@ -32,7 +33,8 @@ public class TestElisionFilterFactory extends BaseTokenStreamFactoryTestCase {
    */
   public void testElision() throws Exception {
     Reader reader = new StringReader("l'avion");
-    TokenStream stream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream stream = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    ((Tokenizer)stream).setReader(reader);
     stream = tokenFilterFactory("Elision", "articles", "frenchArticles.txt").create(stream);
     assertTokenStreamContents(stream, new String[] { "avion" });
   }
@@ -42,7 +44,8 @@ public class TestElisionFilterFactory extends BaseTokenStreamFactoryTestCase {
    */
   public void testDefaultArticles() throws Exception {
     Reader reader = new StringReader("l'avion");
-    TokenStream stream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream stream = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    ((Tokenizer)stream).setReader(reader);
     stream = tokenFilterFactory("Elision").create(stream);
     assertTokenStreamContents(stream, new String[] { "avion" });
   }
@@ -52,7 +55,8 @@ public class TestElisionFilterFactory extends BaseTokenStreamFactoryTestCase {
    */
   public void testCaseInsensitive() throws Exception {
     Reader reader = new StringReader("L'avion");
-    TokenStream stream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream stream = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    ((Tokenizer)stream).setReader(reader);
     stream = tokenFilterFactory("Elision",
         "articles", "frenchArticles.txt",
         "ignoreCase", "true").create(stream);

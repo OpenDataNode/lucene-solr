@@ -44,24 +44,29 @@ import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.cloud.AbstractZkTestCase;
 import org.apache.solr.hadoop.hack.MiniMRCluster;
 import org.apache.solr.morphlines.solr.AbstractSolrMorphlineTestBase;
+import org.apache.solr.util.BadHdfsThreadsFilter;
+import org.apache.solr.util.BadMrClusterThreadsFilter;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import com.carrotsearch.randomizedtesting.annotations.Nightly;
 import com.carrotsearch.randomizedtesting.annotations.ThreadLeakAction;
 import com.carrotsearch.randomizedtesting.annotations.ThreadLeakAction.Action;
+import com.carrotsearch.randomizedtesting.annotations.ThreadLeakFilters;
 import com.carrotsearch.randomizedtesting.annotations.ThreadLeakLingering;
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope;
-import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope.Scope;
 import com.carrotsearch.randomizedtesting.annotations.ThreadLeakZombies;
 import com.carrotsearch.randomizedtesting.annotations.ThreadLeakZombies.Consequence;
 
 @ThreadLeakAction({Action.WARN})
 @ThreadLeakLingering(linger = 0)
 @ThreadLeakZombies(Consequence.CONTINUE)
-@ThreadLeakScope(Scope.NONE)
+@ThreadLeakFilters(defaultFilters = true, filters = {
+    BadHdfsThreadsFilter.class, BadMrClusterThreadsFilter.class // hdfs currently leaks thread(s)
+})
 @Slow
+@Nightly
 public class MorphlineBasicMiniMRTest extends SolrTestCaseJ4 {
   
   private static final boolean ENABLE_LOCAL_JOB_RUNNER = false; // for debugging only
@@ -69,7 +74,7 @@ public class MorphlineBasicMiniMRTest extends SolrTestCaseJ4 {
   private static final String DOCUMENTS_DIR = RESOURCES_DIR + "/test-documents";
   private static final File MINIMR_CONF_DIR = new File(RESOURCES_DIR + "/solr/minimr");
   
-  private static final String SEARCH_ARCHIVES_JAR = JarFinder.getJar(MapReduceIndexerTool.class);
+  private static String SEARCH_ARCHIVES_JAR;
 
   private static MiniDFSCluster dfsCluster = null;
   private static MiniMRCluster mrCluster = null;
@@ -109,21 +114,16 @@ public class MorphlineBasicMiniMRTest extends SolrTestCaseJ4 {
 
   @BeforeClass
   public static void setupClass() throws Exception {
-    solrHomeDirectory = createTempDir();
-    assumeTrue(
-        "Currently this test can only be run without the lucene test security policy in place",
-        System.getProperty("java.security.manager", "").equals(""));
+    solrHomeDirectory = createTempDir().toFile();
     
     assumeFalse("HDFS tests were disabled by -Dtests.disableHdfs",
         Boolean.parseBoolean(System.getProperty("tests.disableHdfs", "false")));
     
     assumeFalse("FIXME: This test does not work with Windows because of native library requirements", Constants.WINDOWS);
-    assumeFalse("FIXME: This test fails under Java 8 due to the Saxon dependency - see SOLR-1301", Constants.JRE_IS_MINIMUM_JAVA8);
-    assumeFalse("FIXME: This test fails under J9 due to the Saxon dependency - see SOLR-1301", System.getProperty("java.vm.info", "<?>").contains("IBM J9"));
     
     AbstractZkTestCase.SOLRHOME = solrHomeDirectory;
     FileUtils.copyDirectory(MINIMR_CONF_DIR, solrHomeDirectory);
-    File dataDir = createTempDir();
+    File dataDir = createTempDir().toFile();
     tempDir = dataDir.getAbsolutePath();
     new File(tempDir).mkdirs();
     FileUtils.copyFile(new File(RESOURCES_DIR + "/custom-mimetypes.xml"), new File(tempDir + "/custom-mimetypes.xml"));
@@ -150,6 +150,9 @@ public class MorphlineBasicMiniMRTest extends SolrTestCaseJ4 {
     System.setProperty("test.build.data", dataDir + File.separator + "hdfs" + File.separator + "build");
     System.setProperty("test.cache.data", dataDir + File.separator + "hdfs" + File.separator + "cache");
 
+    // Initialize AFTER test.build.dir is set, JarFinder uses it.
+    SEARCH_ARCHIVES_JAR = JarFinder.getJar(MapReduceIndexerTool.class);
+
     JobConf conf = new JobConf();
     conf.set("dfs.block.access.token.enable", "false");
     conf.set("dfs.permissions", "true");
@@ -157,6 +160,8 @@ public class MorphlineBasicMiniMRTest extends SolrTestCaseJ4 {
     conf.set(YarnConfiguration.NM_LOCAL_DIRS, dataDir.getPath() + File.separator +  "nm-local-dirs");
     conf.set(YarnConfiguration.DEFAULT_NM_LOG_DIRS, dataDir + File.separator +  "nm-logs");
     conf.set("testWorkDir", dataDir.getPath() + File.separator +  "testWorkDir");
+    conf.set("mapreduce.jobhistory.minicluster.fixed.ports", "false");
+    conf.set("mapreduce.jobhistory.admin.address", "0.0.0.0:0");
 
     dfsCluster = new MiniDFSCluster(conf, dataNodes, true, null);
     FileSystem fileSystem = dfsCluster.getFileSystem();
@@ -181,6 +186,7 @@ public class MorphlineBasicMiniMRTest extends SolrTestCaseJ4 {
     System.clearProperty("test.build.dir");
     System.clearProperty("test.build.data");
     System.clearProperty("test.cache.data");
+
     if (mrCluster != null) {
       mrCluster.shutdown();
       mrCluster = null;
@@ -189,6 +195,8 @@ public class MorphlineBasicMiniMRTest extends SolrTestCaseJ4 {
       dfsCluster.shutdown();
       dfsCluster = null;
     }
+    
+    FileSystem.closeAll();
   }
   
   @After

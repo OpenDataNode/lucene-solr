@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis;
 
 import java.nio.charset.StandardCharsets;
 
@@ -34,11 +33,11 @@ public class MockUTF16TermAttributeImpl extends CharTermAttributeImpl {
       AttributeFactory.getStaticImplementation(AttributeFactory.DEFAULT_ATTRIBUTE_FACTORY, MockUTF16TermAttributeImpl.class);
   
   @Override
-  public void fillBytesRef() {
-    BytesRef bytes = getBytesRef();
-    byte[] utf16 = toString().getBytes(StandardCharsets.UTF_16LE);
-    bytes.bytes = utf16;
-    bytes.offset = 0;
-    bytes.length = utf16.length;
+  public BytesRef getBytesRef() {
+    final BytesRef ref = this.builder.get();
+    ref.bytes = toString().getBytes(StandardCharsets.UTF_16LE);
+    ref.offset = 0;
+    ref.length = ref.bytes.length;
+    return ref;
   }
 }

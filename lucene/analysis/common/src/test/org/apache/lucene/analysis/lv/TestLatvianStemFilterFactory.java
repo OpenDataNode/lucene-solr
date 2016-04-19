@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.lv;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,15 @@ package org.apache.lucene.analysis.lv;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.lv;
+
 
 import java.io.Reader;
 import java.io.StringReader;
 
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.util.BaseTokenStreamFactoryTestCase;
 
 /**
@@ -30,7 +31,8 @@ import org.apache.lucene.analysis.util.BaseTokenStreamFactoryTestCase;
 public class TestLatvianStemFilterFactory extends BaseTokenStreamFactoryTestCase {
   public void testStemming() throws Exception {
     Reader reader = new StringReader("tirgiem tirgus");
-    TokenStream stream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream stream = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    ((Tokenizer)stream).setReader(reader);
     stream = tokenFilterFactory("LatvianStem").create(stream);
     assertTokenStreamContents(stream, new String[] { "tirg", "tirg" });
   }

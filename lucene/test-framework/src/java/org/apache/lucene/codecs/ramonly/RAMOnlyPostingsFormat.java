@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.ramonly;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,12 @@ package org.apache.lucene.codecs.ramonly;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.ramonly;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -32,15 +31,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.FieldsProducer;
-import org.apache.lucene.codecs.PostingsConsumer;
 import org.apache.lucene.codecs.PostingsFormat;
 import org.apache.lucene.codecs.TermStats;
-import org.apache.lucene.codecs.TermsConsumer;
-import org.apache.lucene.index.DocsAndPositionsEnum;
-import org.apache.lucene.index.DocsEnum;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexFileNames;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.Terms;
@@ -48,8 +45,9 @@ import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.Accountable;
-import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.Accountables;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.RamUsageEstimator;
 
@@ -60,41 +58,6 @@ import org.apache.lucene.util.RamUsageEstimator;
  *  NOTE: this codec sorts terms by reverse-unicode-order! */
 
 public final class RAMOnlyPostingsFormat extends PostingsFormat {
-
-  // For fun, test that we can override how terms are
-  // sorted, and basic things still work -- this comparator
-  // sorts in reversed unicode code point order:
-  private static final Comparator<BytesRef> reverseUnicodeComparator = new Comparator<BytesRef>() {
-      @Override
-      public int compare(BytesRef t1, BytesRef t2) {
-        byte[] b1 = t1.bytes;
-        byte[] b2 = t2.bytes;
-        int b1Stop;
-        int b1Upto = t1.offset;
-        int b2Upto = t2.offset;
-        if (t1.length < t2.length) {
-          b1Stop = t1.offset + t1.length;
-        } else {
-          b1Stop = t1.offset + t2.length;
-        }
-        while(b1Upto < b1Stop) {
-          final int bb1 = b1[b1Upto++] & 0xff;
-          final int bb2 = b2[b2Upto++] & 0xff;
-          if (bb1 != bb2) {
-            //System.out.println("cmp 1=" + t1 + " 2=" + t2 + " return " + (bb2-bb1));
-            return bb2 - bb1;
-          }
-        }
-
-        // One is prefix of another, or they are equal
-        return t2.length-t1.length;
-      }
-
-      @Override
-      public boolean equals(Object other) {
-        return this == other;
-      }
-    };
 
   public RAMOnlyPostingsFormat() {
     super("RAMOnly");
@@ -131,6 +94,11 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
       }
       return sizeInBytes;
     }
+    
+    @Override
+    public Collection<Accountable> getChildResources() {
+      return Accountables.namedAccountables("field", fieldToTerms);
+    }
 
     @Override
     public void checkIntegrity() throws IOException {}
@@ -159,6 +127,11 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
     }
 
     @Override
+    public Collection<Accountable> getChildResources() {
+      return Collections.emptyList();
+    }
+
+    @Override
     public long size() {
       return termToDocs.size();
     }
@@ -167,7 +140,7 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
     public long getSumTotalTermFreq() {
       return sumTotalTermFreq;
     }
-      
+
     @Override
     public long getSumDocFreq() throws IOException {
       return sumDocFreq;
@@ -179,13 +152,8 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public TermsEnum iterator(TermsEnum reuse) {
+    public TermsEnum iterator() {
       return new RAMTermsEnum(RAMOnlyPostingsFormat.RAMField.this);
-    }
-
-    @Override
-    public Comparator<BytesRef> getComparator() {
-      return reverseUnicodeComparator;
     }
 
     @Override
@@ -225,6 +193,11 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
       }
       return sizeInBytes;
     }
+
+    @Override
+    public Collection<Accountable> getChildResources() {
+      return Collections.emptyList();
+    }
   }
 
   static class RAMDoc implements Accountable {
@@ -249,6 +222,11 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
       }
       return sizeInBytes;
     }
+    
+    @Override
+    public Collection<Accountable> getChildResources() {
+      return Collections.emptyList();
+    }
   }
 
   // Classes for writing to the postings state
@@ -256,29 +234,124 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
 
     private final RAMPostings postings;
     private final RAMTermsConsumer termsConsumer = new RAMTermsConsumer();
+    private final SegmentWriteState state;
 
-    public RAMFieldsConsumer(RAMPostings postings) {
+    public RAMFieldsConsumer(SegmentWriteState writeState, RAMPostings postings) {
       this.postings = postings;
+      this.state = writeState;
     }
 
     @Override
-    public TermsConsumer addField(FieldInfo field) {
-      if (field.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) >= 0) {
-        throw new UnsupportedOperationException("this codec cannot index offsets");
+    public void write(Fields fields) throws IOException {
+      for(String field : fields) {
+
+        Terms terms = fields.terms(field);
+        if (terms == null) {
+          continue;
+        }
+
+        TermsEnum termsEnum = terms.iterator();
+
+        FieldInfo fieldInfo = state.fieldInfos.fieldInfo(field);
+        if (fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) >= 0) {
+          throw new UnsupportedOperationException("this codec cannot index offsets");
+        }
+
+        RAMField ramField = new RAMField(field, fieldInfo);
+        postings.fieldToTerms.put(field, ramField);
+        termsConsumer.reset(ramField);
+
+        FixedBitSet docsSeen = new FixedBitSet(state.segmentInfo.maxDoc());
+        long sumTotalTermFreq = 0;
+        long sumDocFreq = 0;
+        PostingsEnum postingsEnum = null;
+        int enumFlags;
+
+        IndexOptions indexOptions = fieldInfo.getIndexOptions();
+        boolean writeFreqs = indexOptions.compareTo(IndexOptions.DOCS_AND_FREQS) >= 0;
+        boolean writePositions = indexOptions.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0;
+        boolean writeOffsets = indexOptions.compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) >= 0;        
+        boolean writePayloads = fieldInfo.hasPayloads();
+
+        if (writeFreqs == false) {
+          enumFlags = 0;
+        } else if (writePositions == false) {
+          enumFlags = PostingsEnum.FREQS;
+        } else if (writeOffsets == false) {
+          if (writePayloads) {
+            enumFlags = PostingsEnum.PAYLOADS;
+          } else {
+            enumFlags = 0;
+          }
+        } else {
+          if (writePayloads) {
+            enumFlags = PostingsEnum.PAYLOADS | PostingsEnum.OFFSETS;
+          } else {
+            enumFlags = PostingsEnum.OFFSETS;
+          }
+        }
+
+        while (true) {
+          BytesRef term = termsEnum.next();
+          if (term == null) {
+            break;
+          }
+          RAMPostingsWriterImpl postingsWriter = termsConsumer.startTerm(term);
+          postingsEnum = termsEnum.postings(postingsEnum, enumFlags);
+
+          int docFreq = 0;
+          long totalTermFreq = 0;
+          while (true) {
+            int docID = postingsEnum.nextDoc();
+            if (docID == PostingsEnum.NO_MORE_DOCS) {
+              break;
+            }
+            docsSeen.set(docID);
+            docFreq++;
+
+            int freq;
+            if (writeFreqs) {
+              freq = postingsEnum.freq();
+              totalTermFreq += freq;
+            } else {
+              freq = -1;
+            }
+
+            postingsWriter.startDoc(docID, freq);
+            if (writePositions) {
+              for (int i=0;i<freq;i++) {
+                int pos = postingsEnum.nextPosition();
+                BytesRef payload = writePayloads ? postingsEnum.getPayload() : null;
+                int startOffset;
+                int endOffset;
+                if (writeOffsets) {
+                  startOffset = postingsEnum.startOffset();
+                  endOffset = postingsEnum.endOffset();
+                } else {
+                  startOffset = -1;
+                  endOffset = -1;
+                }
+                postingsWriter.addPosition(pos, payload, startOffset, endOffset);
+              }
+            }
+
+            postingsWriter.finishDoc();
+          }
+          termsConsumer.finishTerm(term, new TermStats(docFreq, totalTermFreq));
+          sumDocFreq += docFreq;
+          sumTotalTermFreq += totalTermFreq;
+        }
+
+        termsConsumer.finish(sumTotalTermFreq, sumDocFreq, docsSeen.cardinality());
       }
-      RAMField ramField = new RAMField(field.name, field);
-      postings.fieldToTerms.put(field.name, ramField);
-      termsConsumer.reset(ramField);
-      return termsConsumer;
     }
 
     @Override
-    public void close() {
-      // TODO: finalize stuff
+    public void close() throws IOException {
     }
   }
 
-  private static class RAMTermsConsumer extends TermsConsumer {
+  private static class RAMTermsConsumer {
     private RAMField field;
     private final RAMPostingsWriterImpl postingsWriter = new RAMPostingsWriterImpl();
     RAMTerm current;
@@ -287,21 +360,13 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
       this.field = field;
     }
       
-    @Override
-    public PostingsConsumer startTerm(BytesRef text) {
+    public RAMPostingsWriterImpl startTerm(BytesRef text) {
       final String term = text.utf8ToString();
       current = new RAMTerm(term);
       postingsWriter.reset(current);
       return postingsWriter;
     }
 
-      
-    @Override
-    public Comparator<BytesRef> getComparator() {
-      return BytesRef.getUTF8SortedAsUnicodeComparator();
-    }
-
-    @Override
     public void finishTerm(BytesRef text, TermStats stats) {
       assert stats.docFreq > 0;
       assert stats.docFreq == current.docs.size();
@@ -309,7 +374,6 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
       field.termToDocs.put(current.term, current);
     }
 
-    @Override
     public void finish(long sumTotalTermFreq, long sumDocFreq, int docCount) {
       field.sumTotalTermFreq = sumTotalTermFreq;
       field.sumDocFreq = sumDocFreq;
@@ -317,7 +381,7 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
     }
   }
 
-  static class RAMPostingsWriterImpl extends PostingsConsumer {
+  static class RAMPostingsWriterImpl {
     private RAMTerm term;
     private RAMDoc current;
     private int posUpto = 0;
@@ -326,14 +390,12 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
       this.term = term;
     }
 
-    @Override
     public void startDoc(int docID, int freq) {
       current = new RAMDoc(docID, freq);
       term.docs.add(current);
       posUpto = 0;
     }
 
-    @Override
     public void addPosition(int position, BytesRef payload, int startOffset, int endOffset) {
       assert startOffset == -1;
       assert endOffset == -1;
@@ -348,7 +410,6 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
       posUpto++;
     }
 
-    @Override
     public void finishDoc() {
       assert posUpto == current.positions.length;
     }
@@ -363,11 +424,6 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
       this.ramField = field;
     }
       
-    @Override
-    public Comparator<BytesRef> getComparator() {
-      return BytesRef.getUTF8SortedAsUnicodeComparator();
-    }
-
     @Override
     public BytesRef next() {
       if (it == null) {
@@ -427,26 +483,20 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
     }
 
     @Override
-    public DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags) {
-      return new RAMDocsEnum(ramField.termToDocs.get(current), liveDocs);
+    public PostingsEnum postings(PostingsEnum reuse, int flags) {
+      return new RAMDocsEnum(ramField.termToDocs.get(current));
     }
 
-    @Override
-    public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, int flags) {
-      return new RAMDocsAndPositionsEnum(ramField.termToDocs.get(current), liveDocs);
-    }
   }
 
-  private static class RAMDocsEnum extends DocsEnum {
+  private static class RAMDocsEnum extends PostingsEnum {
     private final RAMTerm ramTerm;
-    private final Bits liveDocs;
     private RAMDoc current;
     int upto = -1;
     int posUpto = 0;
 
-    public RAMDocsEnum(RAMTerm ramTerm, Bits liveDocs) {
+    public RAMDocsEnum(RAMTerm ramTerm) {
       this.ramTerm = ramTerm;
-      this.liveDocs = liveDocs;
     }
 
     @Override
@@ -457,67 +507,13 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
     // TODO: override bulk read, for better perf
     @Override
     public int nextDoc() {
-      while(true) {
-        upto++;
-        if (upto < ramTerm.docs.size()) {
-          current = ramTerm.docs.get(upto);
-          if (liveDocs == null || liveDocs.get(current.docID)) {
-            posUpto = 0;
-            return current.docID;
-          }
-        } else {
-          return NO_MORE_DOCS;
-        }
-      }
-    }
-
-    @Override
-    public int freq() throws IOException {
-      return current.positions.length;
-    }
-
-    @Override
-    public int docID() {
-      return current.docID;
-    }
-    
-    @Override
-    public long cost() {
-      return ramTerm.docs.size();
-    } 
-  }
-
-  private static class RAMDocsAndPositionsEnum extends DocsAndPositionsEnum {
-    private final RAMTerm ramTerm;
-    private final Bits liveDocs;
-    private RAMDoc current;
-    int upto = -1;
-    int posUpto = 0;
-
-    public RAMDocsAndPositionsEnum(RAMTerm ramTerm, Bits liveDocs) {
-      this.ramTerm = ramTerm;
-      this.liveDocs = liveDocs;
-    }
-
-    @Override
-    public int advance(int targetDocID) throws IOException {
-      return slowAdvance(targetDocID);
-    }
-
-    // TODO: override bulk read, for better perf
-    @Override
-    public int nextDoc() {
-      while(true) {
-        upto++;
-        if (upto < ramTerm.docs.size()) {
-          current = ramTerm.docs.get(upto);
-          if (liveDocs == null || liveDocs.get(current.docID)) {
-            posUpto = 0;
-            return current.docID;
-          }
-        } else {
-          return NO_MORE_DOCS;
-        }
+      upto++;
+      if (upto < ramTerm.docs.size()) {
+        current = ramTerm.docs.get(upto);
+        posUpto = 0;
+        return current.docID;
+      } else {
+        return NO_MORE_DOCS;
       }
     }
 
@@ -533,6 +529,7 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
 
     @Override
     public int nextPosition() {
+      assert posUpto < current.positions.length;
       return current.positions[posUpto++];
     }
 
@@ -595,7 +592,7 @@ public final class RAMOnlyPostingsFormat extends PostingsFormat {
     }
     
     final RAMPostings postings = new RAMPostings();
-    final RAMFieldsConsumer consumer = new RAMFieldsConsumer(postings);
+    final RAMFieldsConsumer consumer = new RAMFieldsConsumer(writeState, postings);
 
     synchronized(state) {
       state.put(id, postings);

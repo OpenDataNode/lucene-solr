@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.blockterms;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,15 @@ package org.apache.lucene.codecs.blockterms;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.blockterms;
+
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.Iterator;
+import java.util.List;
 import java.util.TreeMap;
 
 import org.apache.lucene.codecs.BlockTermState;
@@ -29,25 +31,22 @@ import org.apache.lucene.codecs.FieldsProducer;
 import org.apache.lucene.codecs.PostingsReaderBase;
 import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.index.DocsAndPositionsEnum;
-import org.apache.lucene.index.DocsEnum;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.FieldInfo;
-import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.IndexFileNames;
-import org.apache.lucene.index.SegmentInfo;
+import org.apache.lucene.index.IndexOptions;
+import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.store.ByteArrayDataInput;
-import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.util.Accountable;
+import org.apache.lucene.util.Accountables;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
-import org.apache.lucene.util.DoubleBarrelLRUCache;
 import org.apache.lucene.util.RamUsageEstimator;
 
 /** Handles a terms dict, but decouples all details of
@@ -63,9 +62,7 @@ import org.apache.lucene.util.RamUsageEstimator;
  * @lucene.experimental */
 
 public class BlockTermsReader extends FieldsProducer {
-
   private static final long BASE_RAM_BYTES_USED = RamUsageEstimator.shallowSizeOfInstance(BlockTermsReader.class);
-
   // Open input to the main terms dict file (_X.tis)
   private final IndexInput in;
 
@@ -77,14 +74,9 @@ public class BlockTermsReader extends FieldsProducer {
 
   // Reads the terms index
   private TermsIndexReaderBase indexReader;
-
-  // keeps the dirStart offset
-  private long dirOffset;
   
-  private final int version; 
-
   // Used as key for the terms cache
-  private static class FieldAndTerm extends DoubleBarrelLRUCache.CloneableKey {
+  private static class FieldAndTerm implements Cloneable {
     String field;
     BytesRef term;
 
@@ -113,62 +105,58 @@ public class BlockTermsReader extends FieldsProducer {
     }
   }
   
-  // private String segment;
-  
-  public BlockTermsReader(TermsIndexReaderBase indexReader, Directory dir, FieldInfos fieldInfos, SegmentInfo info, PostingsReaderBase postingsReader, IOContext context,
-                          String segmentSuffix)
-    throws IOException {
+  public BlockTermsReader(TermsIndexReaderBase indexReader, PostingsReaderBase postingsReader, SegmentReadState state) throws IOException {
     
     this.postingsReader = postingsReader;
-
-    // this.segment = segment;
-    in = dir.openInput(IndexFileNames.segmentFileName(info.name, segmentSuffix, BlockTermsWriter.TERMS_EXTENSION),
-                       context);
+    
+    String filename = IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, BlockTermsWriter.TERMS_EXTENSION);
+    in = state.directory.openInput(filename, state.context);
 
     boolean success = false;
     try {
-      version = readHeader(in);
+      CodecUtil.checkIndexHeader(in, BlockTermsWriter.CODEC_NAME, 
+                                       BlockTermsWriter.VERSION_START,
+                                       BlockTermsWriter.VERSION_CURRENT,
+                                       state.segmentInfo.getId(), state.segmentSuffix);
 
       // Have PostingsReader init itself
-      postingsReader.init(in);
+      postingsReader.init(in, state);
       
-      if (version >= BlockTermsWriter.VERSION_CHECKSUM) {      
-        // NOTE: data file is too costly to verify checksum against all the bytes on open,
-        // but for now we at least verify proper structure of the checksum footer: which looks
-        // for FOOTER_MAGIC + algorithmID. This is cheap and can detect some forms of corruption
-        // such as file truncation.
-        CodecUtil.retrieveChecksum(in);
-      }
+      // NOTE: data file is too costly to verify checksum against all the bytes on open,
+      // but for now we at least verify proper structure of the checksum footer: which looks
+      // for FOOTER_MAGIC + algorithmID. This is cheap and can detect some forms of corruption
+      // such as file truncation.
+      CodecUtil.retrieveChecksum(in);
 
       // Read per-field details
-      seekDir(in, dirOffset);
+      seekDir(in);
 
       final int numFields = in.readVInt();
       if (numFields < 0) {
-        throw new CorruptIndexException("invalid number of fields: " + numFields + " (resource=" + in + ")");
+        throw new CorruptIndexException("invalid number of fields: " + numFields, in);
       }
       for(int i=0;i<numFields;i++) {
         final int field = in.readVInt();
         final long numTerms = in.readVLong();
         assert numTerms >= 0;
         final long termsStartPointer = in.readVLong();
-        final FieldInfo fieldInfo = fieldInfos.fieldInfo(field);
-        final long sumTotalTermFreq = fieldInfo.getIndexOptions() == IndexOptions.DOCS_ONLY ? -1 : in.readVLong();
+        final FieldInfo fieldInfo = state.fieldInfos.fieldInfo(field);
+        final long sumTotalTermFreq = fieldInfo.getIndexOptions() == IndexOptions.DOCS ? -1 : in.readVLong();
         final long sumDocFreq = in.readVLong();
         final int docCount = in.readVInt();
-        final int longsSize = version >= BlockTermsWriter.VERSION_META_ARRAY ? in.readVInt() : 0;
-        if (docCount < 0 || docCount > info.getDocCount()) { // #docs with field must be <= #docs
-          throw new CorruptIndexException("invalid docCount: " + docCount + " maxDoc: " + info.getDocCount() + " (resource=" + in + ")");
+        final int longsSize = in.readVInt();
+        if (docCount < 0 || docCount > state.segmentInfo.maxDoc()) { // #docs with field must be <= #docs
+          throw new CorruptIndexException("invalid docCount: " + docCount + " maxDoc: " + state.segmentInfo.maxDoc(), in);
         }
         if (sumDocFreq < docCount) {  // #postings must be >= #docs with field
-          throw new CorruptIndexException("invalid sumDocFreq: " + sumDocFreq + " docCount: " + docCount + " (resource=" + in + ")");
+          throw new CorruptIndexException("invalid sumDocFreq: " + sumDocFreq + " docCount: " + docCount, in);
         }
         if (sumTotalTermFreq != -1 && sumTotalTermFreq < sumDocFreq) { // #positions must be >= #postings
-          throw new CorruptIndexException("invalid sumTotalTermFreq: " + sumTotalTermFreq + " sumDocFreq: " + sumDocFreq + " (resource=" + in + ")");
+          throw new CorruptIndexException("invalid sumTotalTermFreq: " + sumTotalTermFreq + " sumDocFreq: " + sumDocFreq, in);
         }
         FieldReader previous = fields.put(fieldInfo.name, new FieldReader(fieldInfo, numTerms, termsStartPointer, sumTotalTermFreq, sumDocFreq, docCount, longsSize));
         if (previous != null) {
-          throw new CorruptIndexException("duplicate fields: " + fieldInfo.name + " (resource=" + in + ")");
+          throw new CorruptIndexException("duplicate fields: " + fieldInfo.name, in);
         }
       }
       success = true;
@@ -180,25 +168,10 @@ public class BlockTermsReader extends FieldsProducer {
 
     this.indexReader = indexReader;
   }
-
-  private int readHeader(IndexInput input) throws IOException {
-    int version = CodecUtil.checkHeader(input, BlockTermsWriter.CODEC_NAME,
-                          BlockTermsWriter.VERSION_START,
-                          BlockTermsWriter.VERSION_CURRENT);
-    if (version < BlockTermsWriter.VERSION_APPEND_ONLY) {
-      dirOffset = input.readLong();
-    }
-    return version;
-  }
   
-  private void seekDir(IndexInput input, long dirOffset) throws IOException {
-    if (version >= BlockTermsWriter.VERSION_CHECKSUM) {
-      input.seek(input.length() - CodecUtil.footerLength() - 8);
-      dirOffset = input.readLong();
-    } else if (version >= BlockTermsWriter.VERSION_APPEND_ONLY) {
-      input.seek(input.length() - 8);
-      dirOffset = input.readLong();
-    }
+  private void seekDir(IndexInput input) throws IOException {
+    input.seek(input.length() - CodecUtil.footerLength() - 8);
+    long dirOffset = input.readLong();
     input.seek(dirOffset);
   }
   
@@ -266,14 +239,14 @@ public class BlockTermsReader extends FieldsProducer {
     public long ramBytesUsed() {
       return FIELD_READER_RAM_BYTES_USED;
     }
-
+    
     @Override
-    public Comparator<BytesRef> getComparator() {
-      return BytesRef.getUTF8SortedAsUnicodeComparator();
+    public Collection<Accountable> getChildResources() {
+      return Collections.emptyList();
     }
 
     @Override
-    public TermsEnum iterator(TermsEnum reuse) throws IOException {
+    public TermsEnum iterator() throws IOException {
       return new SegmentTermsEnum();
     }
 
@@ -344,11 +317,6 @@ public class BlockTermsReader extends FieldsProducer {
          calls next() (which is not "typical"), then we'll do the real seek */
       private boolean seekPending;
 
-      /* How many blocks we've read since last seek.  Once this
-         is >= indexEnum.getDivisor() we set indexIsCurrent to false (since
-         the index can no long bracket seek-within-block). */
-      private int blocksSinceSeek;
-
       private byte[] termSuffixes;
       private ByteArrayDataInput termSuffixesReader = new ByteArrayDataInput();
 
@@ -380,11 +348,6 @@ public class BlockTermsReader extends FieldsProducer {
         docFreqBytes = new byte[64];
         //System.out.println("BTR.enum init this=" + this + " postingsReader=" + postingsReader);
         longs = new long[longsSize];
-      }
-
-      @Override
-      public Comparator<BytesRef> getComparator() {
-        return BytesRef.getUTF8SortedAsUnicodeComparator();
       }
 
       // TODO: we may want an alternate mode here which is
@@ -457,7 +420,6 @@ public class BlockTermsReader extends FieldsProducer {
 
           indexIsCurrent = true;
           didIndexNext = false;
-          blocksSinceSeek = 0;          
 
           if (doOrd) {
             state.ord = indexEnum.ord()-1;
@@ -695,22 +657,19 @@ public class BlockTermsReader extends FieldsProducer {
       }
 
       @Override
-      public DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags) throws IOException {
+      public PostingsEnum postings(PostingsEnum reuse, int flags) throws IOException {
+        
+        if (PostingsEnum.featureRequested(flags, DocsAndPositionsEnum.OLD_NULL_SEMANTICS)) {
+          if (fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) < 0) {
+            // Positions were not indexed:
+            return null;
+          }
+        }
+
         //System.out.println("BTR.docs this=" + this);
         decodeMetaData();
         //System.out.println("BTR.docs:  state.docFreq=" + state.docFreq);
-        return postingsReader.docs(fieldInfo, state, liveDocs, reuse, flags);
-      }
-
-      @Override
-      public DocsAndPositionsEnum docsAndPositions(Bits liveDocs, DocsAndPositionsEnum reuse, int flags) throws IOException {
-        if (fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) < 0) {
-          // Positions were not indexed:
-          return null;
-        }
-
-        decodeMetaData();
-        return postingsReader.docsAndPositions(fieldInfo, state, liveDocs, reuse, flags);
+        return postingsReader.postings(fieldInfo, state, reuse, flags);
       }
 
       @Override
@@ -753,7 +712,6 @@ public class BlockTermsReader extends FieldsProducer {
 
         indexIsCurrent = true;
         didIndexNext = false;
-        blocksSinceSeek = 0;
         seekPending = false;
 
         state.ord = indexEnum.ord()-1;
@@ -835,8 +793,7 @@ public class BlockTermsReader extends FieldsProducer {
         metaDataUpto = 0;
         state.termBlockOrd = 0;
 
-        blocksSinceSeek++;
-        indexIsCurrent = indexIsCurrent && (blocksSinceSeek < indexReader.getDivisor());
+        indexIsCurrent = false;
         //System.out.println("  indexIsCurrent=" + indexIsCurrent);
 
         return true;
@@ -868,7 +825,7 @@ public class BlockTermsReader extends FieldsProducer {
             // docFreq, totalTermFreq
             state.docFreq = freqReader.readVInt();
             //System.out.println("    dF=" + state.docFreq);
-            if (fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY) {
+            if (fieldInfo.getIndexOptions() != IndexOptions.DOCS) {
               state.totalTermFreq = state.docFreq + freqReader.readVLong();
               //System.out.println("    totTF=" + state.totalTermFreq);
             }
@@ -898,13 +855,29 @@ public class BlockTermsReader extends FieldsProducer {
     }
     return ramBytesUsed;
   }
+  
+  @Override
+  public Collection<Accountable> getChildResources() {
+    List<Accountable> resources = new ArrayList<>();
+    if (indexReader != null) {
+      resources.add(Accountables.namedAccountable("term index", indexReader));
+    }
+    if (postingsReader != null) {
+      resources.add(Accountables.namedAccountable("delegate", postingsReader));
+    }
+    return Collections.unmodifiableList(resources);
+  }
+
+  @Override
+  public String toString() {
+    return getClass().getSimpleName() + "(index=" + indexReader + ",delegate=" + postingsReader + ")";
+  }
 
   @Override
   public void checkIntegrity() throws IOException {   
     // verify terms
-    if (version >= BlockTermsWriter.VERSION_CHECKSUM) {
-      CodecUtil.checksumEntireFile(in);
-    }
+    CodecUtil.checksumEntireFile(in);
+
     // verify postings
     postingsReader.checkIntegrity();
   }

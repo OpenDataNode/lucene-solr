@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.phonetic;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,32 +14,32 @@ package org.apache.lucene.analysis.phonetic;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.phonetic;
 
-import java.io.StringReader;
+
 import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
-import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
 
 /** Simple tests for {@link BeiderMorseFilterFactory} */
 public class TestBeiderMorseFilterFactory extends BaseTokenStreamTestCase {
   public void testBasics() throws Exception {
     BeiderMorseFilterFactory factory = new BeiderMorseFilterFactory(new HashMap<String,String>());
-    TokenStream ts = factory.create(new MockTokenizer(new StringReader("Weinberg"), MockTokenizer.WHITESPACE, false));
+    TokenStream ts = factory.create(whitespaceMockTokenizer("Weinberg"));
     assertTokenStreamContents(ts,
-        new String[] { "vDnbirk", "vanbirk", "vinbirk", "wDnbirk", "wanbirk", "winbirk" },
-        new int[] { 0, 0, 0, 0, 0, 0 },
-        new int[] { 8, 8, 8, 8, 8, 8 },
-        new int[] { 1, 0, 0, 0, 0, 0 });
+        new String[] { "vDnbYrk", "vDnbirk", "vanbYrk", "vanbirk", "vinbYrk", "vinbirk", "wDnbirk", "wanbirk", "winbirk" },
+        new int[] { 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        new int[] { 8, 8, 8, 8, 8, 8, 8, 8, 8},
+        new int[] { 1, 0, 0, 0, 0, 0, 0, 0, 0});
   }
   
   public void testLanguageSet() throws Exception {
     Map<String,String> args = new HashMap<>();
     args.put("languageSet", "polish");
     BeiderMorseFilterFactory factory = new BeiderMorseFilterFactory(args);
-    TokenStream ts = factory.create(new MockTokenizer(new StringReader("Weinberg"), MockTokenizer.WHITESPACE, false));
+    TokenStream ts = factory.create(whitespaceMockTokenizer("Weinberg"));
     assertTokenStreamContents(ts,
         new String[] { "vDmbYrk", "vDmbirk", "vambYrk", "vambirk", "vimbYrk", "vimbirk" },
         new int[] { 0, 0, 0, 0, 0, 0 },
@@ -54,7 +52,7 @@ public class TestBeiderMorseFilterFactory extends BaseTokenStreamTestCase {
     args.put("nameType", "ASHKENAZI");
     args.put("ruleType", "EXACT");
     BeiderMorseFilterFactory factory = new BeiderMorseFilterFactory(args);
-    TokenStream ts = factory.create(new MockTokenizer(new StringReader("Weinberg"), MockTokenizer.WHITESPACE, false));
+    TokenStream ts = factory.create(whitespaceMockTokenizer("Weinberg"));
     assertTokenStreamContents(ts,
         new String[] { "vajnberk" },
         new int[] { 0 },

@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 
@@ -26,6 +26,7 @@ import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.ToStringUtils;
 import org.apache.lucene.util.automaton.Automaton;
 import org.apache.lucene.util.automaton.CompiledAutomaton;
+import org.apache.lucene.util.automaton.Operations;
 
 /**
  * A {@link Query} that will match terms against a finite-state machine.
@@ -61,10 +62,45 @@ public class AutomatonQuery extends MultiTermQuery {
    *        match.
    */
   public AutomatonQuery(final Term term, Automaton automaton) {
+    this(term, automaton, Operations.DEFAULT_MAX_DETERMINIZED_STATES);
+  }
+
+  /**
+   * Create a new AutomatonQuery from an {@link Automaton}.
+   * 
+   * @param term Term containing field and possibly some pattern structure. The
+   *        term text is ignored.
+   * @param automaton Automaton to run, terms that are accepted are considered a
+   *        match.
+   * @param maxDeterminizedStates maximum number of states in the resulting
+   *   automata.  If the automata would need more than this many states
+   *   TooComplextToDeterminizeException is thrown.  Higher number require more
+   *   space but can process more complex automata.
+   */
+  public AutomatonQuery(final Term term, Automaton automaton, int maxDeterminizedStates) {
+    this(term, automaton, maxDeterminizedStates, false);
+  }
+
+  /**
+   * Create a new AutomatonQuery from an {@link Automaton}.
+   * 
+   * @param term Term containing field and possibly some pattern structure. The
+   *        term text is ignored.
+   * @param automaton Automaton to run, terms that are accepted are considered a
+   *        match.
+   * @param maxDeterminizedStates maximum number of states in the resulting
+   *   automata.  If the automata would need more than this many states
+   *   TooComplextToDeterminizeException is thrown.  Higher number require more
+   *   space but can process more complex automata.
+   * @param isBinary if true, this automaton is already binary and
+   *   will not go through the UTF32ToUTF8 conversion
+   */
+  public AutomatonQuery(final Term term, Automaton automaton, int maxDeterminizedStates, boolean isBinary) {
     super(term.field());
     this.term = term;
     this.automaton = automaton;
-    this.compiled = new CompiledAutomaton(automaton);
+    // TODO: we could take isFinite too, to save a bit of CPU in CompiledAutomaton ctor?:
+    this.compiled = new CompiledAutomaton(automaton, null, true, maxDeterminizedStates, isBinary);
   }
 
   @Override

@@ -1,4 +1,3 @@
-/**
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,10 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.common.params;
 
 import java.util.Locale;
+
+import org.apache.solr.common.SolrException;
 
 /**
  * @since solr 1.3
@@ -30,9 +30,6 @@ public abstract class CoreAdminParams
 
   /** Should the STATUS request include index info **/
   public final static String INDEX_INFO = "indexInfo";
-
-  /** Persistent -- should it save the cores state? **/
-  public final static String PERSISTENT = "persistent";
   
   /** If you rename something, what is the new name **/
   public final static String NAME = "name";
@@ -75,17 +72,11 @@ public abstract class CoreAdminParams
   /** The collection name in solr cloud */
   public final static String COLLECTION = "collection";
 
+  /** The replica name in solr cloud */
+  public final static String REPLICA = "replica";
+  
   /** The shard id in solr cloud */
   public final static String SHARD = "shard";
-  
-  /** The shard range in solr cloud */
-  public final static String SHARD_RANGE = "shard.range";
-
-  /** The shard range in solr cloud */
-  public final static String SHARD_STATE = "shard.state";
-
-  /** The parent shard if applicable */
-  public final static String SHARD_PARENT = "shard.parent";
 
   /** The target core to which a split index should be written to
    * Multiple targetCores can be specified by multiple targetCore parameters */
@@ -114,13 +105,14 @@ public abstract class CoreAdminParams
   
   public static final String TRANSIENT = "transient";
 
+  // Node to create a replica on for ADDREPLICA at least.
+  public static final String NODE = "node";
+
   public enum CoreAdminAction {
-    STATUS,  
-    LOAD,
+    STATUS,
     UNLOAD,
     RELOAD,
     CREATE,
-    PERSIST,
     SWAP,
     RENAME,
     MERGEINDEXES,
@@ -128,22 +120,23 @@ public abstract class CoreAdminParams
     PREPRECOVERY,
     REQUESTRECOVERY, 
     REQUESTSYNCSHARD,
-    CREATEALIAS,
     DELETEALIAS,
     REQUESTBUFFERUPDATES,
     REQUESTAPPLYUPDATES,
-    LOAD_ON_STARTUP,
-    TRANSIENT,
     OVERSEEROP,
-    REQUESTSTATUS;
-    
-    public static CoreAdminAction get( String p )
-    {
-      if( p != null ) {
+    REQUESTSTATUS,
+    REJOINLEADERELECTION,
+    //internal API used by force shard leader election
+    FORCEPREPAREFORLEADERSHIP,
+    INVOKE;
+
+    public static CoreAdminAction get( String p ) {
+      if (p != null) {
         try {
-          return CoreAdminAction.valueOf( p.toUpperCase(Locale.ROOT) );
+          return CoreAdminAction.valueOf(p.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+          throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Wrong core admin action");
         }
-        catch( Exception ex ) {}
       }
       return null; 
     }

@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.asserting;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,28 +14,30 @@ package org.apache.lucene.codecs.asserting;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.asserting;
 
 import java.io.IOException;
-import java.util.Comparator;
+import java.util.Collection;
 
 import org.apache.lucene.codecs.TermVectorsFormat;
 import org.apache.lucene.codecs.TermVectorsReader;
 import org.apache.lucene.codecs.TermVectorsWriter;
-import org.apache.lucene.codecs.lucene40.Lucene40TermVectorsFormat;
-import org.apache.lucene.index.AssertingAtomicReader;
+import org.apache.lucene.index.AssertingLeafReader;
 import org.apache.lucene.index.FieldInfo;
 import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext;
+import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.TestUtil;
 
 /**
- * Just like {@link Lucene40TermVectorsFormat} but with additional asserts.
+ * Just like the default vectors format but with additional asserts.
  */
 public class AssertingTermVectorsFormat extends TermVectorsFormat {
-  private final TermVectorsFormat in = new Lucene40TermVectorsFormat();
+  private final TermVectorsFormat in = TestUtil.getDefaultCodec().termVectorsFormat();
 
   @Override
   public TermVectorsReader vectorsReader(Directory directory, SegmentInfo segmentInfo, FieldInfos fieldInfos, IOContext context) throws IOException {
@@ -54,17 +54,22 @@ public class AssertingTermVectorsFormat extends TermVectorsFormat {
 
     AssertingTermVectorsReader(TermVectorsReader in) {
       this.in = in;
+      // do a few simple checks on init
+      assert toString() != null;
+      assert ramBytesUsed() >= 0;
+      assert getChildResources() != null;
     }
 
     @Override
     public void close() throws IOException {
       in.close();
+      in.close(); // close again
     }
 
     @Override
     public Fields get(int doc) throws IOException {
       Fields fields = in.get(doc);
-      return fields == null ? null : new AssertingAtomicReader.AssertingFields(fields);
+      return fields == null ? null : new AssertingLeafReader.AssertingFields(fields);
     }
 
     @Override
@@ -74,12 +79,31 @@ public class AssertingTermVectorsFormat extends TermVectorsFormat {
 
     @Override
     public long ramBytesUsed() {
-      return in.ramBytesUsed();
+      long v = in.ramBytesUsed();
+      assert v >= 0;
+      return v;
+    }
+    
+    @Override
+    public Collection<Accountable> getChildResources() {
+      Collection<Accountable> res = in.getChildResources();
+      TestUtil.checkReadOnly(res);
+      return res;
     }
 
     @Override
     public void checkIntegrity() throws IOException {
       in.checkIntegrity();
+    }
+    
+    @Override
+    public TermVectorsReader getMergeInstance() throws IOException {
+      return new AssertingTermVectorsReader(in.getMergeInstance());
+    }
+
+    @Override
+    public String toString() {
+      return getClass().getSimpleName() + "(" + in.toString() + ")";
     }
   }
 
@@ -172,11 +196,6 @@ public class AssertingTermVectorsFormat extends TermVectorsFormat {
     }
 
     @Override
-    public void abort() {
-      in.abort();
-    }
-
-    @Override
     public void finish(FieldInfos fis, int numDocs) throws IOException {
       assert docCount == numDocs;
       assert docStatus == (numDocs > 0 ? Status.FINISHED : Status.UNDEFINED);
@@ -186,13 +205,9 @@ public class AssertingTermVectorsFormat extends TermVectorsFormat {
     }
 
     @Override
-    public Comparator<BytesRef> getComparator() throws IOException {
-      return in.getComparator();
-    }
-
-    @Override
     public void close() throws IOException {
       in.close();
+      in.close(); // close again
     }
 
   }

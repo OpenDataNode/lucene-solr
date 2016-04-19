@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.util;
+
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -26,7 +26,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.lucene.util.IOUtils;
-import org.apache.lucene.util.Version;
 
 /**
  * Loader for text files that represent a list of stopwords.
@@ -80,14 +79,6 @@ public class WordlistLoader {
   }
 
   /**
-   * @deprecated Use {@link #getWordSet(Reader)}
-   */
-  @Deprecated
-  public static CharArraySet getWordSet(Reader reader, Version matchVersion) throws IOException {
-    return getWordSet(reader, new CharArraySet(matchVersion, INITIAL_CAPACITY, false));
-  }
-
-  /**
    * Reads lines from a Reader and adds every non-comment line as an entry to a CharArraySet (omitting
    * leading and trailing whitespace). Every line of the Reader should contain only
    * one word. The words need to be in lowercase if you make use of an
@@ -99,14 +90,6 @@ public class WordlistLoader {
    */
   public static CharArraySet getWordSet(Reader reader, String comment) throws IOException {
     return getWordSet(reader, comment, new CharArraySet(INITIAL_CAPACITY, false));
-  }
-
-  /**
-   * @deprecated Use {@link #getWordSet(Reader,String)}
-   */
-  @Deprecated
-  public static CharArraySet getWordSet(Reader reader, String comment, Version matchVersion) throws IOException {
-    return getWordSet(reader, comment, new CharArraySet(matchVersion, INITIAL_CAPACITY, false));
   }
 
   /**
@@ -147,7 +130,6 @@ public class WordlistLoader {
    * <li>The comment character is the vertical line (&#124;).
    * <li>Lines may contain trailing comments.
    * </ul>
-   * </p>
    * 
    * @param reader Reader containing a Snowball stopword list
    * @param result the {@link CharArraySet} to fill with the readers words
@@ -181,21 +163,12 @@ public class WordlistLoader {
    * <li>The comment character is the vertical line (&#124;).
    * <li>Lines may contain trailing comments.
    * </ul>
-   * </p>
    * 
    * @param reader Reader containing a Snowball stopword list
    * @return A {@link CharArraySet} with the reader's words
    */
   public static CharArraySet getSnowballWordSet(Reader reader) throws IOException {
     return getSnowballWordSet(reader, new CharArraySet(INITIAL_CAPACITY, false));
-  }
-
-  /**
-   * @deprecated Use {@link #getSnowballWordSet(Reader)}
-   */
-  @Deprecated
-  public static CharArraySet getSnowballWordSet(Reader reader, Version matchVersion) throws IOException {
-    return getSnowballWordSet(reader, new CharArraySet(matchVersion, INITIAL_CAPACITY, false));
   }
 
 

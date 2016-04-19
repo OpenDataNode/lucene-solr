@@ -1,28 +1,26 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements. See the NOTICE file distributed with this
- * work for additional information regarding copyright ownership. The ASF
- * licenses this file to You under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- * 
- * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- * License for the specific language governing permissions and limitations under
- * the License.
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+package org.apache.lucene.store;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.EOFException;
+import java.nio.file.Path;
 
 import org.apache.lucene.store.Directory; // javadoc
-import org.apache.lucene.store.NativeFSLockFactory; // javadoc
 
 /**
  * Native {@link Directory} implementation for Microsoft Windows.
@@ -39,7 +37,6 @@ import org.apache.lucene.store.NativeFSLockFactory; // javadoc
  *   <li>Put WindowsDirectory.dll into some directory in your windows PATH
  *   <li>Open indexes with WindowsDirectory and use it.
  * </ol>
- * </p>
  * @lucene.experimental
  */
 public class WindowsDirectory extends FSDirectory {
@@ -52,27 +49,26 @@ public class WindowsDirectory extends FSDirectory {
   /** Create a new WindowsDirectory for the named location.
    * 
    * @param path the path of the directory
-   * @param lockFactory the lock factory to use, or null for the default
-   * ({@link NativeFSLockFactory});
+   * @param lockFactory the lock factory to use
    * @throws IOException If there is a low-level I/O error
    */
-  public WindowsDirectory(File path, LockFactory lockFactory) throws IOException {
+  public WindowsDirectory(Path path, LockFactory lockFactory) throws IOException {
     super(path, lockFactory);
   }
 
-  /** Create a new WindowsDirectory for the named location and {@link NativeFSLockFactory}.
+  /** Create a new WindowsDirectory for the named location and {@link FSLockFactory#getDefault()}.
    *
    * @param path the path of the directory
    * @throws IOException If there is a low-level I/O error
    */
-  public WindowsDirectory(File path) throws IOException {
-    super(path, null);
+  public WindowsDirectory(Path path) throws IOException {
+    this(path, FSLockFactory.getDefault());
   }
 
   @Override
   public IndexInput openInput(String name, IOContext context) throws IOException {
     ensureOpen();
-    return new WindowsIndexInput(new File(getDirectory(), name), Math.max(BufferedIndexInput.bufferSize(context), DEFAULT_BUFFERSIZE));
+    return new WindowsIndexInput(getDirectory().resolve(name), Math.max(BufferedIndexInput.bufferSize(context), DEFAULT_BUFFERSIZE));
   }
   
   static class WindowsIndexInput extends BufferedIndexInput {
@@ -81,9 +77,9 @@ public class WindowsDirectory extends FSDirectory {
     boolean isClone;
     boolean isOpen;
     
-    public WindowsIndexInput(File file, int bufferSize) throws IOException {
-      super("WindowsIndexInput(path=\"" + file.getPath() + "\")", bufferSize);
-      fd = WindowsDirectory.open(file.getPath());
+    public WindowsIndexInput(Path file, int bufferSize) throws IOException {
+      super("WindowsIndexInput(path=\"" + file + "\")", bufferSize);
+      fd = WindowsDirectory.open(file.toString());
       length = WindowsDirectory.length(fd);
       isOpen = true;
     }

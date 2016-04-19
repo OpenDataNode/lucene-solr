@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -26,6 +26,7 @@ import java.util.Map;
 import org.apache.lucene.index.BufferedUpdatesStream.QueryAndLimit;
 import org.apache.lucene.index.DocValuesUpdate.BinaryDocValuesUpdate;
 import org.apache.lucene.index.DocValuesUpdate.NumericDocValuesUpdate;
+import org.apache.lucene.index.PrefixCodedTerms.TermIterator;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.RamUsageEstimator;
@@ -43,7 +44,6 @@ class FrozenBufferedUpdates {
   
   // Terms, in sorted order:
   final PrefixCodedTerms terms;
-  int termCount; // just for debugging
 
   // Parallel array of deleted query, and the docIDUpto for each
   final Query[] queries;
@@ -57,7 +57,7 @@ class FrozenBufferedUpdates {
   
   final int bytesUsed;
   final int numTermDeletes;
-  private long gen = -1; // assigned by BufferedDeletesStream once pushed
+  private long gen = -1; // assigned by BufferedUpdatesStream once pushed
   final boolean isSegmentPrivate;  // set to true iff this frozen packet represents 
                                    // a segment private deletes. in that case is should
                                    // only have Queries 
@@ -67,7 +67,6 @@ class FrozenBufferedUpdates {
     this.isSegmentPrivate = isSegmentPrivate;
     assert !isSegmentPrivate || deletes.terms.size() == 0 : "segment private package should only have del queries"; 
     Term termsArray[] = deletes.terms.keySet().toArray(new Term[deletes.terms.size()]);
-    termCount = termsArray.length;
     ArrayUtil.timSort(termsArray);
     PrefixCodedTerms.Builder builder = new PrefixCodedTerms.Builder();
     for (Term term : termsArray) {
@@ -122,6 +121,7 @@ class FrozenBufferedUpdates {
   public void setDelGen(long gen) {
     assert this.gen == -1;
     this.gen = gen;
+    terms.setDelGen(gen);
   }
   
   public long delGen() {
@@ -129,13 +129,8 @@ class FrozenBufferedUpdates {
     return gen;
   }
 
-  public Iterable<Term> termsIterable() {
-    return new Iterable<Term>() {
-      @Override
-      public Iterator<Term> iterator() {
-        return terms.iterator();
-      }
-    };
+  public TermIterator termIterator() {
+    return terms.iterator();
   }
 
   public Iterable<QueryAndLimit> queriesIterable() {
@@ -170,7 +165,7 @@ class FrozenBufferedUpdates {
   public String toString() {
     String s = "";
     if (numTermDeletes != 0) {
-      s += " " + numTermDeletes + " deleted terms (unique count=" + termCount + ")";
+      s += " " + numTermDeletes + " deleted terms (unique count=" + terms.size() + ")";
     }
     if (queries.length != 0) {
       s += " " + queries.length + " deleted queries";
@@ -183,6 +178,6 @@ class FrozenBufferedUpdates {
   }
   
   boolean any() {
-    return termCount > 0 || queries.length > 0 || numericDVUpdates.length > 0 || binaryDVUpdates.length > 0;
+    return terms.size() > 0 || queries.length > 0 || numericDVUpdates.length > 0 || binaryDVUpdates.length > 0;
   }
 }

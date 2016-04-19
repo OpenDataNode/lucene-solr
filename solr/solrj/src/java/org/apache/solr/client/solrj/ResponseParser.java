@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.client.solrj;
 
 import java.io.Reader;
@@ -35,7 +34,7 @@ public abstract class ResponseParser
   public abstract NamedList<Object> processResponse(Reader reader);
   
   /**
-   * A well behaved ResponseParser will return it's content-type.
+   * A well behaved ResponseParser will return its content-type.
    * 
    * @return the content-type this parser expects to parse
    */

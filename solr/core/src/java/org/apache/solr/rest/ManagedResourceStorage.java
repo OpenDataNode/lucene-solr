@@ -1,4 +1,3 @@
-package org.apache.solr.rest;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.rest;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.rest;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -28,7 +27,10 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Reader;
+import java.lang.invoke.MethodHandles;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -182,7 +184,21 @@ public abstract class ManagedResourceStorage {
     @Override
     public boolean delete(String storedResourceId) throws IOException {
       File storedFile = new File(storageDir, storedResourceId);
-      return storedFile.isFile() ? storedFile.delete() : false;
+      return deleteIfFile(storedFile);
+    }
+    
+    // TODO: this interface should probably be changed, this simulates the old behavior,
+    // only throw security exception, just return false otherwise
+    private boolean deleteIfFile(File f) {
+      if (!f.isFile()) {
+        return false;
+      }
+      try {
+        Files.delete(f.toPath());
+        return true;
+      } catch (IOException cause) {
+        return false;
+      }
     }
 
     @Override
@@ -434,9 +450,9 @@ public abstract class ManagedResourceStorage {
     }
   } // end JsonStorage 
   
-  public static final Logger log = LoggerFactory.getLogger(ManagedResourceStorage.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
-  public static final Charset UTF_8 = Charset.forName("UTF-8");
+  public static final Charset UTF_8 = StandardCharsets.UTF_8;
   
   protected StorageIO storageIO;
   protected SolrResourceLoader loader;

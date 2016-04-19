@@ -1,5 +1,3 @@
-package org.apache.lucene.benchmark.byTask.feeds;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.benchmark.byTask.feeds;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.benchmark.byTask.feeds;
+
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.index.Term;
@@ -53,10 +53,10 @@ public class SimpleQueryMaker extends AbstractQueryMaker implements QueryMaker {
     qq.add(q1);
     Query q2 = new TermQuery(new Term(DocMaker.BODY_FIELD,"simple"));
     qq.add(q2);
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
     bq.add(q1,Occur.MUST);
     bq.add(q2,Occur.MUST);
-    qq.add(bq);
+    qq.add(bq.build());
     qq.add(qp.parse("synthetic body"));
     qq.add(qp.parse("\"synthetic body\""));
     qq.add(qp.parse("synthetic text"));

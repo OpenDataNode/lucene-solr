@@ -14,38 +14,48 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler;
-
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.analysis.tokenattributes.*;
-import org.apache.lucene.analysis.util.CharFilterFactory;
-import org.apache.lucene.analysis.util.TokenFilterFactory;
-import org.apache.lucene.analysis.util.TokenizerFactory;
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.Attribute;
-import org.apache.lucene.util.AttributeImpl;
-import org.apache.lucene.util.AttributeSource;
-import org.apache.lucene.util.AttributeReflector;
-import org.apache.lucene.util.CharsRef;
-import org.apache.lucene.util.ArrayUtil;
-import org.apache.lucene.util.CharsRefBuilder;
-import org.apache.lucene.util.IOUtils;
-import org.apache.solr.analysis.TokenizerChain;
-import org.apache.solr.common.util.NamedList;
-import org.apache.solr.common.util.SimpleOrderedMap;
-import org.apache.solr.common.SolrException;
-import org.apache.solr.request.SolrQueryRequest;
-import org.apache.solr.response.SolrQueryResponse;
-import org.apache.solr.schema.FieldType;
 
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.apache.commons.lang.ArrayUtils;
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
+import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
+import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
+import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
+import org.apache.lucene.analysis.util.CharFilterFactory;
+import org.apache.lucene.analysis.util.TokenFilterFactory;
+import org.apache.lucene.analysis.util.TokenizerFactory;
+import org.apache.lucene.util.ArrayUtil;
+import org.apache.lucene.util.Attribute;
+import org.apache.lucene.util.AttributeImpl;
+import org.apache.lucene.util.AttributeReflector;
+import org.apache.lucene.util.AttributeSource;
+import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.CharsRefBuilder;
+import org.apache.lucene.util.IOUtils;
+import org.apache.solr.analysis.TokenizerChain;
+import org.apache.solr.common.SolrException;
+import org.apache.solr.common.util.NamedList;
+import org.apache.solr.common.util.SimpleOrderedMap;
+import org.apache.solr.request.SolrQueryRequest;
+import org.apache.solr.response.SolrQueryResponse;
+import org.apache.solr.schema.FieldType;
 
 /**
  * A base class for all analysis request handlers.
@@ -87,16 +97,12 @@ public abstract class AnalysisRequestHandlerBase extends RequestHandlerBase {
 
     if (!TokenizerChain.class.isInstance(analyzer)) {
 
-      TokenStream tokenStream = null;
-      try {
-        tokenStream = analyzer.tokenStream(context.getFieldName(), value);
+      try (TokenStream tokenStream = analyzer.tokenStream(context.getFieldName(), value)) {
         NamedList<List<NamedList>> namedList = new NamedList<>();
         namedList.add(tokenStream.getClass().getName(), convertTokensToNamedLists(analyzeTokenStream(tokenStream), context));
         return namedList;
       } catch (IOException e) {
         throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, e);
-      } finally {
-        IOUtils.closeWhileHandlingException(tokenStream);
       }
     }
 
@@ -107,7 +113,7 @@ public abstract class AnalysisRequestHandlerBase extends RequestHandlerBase {
 
     NamedList<Object> namedList = new NamedList<>();
 
-    if( cfiltfacs != null ){
+    if (0 < cfiltfacs.length) {
       String source = value;
       for(CharFilterFactory cfiltfac : cfiltfacs ){
         Reader reader = new StringReader(source);
@@ -116,21 +122,23 @@ public abstract class AnalysisRequestHandlerBase extends RequestHandlerBase {
       }
     }
 
-    TokenStream tokenStream = tfac.create(tokenizerChain.initReader(null, new StringReader(value)));
+    TokenStream tokenStream = tfac.create();
+    ((Tokenizer)tokenStream).setReader(tokenizerChain.initReader(null, new StringReader(value)));
     List<AttributeSource> tokens = analyzeTokenStream(tokenStream);
 
     namedList.add(tokenStream.getClass().getName(), convertTokensToNamedLists(tokens, context));
 
-    ListBasedTokenStream listBasedTokenStream = new ListBasedTokenStream(tokens);
+    ListBasedTokenStream listBasedTokenStream = new ListBasedTokenStream(tokenStream, tokens);
 
     for (TokenFilterFactory tokenFilterFactory : filtfacs) {
       for (final AttributeSource tok : tokens) {
         tok.getAttribute(TokenTrackingAttribute.class).freezeStage();
       }
+      // overwrite the vars "tokenStream", "tokens", and "listBasedTokenStream"
       tokenStream = tokenFilterFactory.create(listBasedTokenStream);
       tokens = analyzeTokenStream(tokenStream);
       namedList.add(tokenStream.getClass().getName(), convertTokensToNamedLists(tokens, context));
-      listBasedTokenStream = new ListBasedTokenStream(tokens);
+      listBasedTokenStream = new ListBasedTokenStream(listBasedTokenStream, tokens);
     }
 
     return namedList;
@@ -143,26 +151,20 @@ public abstract class AnalysisRequestHandlerBase extends RequestHandlerBase {
    * @param analyzer The analyzer to use.
    */
   protected Set<BytesRef> getQueryTokenSet(String query, Analyzer analyzer) {
-    TokenStream tokenStream = null;
-    try {
-      tokenStream = analyzer.tokenStream("", query);
+    try (TokenStream tokenStream = analyzer.tokenStream("", query)){
       final Set<BytesRef> tokens = new HashSet<>();
       final TermToBytesRefAttribute bytesAtt = tokenStream.getAttribute(TermToBytesRefAttribute.class);
-      final BytesRef bytes = bytesAtt.getBytesRef();
 
       tokenStream.reset();
 
       while (tokenStream.incrementToken()) {
-        bytesAtt.fillBytesRef();
-        tokens.add(BytesRef.deepCopyOf(bytes));
+        tokens.add(BytesRef.deepCopyOf(bytesAtt.getBytesRef()));
       }
 
       tokenStream.end();
       return tokens;
     } catch (IOException ioe) {
       throw new RuntimeException("Error occured while iterating over tokenstream", ioe);
-    } finally {
-      IOUtils.closeWhileHandlingException(tokenStream);
     }
   }
 
@@ -188,7 +190,7 @@ public abstract class AnalysisRequestHandlerBase extends RequestHandlerBase {
         trackerAtt.setActPosition(position);
         tokens.add(tokenStream.cloneAttributes());
       }
-      tokenStream.end();
+      tokenStream.end(); // TODO should we capture?
     } catch (IOException ioe) {
       throw new RuntimeException("Error occured while iterating over tokenstream", ioe);
     } finally {
@@ -248,8 +250,7 @@ public abstract class AnalysisRequestHandlerBase extends RequestHandlerBase {
       final NamedList<Object> tokenNamedList = new SimpleOrderedMap<>();
       final TermToBytesRefAttribute termAtt = token.getAttribute(TermToBytesRefAttribute.class);
       BytesRef rawBytes = termAtt.getBytesRef();
-      termAtt.fillBytesRef();
-      final String text = fieldType.indexedToReadable(rawBytes, new CharsRef()).toString();
+      final String text = fieldType.indexedToReadable(rawBytes, new CharsRefBuilder()).toString();
       tokenNamedList.add("text", text);
       
       if (token.hasAttribute(CharTermAttribute.class)) {
@@ -317,7 +318,6 @@ public abstract class AnalysisRequestHandlerBase extends RequestHandlerBase {
   }
 
   // ================================================= Inner classes =================================================
-
   /**
    * TokenStream that iterates over a list of pre-existing Tokens
    * @lucene.internal
@@ -329,10 +329,19 @@ public abstract class AnalysisRequestHandlerBase extends RequestHandlerBase {
     /**
      * Creates a new ListBasedTokenStream which uses the given tokens as its token source.
      *
+     * @param attributeSource source of the attribute factory and attribute impls
      * @param tokens Source of tokens to be used
      */
-    ListBasedTokenStream(List<AttributeSource> tokens) {
+    ListBasedTokenStream(AttributeSource attributeSource, List<AttributeSource> tokens) {
+      super(attributeSource.getAttributeFactory());
       this.tokens = tokens;
+      // Make sure all the attributes of the source are here too
+      addAttributes(attributeSource);
+    }
+
+    @Override
+    public void reset() throws IOException {
+      super.reset();
       tokenIterator = tokens.iterator();
     }
 
@@ -341,9 +350,9 @@ public abstract class AnalysisRequestHandlerBase extends RequestHandlerBase {
       if (tokenIterator.hasNext()) {
         clearAttributes();
         AttributeSource next = tokenIterator.next();
-        Iterator<Class<? extends Attribute>> atts = next.getAttributeClassesIterator();
-        while (atts.hasNext()) // make sure all att impls in the token exist here
-          addAttribute(atts.next());
+
+        addAttributes(next); // just in case there were delayed attribute additions
+
         next.copyTo(this);
         return true;
       } else {
@@ -351,10 +360,15 @@ public abstract class AnalysisRequestHandlerBase extends RequestHandlerBase {
       }
     }
 
-    @Override
-    public void reset() throws IOException {
-      super.reset();
-      tokenIterator = tokens.iterator();
+
+    protected void addAttributes(AttributeSource attributeSource) {
+      // note: ideally we wouldn't call addAttributeImpl which is marked internal. But nonetheless it's possible
+      //  this method is used by some custom attributes, especially since Solr doesn't provide a way to customize the
+      //  AttributeFactory which is the recommended way to choose which classes implement which attributes.
+      Iterator<AttributeImpl> atts = attributeSource.getAttributeImplsIterator();
+      while (atts.hasNext()) {
+        addAttributeImpl(atts.next()); // adds both impl & interfaces
+      }
     }
   }
 

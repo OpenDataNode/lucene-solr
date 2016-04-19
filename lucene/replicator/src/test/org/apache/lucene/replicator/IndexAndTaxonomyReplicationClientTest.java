@@ -1,5 +1,3 @@
-package org.apache.lucene.replicator;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,15 +14,18 @@ package org.apache.lucene.replicator;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.replicator;
 
+import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
-import java.io.File;
 import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.facet.DrillDownQuery;
 import org.apache.lucene.facet.FacetField;
@@ -36,9 +37,11 @@ import org.apache.lucene.facet.taxonomy.TaxonomyReader;
 import org.apache.lucene.facet.taxonomy.TaxonomyWriter;
 import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyReader;
 import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter;
+import org.apache.lucene.index.CheckIndex;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.SegmentInfos;
 import org.apache.lucene.index.SnapshotDeletionPolicy;
 import org.apache.lucene.replicator.IndexAndTaxonomyRevision.SnapshotDirectoryTaxonomyWriter;
 import org.apache.lucene.replicator.ReplicationClient.ReplicationHandler;
@@ -134,7 +137,7 @@ public class IndexAndTaxonomyReplicationClientTest extends ReplicatorTestCase {
   private SnapshotDirectoryTaxonomyWriter publishTaxoWriter;
   private FacetsConfig config;
   private IndexAndTaxonomyReadyCallback callback;
-  private File clientWorkDir;
+  private Path clientWorkDir;
   
   private static final String VERSION_ID = "version";
   
@@ -181,7 +184,7 @@ public class IndexAndTaxonomyReplicationClientTest extends ReplicatorTestCase {
   private Document newDocument(TaxonomyWriter taxoWriter, int id) throws IOException {
     Document doc = new Document();
     doc.add(new FacetField("A", Integer.toString(id, 16)));
-    return config.build(publishTaxoWriter, doc);
+    return config.build(taxoWriter, doc);
   }
   
   @Override
@@ -210,8 +213,9 @@ public class IndexAndTaxonomyReplicationClientTest extends ReplicatorTestCase {
   @After
   @Override
   public void tearDown() throws Exception {
-    IOUtils.close(client, callback, publishIndexWriter, publishTaxoWriter, replicator, publishIndexDir, publishTaxoDir,
-        handlerIndexDir, handlerTaxoDir);
+    publishIndexWriter.close();
+    IOUtils.close(client, callback, publishTaxoWriter, replicator, publishIndexDir, publishTaxoDir,
+            handlerIndexDir, handlerTaxoDir);
     super.tearDown();
   }
   
@@ -378,6 +382,8 @@ public class IndexAndTaxonomyReplicationClientTest extends ReplicatorTestCase {
       }
     });
 
+    final AtomicBoolean failed = new AtomicBoolean();
+
     // wrap handleUpdateException so we can act on the thrown exception
     client = new ReplicationClient(replicator, handler, sourceDirFactory) {
       @SuppressWarnings("synthetic-access")
@@ -403,10 +409,42 @@ public class IndexAndTaxonomyReplicationClientTest extends ReplicatorTestCase {
             TestUtil.checkIndex(handlerIndexDir.getDelegate());
             
             // verify taxonomy index is fully consistent (since we only add one
-            // category to all documents, there's nothing much more to validate
-            TestUtil.checkIndex(handlerTaxoDir.getDelegate());
+            // category to all documents, there's nothing much more to validate.
+            ByteArrayOutputStream bos = new ByteArrayOutputStream(1024);
+            CheckIndex.Status indexStatus = null;
+
+            try (CheckIndex checker = new CheckIndex(handlerTaxoDir.getDelegate())) {
+              checker.setFailFast(true);
+              checker.setInfoStream(new PrintStream(bos, false, IOUtils.UTF_8), false);
+              try {
+                indexStatus = checker.checkIndex(null);
+              } catch (IOException | RuntimeException ioe) {
+                // ok: we fallback below
+              }
+            }
+
+            if (indexStatus == null || indexStatus.clean == false) {
+
+              // Because segments file for taxo index is replicated after
+              // main index's segments file, if there's an error while replicating
+              // main index's segments file and if virus checker prevents
+              // deletion of taxo index's segments file, it can look like corruption.
+              // But it should be "false" meaning if we remove the latest segments
+              // file then the index is intact.  It's like pulling a hideous
+              // looking rock out of the ground, but then you pull the cruft
+              // off the outside of it and discover it's actually a beautiful
+              // diamond:
+              String segmentsFileName = SegmentInfos.getLastCommitSegmentsFileName(handlerTaxoDir);
+              assertTrue(handlerTaxoDir.didTryToDelete(segmentsFileName));
+              handlerTaxoDir.getDelegate().deleteFile(segmentsFileName);
+              TestUtil.checkIndex(handlerTaxoDir.getDelegate());
+            }
           } catch (IOException e) {
+            failed.set(true);
             throw new RuntimeException(e);
+          } catch (RuntimeException e) {
+            failed.set(true);
+            throw e;
           } finally {
             // count-down number of failures
             failures.decrementAndGet();
@@ -420,7 +458,10 @@ public class IndexAndTaxonomyReplicationClientTest extends ReplicatorTestCase {
             }
           }
         } else {
-          if (t instanceof RuntimeException) throw (RuntimeException) t;
+          failed.set(true);
+          if (t instanceof RuntimeException) {
+            throw (RuntimeException) t;
+          }
           throw new RuntimeException(t);
         }
       }
@@ -430,7 +471,7 @@ public class IndexAndTaxonomyReplicationClientTest extends ReplicatorTestCase {
     
     final Directory baseHandlerIndexDir = handlerIndexDir.getDelegate();
     int numRevisions = atLeast(20) + 2;
-    for (int i = 2; i < numRevisions; i++) {
+    for (int i = 2; i < numRevisions && failed.get() == false; i++) {
       replicator.publish(createRevision(i));
       assertHandlerRevision(i, baseHandlerIndexDir);
     }

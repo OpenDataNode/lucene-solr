@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.tokenattributes;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,11 @@ package org.apache.lucene.analysis.tokenattributes;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.tokenattributes;
+
 
 import org.apache.lucene.util.AttributeImpl;
+import org.apache.lucene.util.AttributeReflector;
 
 /** Default implementation of {@link KeywordAttribute}. */
 public final class KeywordAttributeImpl extends AttributeImpl implements
@@ -63,4 +64,8 @@ public final class KeywordAttributeImpl extends AttributeImpl implements
     keyword = isKeyword;
   }
 
+  @Override
+  public void reflectWith(AttributeReflector reflector) {
+    reflector.reflect(KeywordAttribute.class, "keyword", keyword);
+  }
 }

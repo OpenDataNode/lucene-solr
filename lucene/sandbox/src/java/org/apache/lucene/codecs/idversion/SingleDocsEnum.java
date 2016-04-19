@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.idversion;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,26 +14,27 @@ package org.apache.lucene.codecs.idversion;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.idversion;
 
-import org.apache.lucene.index.DocsEnum;
-import org.apache.lucene.util.Bits;
+import java.io.IOException;
 
-class SingleDocsEnum extends DocsEnum {
+import org.apache.lucene.index.PostingsEnum;
+import org.apache.lucene.util.BytesRef;
+
+class SingleDocsEnum extends PostingsEnum {
 
   private int doc;
   private int singleDocID;
-  private Bits liveDocs;
 
   /** For reuse */
-  public void reset(int singleDocID, Bits liveDocs) {
+  public void reset(int singleDocID) {
     doc = -1;
-    this.liveDocs = liveDocs;
     this.singleDocID = singleDocID;
   }
 
   @Override
   public int nextDoc() {
-    if (doc == -1 && (liveDocs == null || liveDocs.get(singleDocID))) {
+    if (doc == -1) {
       doc = singleDocID;
     } else {
       doc = NO_MORE_DOCS;
@@ -51,7 +50,7 @@ class SingleDocsEnum extends DocsEnum {
 
   @Override
   public int advance(int target) {
-    if (doc == -1 && target <= singleDocID && (liveDocs == null || liveDocs.get(singleDocID))) {
+    if (doc == -1 && target <= singleDocID) {
       doc = singleDocID;
     } else {
       doc = NO_MORE_DOCS;
@@ -67,5 +66,25 @@ class SingleDocsEnum extends DocsEnum {
   @Override
   public int freq() {
     return 1;
+  }
+
+  @Override
+  public int nextPosition() throws IOException {
+    return -1;
+  }
+
+  @Override
+  public int startOffset() throws IOException {
+    return -1;
+  }
+
+  @Override
+  public int endOffset() throws IOException {
+    return -1;
+  }
+
+  @Override
+  public BytesRef getPayload() throws IOException {
+    throw new UnsupportedOperationException();
   }
 }

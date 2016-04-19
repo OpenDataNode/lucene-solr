@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,10 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
-import java.io.Reader;
 
 import org.apache.lucene.analysis.*;
 import org.apache.lucene.document.Document;
@@ -70,8 +69,8 @@ public class TestLazyProxSkipping extends LuceneTestCase {
         
         final Analyzer analyzer = new Analyzer() {
           @Override
-          public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-            return new TokenStreamComponents(new MockTokenizer(reader, MockTokenizer.WHITESPACE, true));
+          public TokenStreamComponents createComponents(String fieldName) {
+            return new TokenStreamComponents(new MockTokenizer(MockTokenizer.WHITESPACE, true));
           }
         };
         Directory directory = new SeekCountingDirectory(new RAMDirectory());
@@ -112,10 +111,8 @@ public class TestLazyProxSkipping extends LuceneTestCase {
     
     private ScoreDoc[] search() throws IOException {
         // create PhraseQuery "term1 term2" and search
-        PhraseQuery pq = new PhraseQuery();
-        pq.add(new Term(this.field, this.term1));
-        pq.add(new Term(this.field, this.term2));
-        return this.searcher.search(pq, null, 1000).scoreDocs;        
+        PhraseQuery pq = new PhraseQuery(field, term1, term2);
+        return this.searcher.search(pq, 1000).scoreDocs;        
     }
     
     private void performTest(int numHits) throws IOException {
@@ -155,8 +152,7 @@ public class TestLazyProxSkipping extends LuceneTestCase {
         writer.close();
         IndexReader reader = DirectoryReader.open(directory);
 
-        DocsAndPositionsEnum tp = MultiFields.getTermPositionsEnum(reader,
-                                                                   MultiFields.getLiveDocs(reader),
+        PostingsEnum tp = MultiFields.getTermPositionsEnum(reader,
                                                                    this.field,
                                                                    new BytesRef("b"));
 
@@ -167,7 +163,6 @@ public class TestLazyProxSkipping extends LuceneTestCase {
         }
 
         tp = MultiFields.getTermPositionsEnum(reader,
-                                              MultiFields.getLiveDocs(reader),
                                               this.field,
                                               new BytesRef("a"));
 

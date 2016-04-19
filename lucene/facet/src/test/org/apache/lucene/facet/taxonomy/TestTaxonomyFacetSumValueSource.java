@@ -1,5 +1,3 @@
-package org.apache.lucene.facet.taxonomy;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.facet.taxonomy;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet.taxonomy;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -27,7 +26,6 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FloatDocValuesField;
-import org.apache.lucene.document.IntField;
 import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.facet.FacetField;
@@ -39,7 +37,7 @@ import org.apache.lucene.facet.FacetsConfig;
 import org.apache.lucene.facet.LabelAndValue;
 import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyReader;
 import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter;
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -52,6 +50,7 @@ import org.apache.lucene.queries.function.docvalues.DoubleDocValues;
 import org.apache.lucene.queries.function.valuesource.FloatFieldSource;
 import org.apache.lucene.queries.function.valuesource.IntFieldSource;
 import org.apache.lucene.queries.function.valuesource.LongFieldSource;
+import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.ConstantScoreQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchAllDocsQuery;
@@ -80,27 +79,27 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
     // Reused across documents, to add the necessary facet
     // fields:
     Document doc = new Document();
-    doc.add(new IntField("num", 10, Field.Store.NO));
+    doc.add(new NumericDocValuesField("num", 10));
     doc.add(new FacetField("Author", "Bob"));
     writer.addDocument(config.build(taxoWriter, doc));
 
     doc = new Document();
-    doc.add(new IntField("num", 20, Field.Store.NO));
+    doc.add(new NumericDocValuesField("num", 20));
     doc.add(new FacetField("Author", "Lisa"));
     writer.addDocument(config.build(taxoWriter, doc));
 
     doc = new Document();
-    doc.add(new IntField("num", 30, Field.Store.NO));
+    doc.add(new NumericDocValuesField("num", 30));
     doc.add(new FacetField("Author", "Lisa"));
     writer.addDocument(config.build(taxoWriter, doc));
 
     doc = new Document();
-    doc.add(new IntField("num", 40, Field.Store.NO));
+    doc.add(new NumericDocValuesField("num", 40));
     doc.add(new FacetField("Author", "Susan"));
     writer.addDocument(config.build(taxoWriter, doc));
 
     doc = new Document();
-    doc.add(new IntField("num", 45, Field.Store.NO));
+    doc.add(new NumericDocValuesField("num", 45));
     doc.add(new FacetField("Author", "Frank"));
     writer.addDocument(config.build(taxoWriter, doc));
 
@@ -145,7 +144,7 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
     FacetsConfig config = new FacetsConfig();
 
     Document doc = new Document();
-    doc.add(new IntField("num", 10, Field.Store.NO));
+    doc.add(new NumericDocValuesField("num", 10));
     doc.add(new FacetField("a", "foo1"));
     writer.addDocument(config.build(taxoWriter, doc));
 
@@ -154,7 +153,7 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
     }
 
     doc = new Document();
-    doc.add(new IntField("num", 20, Field.Store.NO));
+    doc.add(new NumericDocValuesField("num", 20));
     doc.add(new FacetField("a", "foo2"));
     doc.add(new FacetField("b", "bar1"));
     writer.addDocument(config.build(taxoWriter, doc));
@@ -164,7 +163,7 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
     }
 
     doc = new Document();
-    doc.add(new IntField("num", 30, Field.Store.NO));
+    doc.add(new NumericDocValuesField("num", 30));
     doc.add(new FacetField("a", "foo3"));
     doc.add(new FacetField("b", "bar2"));
     doc.add(new FacetField("c", "baz1"));
@@ -209,7 +208,7 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
     RandomIndexWriter writer = new RandomIndexWriter(random(), dir);
 
     Document doc = new Document();
-    doc.add(new IntField("num", 10, Field.Store.NO));
+    doc.add(new NumericDocValuesField("num", 10));
     doc.add(new FacetField("a", "foo1"));
     writer.addDocument(config.build(taxoWriter, doc));
 
@@ -265,12 +264,11 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
       iw.addDocument(config.build(taxoWriter, doc));
     }
     
-    DirectoryReader r = DirectoryReader.open(iw, true);
+    DirectoryReader r = DirectoryReader.open(iw);
     DirectoryTaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoWriter);
     
     FacetsCollector fc = new FacetsCollector(true);
-    ConstantScoreQuery csq = new ConstantScoreQuery(new MatchAllDocsQuery());
-    csq.setBoost(2.0f);
+    BoostQuery csq = new BoostQuery(new ConstantScoreQuery(new MatchAllDocsQuery()), 2f);
     
     TopDocs td = FacetsCollector.search(newSearcher(r), csq, 10, fc);
 
@@ -278,8 +276,9 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
     
     int expected = (int) (td.getMaxScore() * td.totalHits);
     assertEquals(expected, facets.getSpecificValue("dim", "a").intValue());
-    
-    IOUtils.close(iw, taxoWriter, taxoReader, taxoDir, r, indexDir);
+
+    iw.close();
+    IOUtils.close(taxoWriter, taxoReader, taxoDir, r, indexDir);
   }
   
   public void testNoScore() throws Exception {
@@ -296,15 +295,16 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
       iw.addDocument(config.build(taxoWriter, doc));
     }
     
-    DirectoryReader r = DirectoryReader.open(iw, true);
+    DirectoryReader r = DirectoryReader.open(iw);
     DirectoryTaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoWriter);
 
     FacetsCollector sfc = new FacetsCollector();
     newSearcher(r).search(new MatchAllDocsQuery(), sfc);
     Facets facets = new TaxonomyFacetSumValueSource(taxoReader, config, sfc, new LongFieldSource("price"));
     assertEquals("dim=a path=[] value=10.0 childCount=2\n  1 (6.0)\n  0 (4.0)\n", facets.getTopChildren(10, "a").toString());
-    
-    IOUtils.close(taxoWriter, iw, taxoReader, taxoDir, r, indexDir);
+
+    iw.close();
+    IOUtils.close(taxoWriter, taxoReader, taxoDir, r, indexDir);
   }
 
   public void testWithScore() throws Exception {
@@ -322,12 +322,12 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
       iw.addDocument(config.build(taxoWriter, doc));
     }
     
-    DirectoryReader r = DirectoryReader.open(iw, true);
+    DirectoryReader r = DirectoryReader.open(iw);
     DirectoryTaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoWriter);
 
     ValueSource valueSource = new ValueSource() {
       @Override
-      public FunctionValues getValues(@SuppressWarnings("rawtypes") Map context, AtomicReaderContext readerContext) throws IOException {
+      public FunctionValues getValues(@SuppressWarnings("rawtypes") Map context, LeafReaderContext readerContext) throws IOException {
         final Scorer scorer = (Scorer) context.get("scorer");
         assert scorer != null;
         return new DoubleDocValues(this) {
@@ -354,8 +354,9 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
     Facets facets = new TaxonomyFacetSumValueSource(taxoReader, config, fc, valueSource);
     
     assertEquals("dim=a path=[] value=10.0 childCount=2\n  1 (6.0)\n  0 (4.0)\n", facets.getTopChildren(10, "a").toString());
-    
-    IOUtils.close(taxoWriter, iw, taxoReader, taxoDir, r, indexDir);
+
+    iw.close();
+    IOUtils.close(taxoWriter, taxoReader, taxoDir, r, indexDir);
   }
 
   public void testRollupValues() throws Exception {
@@ -375,7 +376,7 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
       iw.addDocument(config.build(taxoWriter, doc));
     }
     
-    DirectoryReader r = DirectoryReader.open(iw, true);
+    DirectoryReader r = DirectoryReader.open(iw);
     DirectoryTaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoWriter);
 
     ValueSource valueSource = new LongFieldSource("price");
@@ -384,8 +385,9 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
     Facets facets = new TaxonomyFacetSumValueSource(taxoReader, config, sfc, valueSource);
     
     assertEquals("dim=a path=[] value=10.0 childCount=2\n  1 (6.0)\n  0 (4.0)\n", facets.getTopChildren(10, "a").toString());
-    
-    IOUtils.close(taxoWriter, iw, taxoReader, taxoDir, r, indexDir);
+
+    iw.close();
+    IOUtils.close(taxoWriter, taxoReader, taxoDir, r, indexDir);
   }
 
   public void testCountAndSumScore() throws Exception {
@@ -405,7 +407,7 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
       iw.addDocument(config.build(taxoWriter, doc));
     }
     
-    DirectoryReader r = DirectoryReader.open(iw, true);
+    DirectoryReader r = DirectoryReader.open(iw);
     DirectoryTaxonomyReader taxoReader = new DirectoryTaxonomyReader(taxoWriter);
     
     FacetsCollector fc = new FacetsCollector(true);
@@ -416,7 +418,8 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
 
     assertEquals(r.maxDoc(), facets1.getTopChildren(10, "a").value.intValue());
     assertEquals(r.maxDoc(), facets2.getTopChildren(10, "b").value.doubleValue(), 1E-10);
-    IOUtils.close(taxoWriter, iw, taxoReader, taxoDir, r, indexDir);
+    iw.close();
+    IOUtils.close(taxoWriter, taxoReader, taxoDir, r, indexDir);
   }
 
   public void testRandom() throws Exception {
@@ -512,6 +515,7 @@ public class TestTaxonomyFacetSumValueSource extends FacetTestCase {
       assertFloatValuesEquals(expected, actual);
     }
 
-    IOUtils.close(w, tw, searcher.getIndexReader(), tr, indexDir, taxoDir);
+    w.close();
+    IOUtils.close(tw, searcher.getIndexReader(), tr, indexDir, taxoDir);
   }
 }

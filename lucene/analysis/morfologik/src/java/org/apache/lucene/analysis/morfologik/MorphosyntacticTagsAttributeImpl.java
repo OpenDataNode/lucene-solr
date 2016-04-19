@@ -1,6 +1,4 @@
 // -*- c-basic-offset: 2 -*-
-package org.apache.lucene.analysis.morfologik;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -17,10 +15,12 @@ package org.apache.lucene.analysis.morfologik;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.morfologik;
 
 import java.util.*;
 
 import org.apache.lucene.util.AttributeImpl;
+import org.apache.lucene.util.AttributeReflector;
 
 /**
  * Morphosyntactic annotations for surface forms.
@@ -96,9 +96,9 @@ public class MorphosyntacticTagsAttributeImpl extends AttributeImpl
     this.copyTo(cloned);
     return cloned;
   }
-  
+
   @Override
-  public String toString() {
-    return tags == null ? "<no tags>" : tags.toString();
+  public void reflectWith(AttributeReflector reflector) {
+    reflector.reflect(MorphosyntacticTagsAttribute.class, "tags", tags);
   }
 }

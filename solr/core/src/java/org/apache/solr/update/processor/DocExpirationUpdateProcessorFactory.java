@@ -14,18 +14,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update.processor;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 
 import org.apache.solr.common.SolrException;
+
 import static org.apache.solr.common.SolrException.ErrorCode.*;
+
+import org.apache.solr.common.util.ExecutorUtil;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
-
 import org.apache.solr.core.CloseHook;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.core.CoreContainer;
@@ -35,11 +37,11 @@ import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
-import org.apache.solr.schema.DateField;
 import org.apache.solr.update.AddUpdateCommand;
 import org.apache.solr.update.CommitUpdateCommand;
 import org.apache.solr.update.DeleteUpdateCommand;
 import org.apache.solr.util.DateMathParser;
+import org.apache.solr.util.DateFormatUtil;
 import org.apache.solr.util.DefaultSolrThreadFactory;
 import org.apache.solr.util.plugin.SolrCoreAware;
 
@@ -167,7 +169,7 @@ public final class DocExpirationUpdateProcessorFactory
   extends UpdateRequestProcessorFactory 
   implements SolrCoreAware {
 
-  public final static Logger log = LoggerFactory.getLogger(DocExpirationUpdateProcessorFactory.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private static final String DEF_TTL_KEY = "_ttl_";
   private static final String EXP_FIELD_NAME_CONF = "expirationFieldName";
@@ -265,15 +267,15 @@ public final class DocExpirationUpdateProcessorFactory
 
     core.addCloseHook(new CloseHook() {
       public void postClose(SolrCore core) {
-        // update handler is gone, hard terminiate anything that's left.
+        // update handler is gone, terminate anything that's left.
 
         if (executor.isTerminating()) {
-          log.info("Triggering hard shutdown of DocExpiration Executor");
-          executor.shutdownNow();
+          log.info("Waiting for close of DocExpiration Executor");
+          ExecutorUtil.shutdownAndAwaitTermination(executor);
         }
       }
       public void preClose(SolrCore core) {
-        log.info("Triggering Graceful shutdown of DocExpiration Executor");
+        log.info("Triggering Graceful close of DocExpiration Executor");
         executor.shutdown();
       }
     });
@@ -402,7 +404,7 @@ public final class DocExpirationUpdateProcessorFactory
           try {
             DeleteUpdateCommand del = new DeleteUpdateCommand(req);
             del.setQuery("{!cache=false}" + expireField + ":[* TO " +
-                         DateField.formatExternal(SolrRequestInfo.getRequestInfo().getNOW())
+                         DateFormatUtil.formatExternal(SolrRequestInfo.getRequestInfo().getNOW())
                          + "]");
             proc.processDelete(del);
             

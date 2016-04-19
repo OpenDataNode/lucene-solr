@@ -14,12 +14,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler.admin;
 
 import org.apache.solr.common.luke.FieldFlag;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.schema.IndexSchema;
+import org.apache.solr.schema.CustomAnalyzerStrField; // jdoc
 import org.apache.solr.util.AbstractSolrTestCase;
 import org.apache.solr.util.TestHarness;
 import org.junit.Before;
@@ -43,10 +43,6 @@ public class LukeRequestHandlerTest extends AbstractSolrTestCase {
   @Before
   public void before() {
     assertU(adoc("id","SOLR1000", "name","Apache Solr",
-        "solr_si", "10",
-        "solr_sl", "10",
-        "solr_sf", "10",
-        "solr_sd", "10",
         "solr_s", "10",
         "solr_sI", "10",
         "solr_sS", "10",
@@ -61,13 +57,8 @@ public class LukeRequestHandlerTest extends AbstractSolrTestCase {
         "solr_tl", "10",
         "solr_tf", "10",
         "solr_td", "10",
-        "solr_pi", "10",
-        "solr_pl", "10",
-        "solr_pf", "10",
-        "solr_pd", "10",
         "solr_dt", "2000-01-01T01:01:01Z",
-        "solr_tdt", "2000-01-01T01:01:01Z",
-        "solr_pdt", "2000-01-01T01:01:01Z"
+        "solr_tdt", "2000-01-01T01:01:01Z"
     ));
     assertU(commit());
 
@@ -112,7 +103,7 @@ public class LukeRequestHandlerTest extends AbstractSolrTestCase {
 
     // code should be the same for all fields, but just in case do several
     for (String f : Arrays.asList("solr_t","solr_s","solr_ti",
-        "solr_td","solr_pl","solr_dt","solr_b",
+        "solr_td","solr_dt","solr_b",
         "solr_sS","solr_sI")) {
 
       final String xp = getFieldXPathPrefix(f);
@@ -125,7 +116,7 @@ public class LukeRequestHandlerTest extends AbstractSolrTestCase {
     // diff loop for checking 'index' flags,
     // only valid for fields that are indexed & stored
     for (String f : Arrays.asList("solr_t","solr_s","solr_ti",
-        "solr_td","solr_pl","solr_dt","solr_b")) {
+        "solr_td","solr_dt","solr_b")) {
 
       final String xp = getFieldXPathPrefix(f);
       assertQ("Not as many index flags as expected ("+numFlags+") for " + f,
@@ -164,7 +155,7 @@ public class LukeRequestHandlerTest extends AbstractSolrTestCase {
 
       // Now test that the other fields are NOT there
       for (String f : Arrays.asList("solr_ti",
-          "solr_td", "solr_pl", "solr_dt", "solr_b")) {
+          "solr_td", "solr_dt", "solr_b")) {
 
         assertNotNull(TestHarness.validateXPath(response,
             getFieldXPathPrefix(f) + "[@name='index']"));
@@ -174,7 +165,7 @@ public class LukeRequestHandlerTest extends AbstractSolrTestCase {
       req = req("qt", "/admin/luke", "fl", "*");
       response = h.query(req);
       for (String f : Arrays.asList("solr_t", "solr_s", "solr_ti",
-          "solr_td", "solr_pl", "solr_dt", "solr_b")) {
+          "solr_td", "solr_dt", "solr_b")) {
 
         assertNull(TestHarness.validateXPath(response,
             getFieldXPathPrefix(f) + "[@name='index']"));
@@ -204,6 +195,27 @@ public class LukeRequestHandlerTest extends AbstractSolrTestCase {
     for (String n : new String[] {"0", "1", "2", "100", "99999"}) {
       assertQ(req("qt", "/admin/luke", "fl", "bogus_s", "numTerms", n),
               "count("+field(f)+"lst[@name='topTerms']/int)=0");
+    }
+  }
+
+  /** @see CustomAnalyzerStrField */
+  public void testNullFactories() throws Exception {
+    deleteCore();
+    initCore("solrconfig.xml", "schema-null-charfilters-analyzer.xml");
+
+    try {
+      assertQ(req("qt", "/admin/luke", "show", "schema")
+              , "//lst[@name='custom_tc_string']/lst[@name='indexAnalyzer']"
+              , "//lst[@name='custom_tc_string']/lst[@name='queryAnalyzer']"
+              , "0=count(//lst[@name='custom_tc_string']/lst[@name='indexAnalyzer']/lst[@name='filters'])"
+              , "0=count(//lst[@name='custom_tc_string']/lst[@name='queryAnalyzer']/lst[@name='filters'])"
+              , "0=count(//lst[@name='custom_tc_string']/lst[@name='indexAnalyzer']/lst[@name='charFilters'])"
+              , "0=count(//lst[@name='custom_tc_string']/lst[@name='queryAnalyzer']/lst[@name='charFilters'])"
+              );
+    } finally {
+      // Put back the configuration expected by the rest of the tests in this suite
+      deleteCore();
+      initCore("solrconfig.xml", "schema12.xml");
     }
   }
 

@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.codecs;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs;
+
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -29,8 +29,8 @@ import org.apache.lucene.index.SortedSetDocValues;
 import org.apache.lucene.util.Accountable;
 import org.apache.lucene.util.Bits;
 
-/** Abstract API that produces numeric, binary and
- * sorted docvalues.
+/** Abstract API that produces numeric, binary, sorted, sortedset,
+ *  and sortednumeric docvalues.
  *
  * @lucene.experimental
  */
@@ -79,4 +79,12 @@ public abstract class DocValuesProducer implements Closeable, Accountable {
    * @lucene.internal
    */
   public abstract void checkIntegrity() throws IOException;
+  
+  /** 
+   * Returns an instance optimized for merging.
+   * <p>
+   * The default implementation returns {@code this} */
+  public DocValuesProducer getMergeInstance() throws IOException {
+    return this;
+  }
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 
@@ -174,7 +174,7 @@ class MultiThreadTermVectorsReader implements Runnable {
       Terms vector = reader.getTermVectors(docId).terms("field");
       timeElapsed += System.currentTimeMillis()-start;
       
-      verifyVector(vector.iterator(null), docId);
+      verifyVector(vector.iterator(), docId);
     }
   }
   
@@ -182,7 +182,7 @@ class MultiThreadTermVectorsReader implements Runnable {
     for (String field : vectors) {
       Terms terms = vectors.terms(field);
       assert terms != null;
-      verifyVector(terms.iterator(null), num);
+      verifyVector(terms.iterator(), num);
     }
   }
 

@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
 import org.apache.lucene.analysis.NumericTokenStream; // for javadocs
 import org.apache.lucene.document.DoubleField; // for javadocs
@@ -44,7 +43,9 @@ import org.apache.lucene.util.NumericUtils; // for javadocs
  * indexes and searches numeric valued fields.
  *
  * @since 2.9
+ * @deprecated Use {@link NumericRangeQuery} and {@link BooleanClause.Occur#FILTER} clauses instead.
  **/
+@Deprecated
 public final class NumericRangeFilter<T extends Number> extends MultiTermQueryWrapperFilter<NumericRangeQuery<T>> {
 
   private NumericRangeFilter(final NumericRangeQuery<T> query) {

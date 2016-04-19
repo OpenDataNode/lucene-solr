@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,25 +14,28 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
+
+import java.io.IOException;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.FilteredTermsEnum;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.MultiReader;
+import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.AttributeSource;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
-
-import java.io.IOException;
 
 public class TestMultiTermQueryRewrites extends LuceneTestCase {
 
@@ -131,26 +132,21 @@ public class TestMultiTermQueryRewrites extends LuceneTestCase {
   }
   
   public void testRewritesWithDuplicateTerms() throws Exception {
-    checkDuplicateTerms(MultiTermQuery.SCORING_BOOLEAN_QUERY_REWRITE);
+    checkDuplicateTerms(MultiTermQuery.SCORING_BOOLEAN_REWRITE);
     
-    checkDuplicateTerms(MultiTermQuery.CONSTANT_SCORE_BOOLEAN_QUERY_REWRITE);
+    checkDuplicateTerms(MultiTermQuery.CONSTANT_SCORE_BOOLEAN_REWRITE);
     
     // use a large PQ here to only test duplicate terms and dont mix up when all scores are equal
     checkDuplicateTerms(new MultiTermQuery.TopTermsScoringBooleanQueryRewrite(1024));
     checkDuplicateTerms(new MultiTermQuery.TopTermsBoostOnlyBooleanQueryRewrite(1024));
-    
-    // Test auto rewrite (but only boolean mode), so we set the limits to large values to always get a BQ
-    final MultiTermQuery.ConstantScoreAutoRewrite rewrite = new MultiTermQuery.ConstantScoreAutoRewrite();
-    rewrite.setTermCountCutoff(Integer.MAX_VALUE);
-    rewrite.setDocCountPercent(100.);
-    checkDuplicateTerms(rewrite);
   }
   
   private void checkBooleanQueryBoosts(BooleanQuery bq) {
     for (BooleanClause clause : bq.clauses()) {
-      final TermQuery mtq = (TermQuery) clause.getQuery();
+      final BoostQuery boostQ = (BoostQuery) clause.getQuery();
+      final TermQuery mtq = (TermQuery) boostQ.getQuery();
       assertEquals("Parallel sorting of boosts in rewrite mode broken",
-        Float.parseFloat(mtq.getTerm().text()), mtq.getBoost(), 0);
+        Float.parseFloat(mtq.getTerm().text()), boostQ.getBoost(), 0);
     }
   }
   
@@ -158,14 +154,27 @@ public class TestMultiTermQueryRewrites extends LuceneTestCase {
     final MultiTermQuery mtq = new MultiTermQuery("data") {
       @Override
       protected TermsEnum getTermsEnum(Terms terms, AttributeSource atts) throws IOException {
-        return new TermRangeTermsEnum(terms.iterator(null), new BytesRef("2"), new BytesRef("7"), true, true) {
+        return new FilteredTermsEnum(terms.iterator()) {
+
           final BoostAttribute boostAtt =
             attributes().addAttribute(BoostAttribute.class);
         
           @Override
           protected AcceptStatus accept(BytesRef term) {
             boostAtt.setBoost(Float.parseFloat(term.utf8ToString()));
-            return super.accept(term);
+            if (term.length == 0) {
+              return AcceptStatus.NO;
+            }
+            char c = (char) (term.bytes[term.offset] & 0xff);
+            if (c >= '2') {
+              if (c <= '7') {
+                return AcceptStatus.YES;
+              } else {
+                return AcceptStatus.END;
+              }
+            } else {
+              return AcceptStatus.NO;
+            }
           }
         };
       }
@@ -193,7 +202,7 @@ public class TestMultiTermQueryRewrites extends LuceneTestCase {
   }
   
   public void testBoosts() throws Exception {
-    checkBoosts(MultiTermQuery.SCORING_BOOLEAN_QUERY_REWRITE);
+    checkBoosts(MultiTermQuery.SCORING_BOOLEAN_REWRITE);
 
     // use a large PQ here to only test boosts and dont mix up when all scores are equal
     checkBoosts(new MultiTermQuery.TopTermsScoringBooleanQueryRewrite(1024));
@@ -231,11 +240,10 @@ public class TestMultiTermQueryRewrites extends LuceneTestCase {
   }
   
   public void testMaxClauseLimitations() throws Exception {
-    checkMaxClauseLimitation(MultiTermQuery.SCORING_BOOLEAN_QUERY_REWRITE);
-    checkMaxClauseLimitation(MultiTermQuery.CONSTANT_SCORE_BOOLEAN_QUERY_REWRITE);
+    checkMaxClauseLimitation(MultiTermQuery.SCORING_BOOLEAN_REWRITE);
+    checkMaxClauseLimitation(MultiTermQuery.CONSTANT_SCORE_BOOLEAN_REWRITE);
     
-    checkNoMaxClauseLimitation(MultiTermQuery.CONSTANT_SCORE_FILTER_REWRITE);
-    checkNoMaxClauseLimitation(MultiTermQuery.CONSTANT_SCORE_AUTO_REWRITE_DEFAULT);
+    checkNoMaxClauseLimitation(MultiTermQuery.CONSTANT_SCORE_REWRITE);
     checkNoMaxClauseLimitation(new MultiTermQuery.TopTermsScoringBooleanQueryRewrite(1024));
     checkNoMaxClauseLimitation(new MultiTermQuery.TopTermsBoostOnlyBooleanQueryRewrite(1024));
   }

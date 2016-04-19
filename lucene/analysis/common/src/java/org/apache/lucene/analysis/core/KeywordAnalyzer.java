@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,8 @@ package org.apache.lucene.analysis.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.core;
 
-import java.io.Reader;
 
 import org.apache.lucene.analysis.Analyzer;
 
@@ -30,7 +28,7 @@ public final class KeywordAnalyzer extends Analyzer {
   }
 
   @Override
-  protected TokenStreamComponents createComponents(final String fieldName, final Reader reader) {
-    return new TokenStreamComponents(new KeywordTokenizer(reader));
+  protected TokenStreamComponents createComponents(final String fieldName) {
+    return new TokenStreamComponents(new KeywordTokenizer());
   }
 }

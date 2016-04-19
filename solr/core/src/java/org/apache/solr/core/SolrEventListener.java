@@ -14,21 +14,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.core;
 
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.util.plugin.NamedListInitializedPlugin;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 /**
  *
  */
 public interface SolrEventListener extends NamedListInitializedPlugin{
-  static final Logger log = LoggerFactory.getLogger(SolrCore.class);
-
 
   public void postCommit();
   
@@ -37,7 +31,7 @@ public interface SolrEventListener extends NamedListInitializedPlugin{
   /** The searchers passed here are only guaranteed to be valid for the duration
    * of this method call, so care should be taken not to spawn threads or asynchronous
    * tasks with references to these searchers.
-   * <p/>
+   * <p>
    * Implementations should add the {@link org.apache.solr.common.params.EventParams#EVENT} parameter and set it to a value of either:
    * <ul>
    * <li>{@link org.apache.solr.common.params.EventParams#FIRST_SEARCHER} - First Searcher event</li>

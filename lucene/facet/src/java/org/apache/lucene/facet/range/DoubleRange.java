@@ -1,5 +1,3 @@
-package org.apache.lucene.facet.range;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,17 +14,24 @@ package org.apache.lucene.facet.range;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet.range;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.Objects;
 
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
-import org.apache.lucene.search.DocIdSet;
+import org.apache.lucene.search.ConstantScoreScorer;
+import org.apache.lucene.search.ConstantScoreWeight;
 import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.search.Filter;
-import org.apache.lucene.util.Bits;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.TwoPhaseIterator;
+import org.apache.lucene.search.Weight;
 import org.apache.lucene.util.NumericUtils;
 
 /** Represents a range over double values.
@@ -100,72 +105,96 @@ public final class DoubleRange extends Range {
     return "DoubleRange(" + minIncl + " to " + maxIncl + ")";
   }
 
-  @Override
-  public Filter getFilter(final Filter fastMatchFilter, final ValueSource valueSource) {
-    return new Filter() {
+  private static class ValueSourceQuery extends Query {
+    private final DoubleRange range;
+    private final Query fastMatchQuery;
+    private final ValueSource valueSource;
 
-      @Override
-      public String toString() {
-        return "Filter(" + DoubleRange.this.toString() + ")";
+    ValueSourceQuery(DoubleRange range, Query fastMatchQuery, ValueSource valueSource) {
+      this.range = range;
+      this.fastMatchQuery = fastMatchQuery;
+      this.valueSource = valueSource;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (super.equals(obj) == false) {
+        return false;
       }
+      ValueSourceQuery other = (ValueSourceQuery) obj;
+      return range.equals(other.range)
+          && Objects.equals(fastMatchQuery, other.fastMatchQuery)
+          && valueSource.equals(other.valueSource);
+    }
 
-      @Override
-      public DocIdSet getDocIdSet(AtomicReaderContext context, final Bits acceptDocs) throws IOException {
+    @Override
+    public int hashCode() {
+      return 31 * Objects.hash(range, fastMatchQuery, valueSource) + super.hashCode();
+    }
 
-        // TODO: this is just like ValueSourceScorer,
-        // ValueSourceFilter (spatial),
-        // ValueSourceRangeFilter (solr); also,
-        // https://issues.apache.org/jira/browse/LUCENE-4251
+    @Override
+    public String toString(String field) {
+      return "Filter(" + range.toString() + ")";
+    }
 
-        final FunctionValues values = valueSource.getValues(Collections.emptyMap(), context);
-
-        final int maxDoc = context.reader().maxDoc();
-
-        final Bits fastMatchBits;
-        if (fastMatchFilter != null) {
-          DocIdSet dis = fastMatchFilter.getDocIdSet(context, null);
-          if (dis == null) {
-            // No documents match
-            return null;
-          }
-          fastMatchBits = dis.bits();
-          if (fastMatchBits == null) {
-            throw new IllegalArgumentException("fastMatchFilter does not implement DocIdSet.bits");
-          }
-        } else {
-          fastMatchBits = null;
+    @Override
+    public Query rewrite(IndexReader reader) throws IOException {
+      if (getBoost() != 1f) {
+        return super.rewrite(reader);
+      }
+      if (fastMatchQuery != null) {
+        final Query fastMatchRewritten = fastMatchQuery.rewrite(reader);
+        if (fastMatchRewritten != fastMatchQuery) {
+          return new ValueSourceQuery(range, fastMatchRewritten, valueSource);
         }
-
-        return new DocIdSet() {
-
-          @Override
-          public Bits bits() {
-            return new Bits() {
-              @Override
-              public boolean get(int docID) {
-                if (acceptDocs != null && acceptDocs.get(docID) == false) {
-                  return false;
-                }
-                if (fastMatchBits != null && fastMatchBits.get(docID) == false) {
-                  return false;
-                }
-                return accept(values.doubleVal(docID));
-              }
-
-              @Override
-              public int length() {
-                return maxDoc;
-              }
-            };
-          }
-
-          @Override
-          public DocIdSetIterator iterator() {
-            throw new UnsupportedOperationException("this filter can only be accessed via bits()");
-          }
-        };
       }
-    };
+      return super.rewrite(reader);
+    }
+
+    @Override
+    public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+      final Weight fastMatchWeight = fastMatchQuery == null
+          ? null
+          : searcher.createWeight(fastMatchQuery, false);
+
+      return new ConstantScoreWeight(this) {
+        @Override
+        public Scorer scorer(LeafReaderContext context) throws IOException {
+          final int maxDoc = context.reader().maxDoc();
+
+          final DocIdSetIterator approximation;
+          if (fastMatchWeight == null) {
+            approximation = DocIdSetIterator.all(maxDoc);
+          } else {
+            Scorer s = fastMatchWeight.scorer(context);
+            if (s == null) {
+              return null;
+            }
+            approximation = s.iterator();
+          }
+
+          final FunctionValues values = valueSource.getValues(Collections.emptyMap(), context);
+          final TwoPhaseIterator twoPhase = new TwoPhaseIterator(approximation) {
+            @Override
+            public boolean matches() throws IOException {
+              return range.accept(values.doubleVal(approximation.docID()));
+            }
+
+            @Override
+            public float matchCost() {
+              return 100; // TODO: use cost of range.accept()
+            }
+          };
+          return new ConstantScoreScorer(this, score(), twoPhase);
+        }
+      };
+    }
+
+  }
+
+  @Override
+  public Query getQuery(final Query fastMatchQuery, final ValueSource valueSource) {
+    return new ValueSourceQuery(this, fastMatchQuery, valueSource);
   }
 }
 

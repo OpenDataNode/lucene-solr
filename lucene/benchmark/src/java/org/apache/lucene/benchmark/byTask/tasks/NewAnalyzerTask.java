@@ -1,10 +1,10 @@
-package org.apache.lucene.benchmark.byTask.tasks;
-/**
- * Copyright 2005 The Apache Software Foundation
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
@@ -14,6 +14,7 @@ package org.apache.lucene.benchmark.byTask.tasks;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.benchmark.byTask.tasks;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.benchmark.byTask.PerfRunData;
@@ -96,11 +97,11 @@ public class NewAnalyzerTask extends PerfTask {
   /**
    * Set the params (analyzerName only),  Comma-separate list of Analyzer class names.  If the Analyzer lives in
    * org.apache.lucene.analysis, the name can be shortened by dropping the o.a.l.a part of the Fully Qualified Class Name.
-   * <p/>
+   * <p>
    * Analyzer names may also refer to previously defined AnalyzerFactory's.
-   * <p/>
-   * Example Declaration: {"NewAnalyzer" NewAnalyzer(WhitespaceAnalyzer, SimpleAnalyzer, StopAnalyzer, standard.StandardAnalyzer) >
-   * <p/>
+   * <p>
+   * Example Declaration: {"NewAnalyzer" NewAnalyzer(WhitespaceAnalyzer, SimpleAnalyzer, StopAnalyzer, standard.StandardAnalyzer) &gt;
+   * <p>
    * Example AnalyzerFactory usage:
    * <pre>
    * -AnalyzerFactory(name:'whitespace tokenized',WhitespaceTokenizer)

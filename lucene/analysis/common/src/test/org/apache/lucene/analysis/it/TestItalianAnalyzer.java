@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.it;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.it;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.it;
+
 
 import java.io.IOException;
 
@@ -28,7 +28,7 @@ public class TestItalianAnalyzer extends BaseTokenStreamTestCase {
   /** This test fails with NPE when the 
    * stopwords file is missing in classpath */
   public void testResourcesAvailable() {
-    new ItalianAnalyzer();
+    new ItalianAnalyzer().close();
   }
   
   /** test stopwords and stemming */
@@ -39,6 +39,7 @@ public class TestItalianAnalyzer extends BaseTokenStreamTestCase {
     checkOneTerm(a, "abbandonati", "abbandonat");
     // stopword
     assertAnalyzesTo(a, "dallo", new String[] {});
+    a.close();
   }
   
   /** test use of exclusion set */
@@ -48,11 +49,14 @@ public class TestItalianAnalyzer extends BaseTokenStreamTestCase {
         ItalianAnalyzer.getDefaultStopSet(), exclusionSet);
     checkOneTerm(a, "abbandonata", "abbandonata");
     checkOneTerm(a, "abbandonati", "abbandonat");
+    a.close();
   }
   
   /** blast some random strings through the analyzer */
   public void testRandomStrings() throws Exception {
-    checkRandomData(random(), new ItalianAnalyzer(), 1000*RANDOM_MULTIPLIER);
+    Analyzer analyzer = new ItalianAnalyzer();
+    checkRandomData(random(), analyzer, 1000*RANDOM_MULTIPLIER);
+    analyzer.close();
   }
   
   /** test that the elisionfilter is working */
@@ -60,12 +64,13 @@ public class TestItalianAnalyzer extends BaseTokenStreamTestCase {
     Analyzer a = new ItalianAnalyzer();
     assertAnalyzesTo(a, "dell'Italia", new String[] { "ital" });
     assertAnalyzesTo(a, "l'Italiano", new String[] { "italian" });
+    a.close();
   }
-  
-  /** test that we don't enable this before 3.2*/
-  public void testContractionsBackwards() throws IOException {
-    Analyzer a = new ItalianAnalyzer(Version.LUCENE_3_1);
-    assertAnalyzesTo(a, "dell'Italia", new String[] { "dell'ital" });
-    assertAnalyzesTo(a, "l'Italiano", new String[] { "l'ital" });
+
+  public void testBackcompat40() throws IOException {
+    ItalianAnalyzer a = new ItalianAnalyzer();
+    a.setVersion(Version.LUCENE_4_6_1);
+    // this is just a test to see the correct unicode version is being used, not actually testing hebrew
+    assertAnalyzesTo(a, "א\"א", new String[] {"א", "א"});
   }
 }

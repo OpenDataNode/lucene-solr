@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.standard;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,28 +14,24 @@ package org.apache.lucene.analysis.standard;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.standard;
+
 
 import java.io.IOException;
-import java.io.Reader;
 
 import org.apache.lucene.analysis.Tokenizer;
-import org.apache.lucene.analysis.standard.std31.UAX29URLEmailTokenizerImpl31;
-import org.apache.lucene.analysis.standard.std34.UAX29URLEmailTokenizerImpl34;
-import org.apache.lucene.analysis.standard.std36.UAX29URLEmailTokenizerImpl36;
-import org.apache.lucene.analysis.standard.std40.UAX29URLEmailTokenizerImpl40;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
 import org.apache.lucene.util.AttributeFactory;
-import org.apache.lucene.util.Version;
 
 /**
  * This class implements Word Break rules from the Unicode Text Segmentation 
- * algorithm, as specified in                 `
+ * algorithm, as specified in 
  * <a href="http://unicode.org/reports/tr29/">Unicode Standard Annex #29</a> 
  * URLs and email addresses are also tokenized according to the relevant RFCs.
- * <p/>
+ * <p>
  * Tokens produced are of the following types:
  * <ul>
  *   <li>&lt;ALPHANUM&gt;: A sequence of alphabetic and numeric characters</li>
@@ -49,19 +43,11 @@ import org.apache.lucene.util.Version;
  *   <li>&lt;IDEOGRAPHIC&gt;: A single CJKV ideographic character</li>
  *   <li>&lt;HIRAGANA&gt;: A single hiragana character</li>
  * </ul>
- * <a name="version"/>
- * <p>You may specify the {@link Version}
- * compatibility when creating UAX29URLEmailTokenizer:
- * <ul>
- *   <li> As of 3.4, Hiragana and Han characters are no longer wrongly split
- *   from their combining characters. If you use a previous version number,
- *   you get the exact broken behavior for backwards compatibility.
- * </ul>
  */
 
 public final class UAX29URLEmailTokenizer extends Tokenizer {
   /** A private instance of the JFlex-constructed scanner */
-  private final StandardTokenizerInterface scanner;
+  private final UAX29URLEmailTokenizerImpl scanner;
   
   public static final int ALPHANUM          = 0;
   public static final int NUM               = 1;
@@ -97,9 +83,7 @@ public final class UAX29URLEmailTokenizer extends Tokenizer {
       throw new IllegalArgumentException("maxTokenLength must be greater than zero");
     }
     this.maxTokenLength = length;
-    if (scanner instanceof UAX29URLEmailTokenizerImpl) {
-      scanner.setBufferSize(Math.min(length, 1024 * 1024)); // limit buffer size to 1M chars
-    }
+    scanner.setBufferSize(Math.min(length, 1024 * 1024)); // limit buffer size to 1M chars
   }
 
   /** @see #setMaxTokenLength */
@@ -110,53 +94,22 @@ public final class UAX29URLEmailTokenizer extends Tokenizer {
   /**
    * Creates a new instance of the UAX29URLEmailTokenizer.  Attaches
    * the <code>input</code> to the newly created JFlex scanner.
-   *
-   * @param input The input reader
+
    */
-  public UAX29URLEmailTokenizer(Reader input) {
-    super(input);
-    this.scanner = getScannerFor(Version.LATEST);
+  public UAX29URLEmailTokenizer() {
+    this.scanner = getScanner();
   }
 
   /**
-   * @deprecated Use {@link #UAX29URLEmailTokenizer(Reader)}
+   * Creates a new UAX29URLEmailTokenizer with a given {@link AttributeFactory} 
    */
-  @Deprecated
-  public UAX29URLEmailTokenizer(Version matchVersion, Reader input) {
-    super(input);
-    this.scanner = getScannerFor(matchVersion);
+  public UAX29URLEmailTokenizer(AttributeFactory factory) {
+    super(factory);
+    this.scanner = getScanner();
   }
 
-  /**
-   * Creates a new UAX29URLEmailTokenizer with a given {@link AttributeFactory}
-   */
-  public UAX29URLEmailTokenizer(AttributeFactory factory, Reader input) {
-    super(factory, input);
-    this.scanner = getScannerFor(Version.LATEST);
-  }
-
-  /**
-   * @deprecated Use {@link #UAX29URLEmailTokenizer(Reader)}
-   */
-  @Deprecated
-  public UAX29URLEmailTokenizer(Version matchVersion, AttributeFactory factory, Reader input) {
-    super(factory, input);
-    this.scanner = getScannerFor(matchVersion);
-  }
-
-  private StandardTokenizerInterface getScannerFor(Version matchVersion) {
-    // best effort NPE if you dont call reset
-    if (matchVersion.onOrAfter(Version.LUCENE_4_7)) {
-      return new UAX29URLEmailTokenizerImpl(input);
-    } else if (matchVersion.onOrAfter(Version.LUCENE_4_0)) {
-      return new UAX29URLEmailTokenizerImpl40(input);
-    } else if (matchVersion.onOrAfter(Version.LUCENE_3_6)) {
-      return new UAX29URLEmailTokenizerImpl36(input);
-    } else if (matchVersion.onOrAfter(Version.LUCENE_3_4)) {
-      return new UAX29URLEmailTokenizerImpl34(input);
-    } else {
-      return new UAX29URLEmailTokenizerImpl31(input);
-    }
+  private UAX29URLEmailTokenizerImpl getScanner() {
+    return new UAX29URLEmailTokenizerImpl(input);
   }
 
   // this tokenizer generates three attributes:
@@ -174,7 +127,7 @@ public final class UAX29URLEmailTokenizer extends Tokenizer {
     while(true) {
       int tokenType = scanner.getNextToken();
 
-      if (tokenType == StandardTokenizerInterface.YYEOF) {
+      if (tokenType == UAX29URLEmailTokenizerImpl.YYEOF) {
         return false;
       }
 

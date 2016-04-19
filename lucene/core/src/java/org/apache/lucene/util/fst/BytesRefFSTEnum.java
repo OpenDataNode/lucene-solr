@@ -1,5 +1,3 @@
-package org.apache.lucene.util.fst;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.util.fst;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util.fst;
+
 
 import java.io.IOException;
 
@@ -58,7 +58,7 @@ public final class BytesRefFSTEnum<T> extends FSTEnum<T> {
     return setResult();
   }
 
-  /** Seeks to smallest term that's >= target. */
+  /** Seeks to smallest term that's &gt;= target. */
   public InputOutput<T> seekCeil(BytesRef target) throws IOException {
     this.target = target;
     targetLength = target.length;
@@ -66,7 +66,7 @@ public final class BytesRefFSTEnum<T> extends FSTEnum<T> {
     return setResult();
   }
 
-  /** Seeks to biggest term that's <= target. */
+  /** Seeks to biggest term that's &lt;= target. */
   public InputOutput<T> seekFloor(BytesRef target) throws IOException {
     this.target = target;
     targetLength = target.length;

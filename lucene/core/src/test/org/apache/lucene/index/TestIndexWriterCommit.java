@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,10 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
-import java.io.Reader;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -53,7 +52,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
       Term searchTerm = new Term("content", "aaa");
       DirectoryReader reader = DirectoryReader.open(dir);
       IndexSearcher searcher = newSearcher(reader);
-      ScoreDoc[] hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
+      ScoreDoc[] hits = searcher.search(new TermQuery(searchTerm), 1000).scoreDocs;
       assertEquals("first number of hits", 14, hits.length);
       reader.close();
 
@@ -66,7 +65,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
         }
         IndexReader r = DirectoryReader.open(dir);
         searcher = newSearcher(r);
-        hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
+        hits = searcher.search(new TermQuery(searchTerm), 1000).scoreDocs;
         assertEquals("reader incorrectly sees changes from writer", 14, hits.length);
         r.close();
         assertTrue("reader should have still been current", reader.isCurrent());
@@ -78,7 +77,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
 
       IndexReader r = DirectoryReader.open(dir);
       searcher = newSearcher(r);
-      hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
+      hits = searcher.search(new TermQuery(searchTerm), 1000).scoreDocs;
       assertEquals("reader did not see changes after writer was closed", 47, hits.length);
       r.close();
       reader.close();
@@ -109,7 +108,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     Term searchTerm = new Term("content", "aaa");
     IndexReader reader = DirectoryReader.open(dir);
     IndexSearcher searcher = newSearcher(reader);
-    ScoreDoc[] hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
+    ScoreDoc[] hits = searcher.search(new TermQuery(searchTerm), 1000).scoreDocs;
     assertEquals("first number of hits", 14, hits.length);
     reader.close();
 
@@ -124,7 +123,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
 
     reader = DirectoryReader.open(dir);
     searcher = newSearcher(reader);
-    hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
+    hits = searcher.search(new TermQuery(searchTerm), 1000).scoreDocs;
     assertEquals("reader incorrectly sees changes from writer", 14, hits.length);
     reader.close();
 
@@ -135,7 +134,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
 
     reader = DirectoryReader.open(dir);
     searcher = newSearcher(reader);
-    hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
+    hits = searcher.search(new TermQuery(searchTerm), 1000).scoreDocs;
     assertEquals("saw changes after writer.abort", 14, hits.length);
     reader.close();
 
@@ -157,7 +156,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
       }
       IndexReader r = DirectoryReader.open(dir);
       searcher = newSearcher(r);
-      hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
+      hits = searcher.search(new TermQuery(searchTerm), 1000).scoreDocs;
       assertEquals("reader incorrectly sees changes from writer", 14, hits.length);
       r.close();
     }
@@ -165,7 +164,7 @@ public class TestIndexWriterCommit extends LuceneTestCase {
     writer.close();
     IndexReader r = DirectoryReader.open(dir);
     searcher = newSearcher(r);
-    hits = searcher.search(new TermQuery(searchTerm), null, 1000).scoreDocs;
+    hits = searcher.search(new TermQuery(searchTerm), 1000).scoreDocs;
     assertEquals("didn't see changes after close", 218, hits.length);
     r.close();
 
@@ -200,8 +199,8 @@ public class TestIndexWriterCommit extends LuceneTestCase {
       // no payloads
      analyzer = new Analyzer() {
         @Override
-        public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-          return new TokenStreamComponents(new MockTokenizer(reader, MockTokenizer.WHITESPACE, true));
+        public TokenStreamComponents createComponents(String fieldName) {
+          return new TokenStreamComponents(new MockTokenizer(MockTokenizer.WHITESPACE, true));
         }
       };
     } else {
@@ -209,8 +208,8 @@ public class TestIndexWriterCommit extends LuceneTestCase {
       final int length = random().nextInt(200);
       analyzer = new Analyzer() {
         @Override
-        public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-          Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, true);
+        public TokenStreamComponents createComponents(String fieldName) {
+          Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, true);
           return new TokenStreamComponents(tokenizer, new MockFixedLengthPayloadFilter(random(), tokenizer, length));
         }
       };

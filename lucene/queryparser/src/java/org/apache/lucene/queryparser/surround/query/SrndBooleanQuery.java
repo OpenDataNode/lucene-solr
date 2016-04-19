@@ -1,4 +1,3 @@
-package org.apache.lucene.queryparser.surround.query;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.lucene.queryparser.surround.query;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.lucene.queryparser.surround.query;
 import java.util.List;
 
 import org.apache.lucene.search.Query;
@@ -24,7 +23,7 @@ import org.apache.lucene.search.BooleanClause;
 
 class SrndBooleanQuery {
   public static void addQueriesToBoolean(
-          BooleanQuery bq,
+          BooleanQuery.Builder bq,
           List<Query> queries,
           BooleanClause.Occur occur) {
     for (int i = 0; i < queries.size(); i++) {
@@ -38,8 +37,8 @@ class SrndBooleanQuery {
     if (queries.size() <= 1) {
       throw new AssertionError("Too few subqueries: " + queries.size());
     }
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
     addQueriesToBoolean(bq, queries.subList(0, queries.size()), occur);
-    return bq;
+    return bq.build();
   }
 }

@@ -1,3 +1,19 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.apache.lucene.analysis.core;
 
 import java.io.IOException;
@@ -27,22 +43,6 @@ import org.apache.lucene.analysis.util.CharArraySet;
 import org.apache.lucene.analysis.wikipedia.WikipediaTokenizer;
 import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 
 @SuppressCodecs("Direct")
 public class TestBugInSomething extends BaseTokenStreamTestCase {
@@ -60,8 +60,8 @@ public class TestBugInSomething extends BaseTokenStreamTestCase {
     
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer t = new MockTokenizer(new TestRandomChains.CheckThatYouDidntReadAnythingReaderWrapper(reader), MockTokenFilter.ENGLISH_STOPSET, false, -65);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer t = new MockTokenizer(MockTokenFilter.ENGLISH_STOPSET, false, -65);
         TokenFilter f = new CommonGramsFilter(t, cas);
         return new TokenStreamComponents(t, f);
       }
@@ -70,10 +70,12 @@ public class TestBugInSomething extends BaseTokenStreamTestCase {
       protected Reader initReader(String fieldName, Reader reader) {
         reader = new MockCharFilter(reader, 0);
         reader = new MappingCharFilter(map, reader);
+        reader = new TestRandomChains.CheckThatYouDidntReadAnythingReaderWrapper(reader);
         return reader;
       }
     };
     checkAnalysisConsistency(random(), a, false, "wmgddzunizdomqyj");
+    a.close();
   }
   
   CharFilter wrappedStream = new CharFilter(new StringReader("bogus")) {
@@ -245,11 +247,12 @@ public class TestBugInSomething extends BaseTokenStreamTestCase {
   }
   
   // LUCENE-5269
+  @Slow
   public void testUnicodeShinglesAndNgrams() throws Exception {
     Analyzer analyzer = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new EdgeNGramTokenizer(reader, 2, 94);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new EdgeNGramTokenizer(2, 94);
         //TokenStream stream = new SopTokenFilter(tokenizer);
         TokenStream stream = new ShingleFilter(tokenizer, 5);
         //stream = new SopTokenFilter(stream);
@@ -259,6 +262,7 @@ public class TestBugInSomething extends BaseTokenStreamTestCase {
       }  
     };
     checkRandomData(random(), analyzer, 2000);
+    analyzer.close();
   }
   
   public void testCuriousWikipediaString() throws Exception {
@@ -274,8 +278,8 @@ public class TestBugInSomething extends BaseTokenStreamTestCase {
     };
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new WikipediaTokenizer(reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new WikipediaTokenizer();
         TokenStream stream = new SopTokenFilter(tokenizer);
         stream = new WordDelimiterFilter(stream, table, -50, protWords);
         stream = new SopTokenFilter(stream);
@@ -283,5 +287,6 @@ public class TestBugInSomething extends BaseTokenStreamTestCase {
       }  
     };
     checkAnalysisConsistency(random(), a, false, "B\u28c3\ue0f8[ \ud800\udfc2 </p> jb");
+    a.close();
   }
 }

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update;
 
 import org.apache.solr.request.SolrQueryRequest;
@@ -31,7 +30,7 @@ public class CommitUpdateCommand extends UpdateCommand {
   public boolean prepareCommit = false;
 
   /**
-   * During optimize, optimize down to <= this many segments.  Must be >= 1
+   * During optimize, optimize down to &lt;= this many segments.  Must be &gt;= 1
    *
    * @see org.apache.lucene.index.IndexWriter#forceMerge(int)
    */

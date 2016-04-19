@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.ja;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.ja;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.ja;
+
 
 import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
@@ -54,7 +54,7 @@ public final class JapaneseReadingFormFilter extends TokenFilter {
       
       if (useRomaji) {
         if (reading == null) {
-          // if its an OOV term, just try the term text
+          // if it's an OOV term, just try the term text
           buffer.setLength(0);
           ToStringUtil.getRomanization(buffer, termAttr);
           termAttr.setEmpty().append(buffer);

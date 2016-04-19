@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
@@ -23,7 +23,6 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.MockDirectoryWrapper;
@@ -52,9 +51,9 @@ public class TestOmitPositions extends LuceneTestCase {
     IndexReader reader = w.getReader();
     w.close();
     
-    assertNull(MultiFields.getTermPositionsEnum(reader, null, "foo", new BytesRef("test")));
+    assertNotNull(MultiFields.getTermPositionsEnum(reader, "foo", new BytesRef("test")));
     
-    DocsEnum de = TestUtil.docs(random(), reader, "foo", new BytesRef("test"), null, null, DocsEnum.FLAG_FREQS);
+    PostingsEnum de = TestUtil.docs(random(), reader, "foo", new BytesRef("test"), null, PostingsEnum.FREQS);
     while (de.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
       assertEquals(2, de.freq());
     }
@@ -73,7 +72,7 @@ public class TestOmitPositions extends LuceneTestCase {
         
     // f1,f2,f3: docs only
     FieldType ft = new FieldType(TextField.TYPE_NOT_STORED);
-    ft.setIndexOptions(IndexOptions.DOCS_ONLY);
+    ft.setIndexOptions(IndexOptions.DOCS);
     
     Field f1 = newField("f1", "This field has docs only", ft);
     d.add(f1);
@@ -157,19 +156,19 @@ public class TestOmitPositions extends LuceneTestCase {
     SegmentReader reader = getOnlySegmentReader(DirectoryReader.open(ram));
     FieldInfos fi = reader.getFieldInfos();
     // docs + docs = docs
-    assertEquals(IndexOptions.DOCS_ONLY, fi.fieldInfo("f1").getIndexOptions());
+    assertEquals(IndexOptions.DOCS, fi.fieldInfo("f1").getIndexOptions());
     // docs + docs/freqs = docs
-    assertEquals(IndexOptions.DOCS_ONLY, fi.fieldInfo("f2").getIndexOptions());
+    assertEquals(IndexOptions.DOCS, fi.fieldInfo("f2").getIndexOptions());
     // docs + docs/freqs/pos = docs
-    assertEquals(IndexOptions.DOCS_ONLY, fi.fieldInfo("f3").getIndexOptions());
+    assertEquals(IndexOptions.DOCS, fi.fieldInfo("f3").getIndexOptions());
     // docs/freqs + docs = docs
-    assertEquals(IndexOptions.DOCS_ONLY, fi.fieldInfo("f4").getIndexOptions());
+    assertEquals(IndexOptions.DOCS, fi.fieldInfo("f4").getIndexOptions());
     // docs/freqs + docs/freqs = docs/freqs
     assertEquals(IndexOptions.DOCS_AND_FREQS, fi.fieldInfo("f5").getIndexOptions());
     // docs/freqs + docs/freqs/pos = docs/freqs
     assertEquals(IndexOptions.DOCS_AND_FREQS, fi.fieldInfo("f6").getIndexOptions());
     // docs/freqs/pos + docs = docs
-    assertEquals(IndexOptions.DOCS_ONLY, fi.fieldInfo("f7").getIndexOptions());
+    assertEquals(IndexOptions.DOCS, fi.fieldInfo("f7").getIndexOptions());
     // docs/freqs/pos + docs/freqs = docs/freqs
     assertEquals(IndexOptions.DOCS_AND_FREQS, fi.fieldInfo("f8").getIndexOptions());
     // docs/freqs/pos + docs/freqs/pos = docs/freqs/pos

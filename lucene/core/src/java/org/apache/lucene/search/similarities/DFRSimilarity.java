@@ -1,5 +1,3 @@
-package org.apache.lucene.search.similarities;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,10 @@ package org.apache.lucene.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.similarities;
+
+
+import java.util.List;
 
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.similarities.AfterEffect.NoAfterEffect;
@@ -107,22 +109,22 @@ public class DFRSimilarity extends SimilarityBase {
   @Override
   protected float score(BasicStats stats, float freq, float docLen) {
     float tfn = normalization.tfn(stats, freq, docLen);
-    return stats.getTotalBoost() *
+    return stats.getBoost() *
         basicModel.score(stats, tfn) * afterEffect.score(stats, tfn);
   }
   
   @Override
-  protected void explain(Explanation expl,
+  protected void explain(List<Explanation> subs,
       BasicStats stats, int doc, float freq, float docLen) {
-    if (stats.getTotalBoost() != 1.0f) {
-      expl.addDetail(new Explanation(stats.getTotalBoost(), "boost"));
+    if (stats.getBoost() != 1.0f) {
+      subs.add(Explanation.match(stats.getBoost(), "boost"));
     }
     
     Explanation normExpl = normalization.explain(stats, freq, docLen);
     float tfn = normExpl.getValue();
-    expl.addDetail(normExpl);
-    expl.addDetail(basicModel.explain(stats, tfn));
-    expl.addDetail(afterEffect.explain(stats, tfn));
+    subs.add(normExpl);
+    subs.add(basicModel.explain(stats, tfn));
+    subs.add(afterEffect.explain(stats, tfn));
   }
 
   @Override

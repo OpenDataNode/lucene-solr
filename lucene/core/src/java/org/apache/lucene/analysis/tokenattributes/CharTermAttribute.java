@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.tokenattributes;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.tokenattributes;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.tokenattributes;
+
 
 import org.apache.lucene.util.Attribute;
 
@@ -48,7 +48,7 @@ public interface CharTermAttribute extends Attribute, CharSequence, Appendable {
   /** Grows the termBuffer to at least size newSize, preserving the
    *  existing content.
    *  @param newSize minimum size of the new termBuffer
-   *  @return newly created termBuffer with length >= newSize
+   *  @return newly created termBuffer with {@code length >= newSize}
    */
   public char[] resizeBuffer(int newSize);
 

@@ -14,18 +14,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.search;
 
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
-
 import org.apache.solr.schema.SchemaField;
 
 import java.util.Arrays;
-import java.util.List;
-import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 /***
  * SortSpec encapsulates a Lucene Sort and a count of the number of documents
  * to return.
@@ -42,28 +39,6 @@ public class SortSpec
   }
   public SortSpec(Sort sort, SchemaField[] fields) {
     setSortAndFields(sort, Arrays.asList(fields));
-  }
-
-  /** @deprecated Specify both Sort and SchemaField[] when constructing */
-  @Deprecated
-  public SortSpec(Sort sort, int num) {
-    this(sort,0,num);
-  }
-
-  /** @deprecated Specify both Sort and SchemaField[] when constructing */
-  @Deprecated
-  public SortSpec(Sort sort, int offset, int num) {
-    setSort(sort);
-    this.offset=offset;
-    this.num=num;
-  }
-  
-  /** @deprecated use {@link #setSortAndFields} */
-  @Deprecated
-  public void setSort( Sort s )
-  {
-    sort = s;
-    fields = Collections.unmodifiableList(Arrays.asList(new SchemaField[s.getSort().length]));
   }
 
   /** 

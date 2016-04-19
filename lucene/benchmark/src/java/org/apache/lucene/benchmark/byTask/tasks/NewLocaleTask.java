@@ -1,5 +1,3 @@
-package org.apache.lucene.benchmark.byTask.tasks;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.benchmark.byTask.tasks;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.benchmark.byTask.tasks;
+
 
 import java.util.Locale;
 import java.util.StringTokenizer;
@@ -33,7 +33,6 @@ import org.apache.lucene.benchmark.byTask.PerfRunData;
  *  <li><code>ROOT</code>: The root (language-agnostic) Locale
  *  <li>&lt;empty string&gt;: Erase the Locale (null)
  * </ul>
- * </p>
  */
 public class NewLocaleTask extends PerfTask {
   private String language;

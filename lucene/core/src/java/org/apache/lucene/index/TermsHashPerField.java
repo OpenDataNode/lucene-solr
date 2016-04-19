@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,10 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
-import java.util.Comparator;
 
 import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
 import org.apache.lucene.util.ByteBlockPool;
@@ -37,7 +36,6 @@ abstract class TermsHashPerField implements Comparable<TermsHashPerField> {
   protected final DocumentsWriterPerThread.DocState docState;
   protected final FieldInvertState fieldState;
   TermToBytesRefAttribute termAtt;
-  BytesRef termBytesRef;
 
   // Copied from our perThread
   final IntBlockPool intPool;
@@ -73,7 +71,7 @@ abstract class TermsHashPerField implements Comparable<TermsHashPerField> {
     bytesHash = new BytesRefHash(termBytePool, HASH_INIT_SIZE, byteStarts);
   }
 
-  public void reset() {
+  void reset() {
     bytesHash.clear(false);
     if (nextPerField != null) {
       nextPerField.reset();
@@ -90,17 +88,21 @@ abstract class TermsHashPerField implements Comparable<TermsHashPerField> {
                 ints[upto+stream]);
   }
 
-  /** Collapse the hash table & sort in-place; also sets
+  int[] sortedTermIDs;
+
+  /** Collapse the hash table and sort in-place; also sets
    * this.sortedTermIDs to the results */
-  public int[] sortPostings(Comparator<BytesRef> termComp) {
-   return bytesHash.sort(termComp);
+  public int[] sortPostings() {
+    sortedTermIDs = bytesHash.sort(BytesRef.getUTF8SortedAsUnicodeComparator());
+    return sortedTermIDs;
   }
 
   private boolean doNextCall;
 
   // Secondary entry point (for 2nd & subsequent TermsHash),
   // because token text has already been "interned" into
-  // textStart, so we hash by textStart
+  // textStart, so we hash by textStart.  term vectors use
+  // this API.
   public void add(int textStart) throws IOException {
     int termID = bytesHash.addByPoolOffset(textStart);
     if (termID >= 0) {      // New posting
@@ -142,13 +144,10 @@ abstract class TermsHashPerField implements Comparable<TermsHashPerField> {
    *  entry point (for first TermsHash); postings use this
    *  API. */
   void add() throws IOException {
-
-    termAtt.fillBytesRef();
-
     // We are first in the chain so we must "intern" the
     // term text into textStart address
     // Get the text & hash of this term.
-    int termID = bytesHash.add(termBytesRef);
+    int termID = bytesHash.add(termAtt.getBytesRef());
       
     //System.out.println("add term=" + termBytesRef.utf8ToString() + " doc=" + docState.docID + " termID=" + termID);
 
@@ -289,10 +288,6 @@ abstract class TermsHashPerField implements Comparable<TermsHashPerField> {
    *  document. */
   boolean start(IndexableField field, boolean first) {
     termAtt = fieldState.termAttribute;
-    // EmptyTokenStream can have null term att
-    if (termAtt != null) {
-      termBytesRef = termAtt.getBytesRef();
-    }
     if (nextPerField != null) {
       doNextCall = nextPerField.start(field, first);
     }

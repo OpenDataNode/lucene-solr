@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,17 +14,28 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 import java.io.IOException;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.FilterLeafReader;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.BitDocIdSet;
+import org.apache.lucene.util.BitSet;
+import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.LuceneTestCase;
+import org.apache.lucene.util.SparseFixedBitSet;
 
 /**
  * 
@@ -75,8 +84,8 @@ public class TestFieldValueFilter extends LuceneTestCase {
     }
     IndexReader reader = DirectoryReader.open(directory);
     IndexSearcher searcher = newSearcher(reader);
-    TopDocs search = searcher.search(new TermQuery(new Term("all", "test")),
-        new FieldValueFilter("some"), docs);
+    Filter filter = new FieldValueFilter("some");
+    TopDocs search = searcher.search(new TermQuery(new Term("all", "test")), filter, docs);
     assertEquals(search.totalHits, numDocsWithValue);
     
     ScoreDoc[] scoreDocs = search.scoreDocs;
@@ -84,6 +93,48 @@ public class TestFieldValueFilter extends LuceneTestCase {
       assertEquals("value", reader.document(scoreDoc.doc).get("some"));
     }
     
+    reader.close();
+    directory.close();
+  }
+
+  public void testOptimizations() throws IOException {
+    Directory directory = newDirectory();
+    RandomIndexWriter writer = new RandomIndexWriter(random(), directory,
+        newIndexWriterConfig(new MockAnalyzer(random())));
+    final int docs = atLeast(10);
+    buildIndex(writer, docs);
+    IndexReader reader = DirectoryReader.open(directory);
+    LeafReader leafReader = reader.leaves().get(0).reader();
+    
+    FilterLeafReader filterReader = new FilterLeafReader(leafReader) {
+      @Override
+      public Bits getDocsWithField(String field) throws IOException {
+        switch (field) {
+          case "with_matchall":
+            return new Bits.MatchAllBits(maxDoc());
+          case "with_matchno":
+            return new Bits.MatchNoBits(maxDoc());
+          case "with_bitset":
+            BitSet b = random().nextBoolean() ? new SparseFixedBitSet(maxDoc()) : new FixedBitSet(maxDoc());
+            b.set(random().nextInt(maxDoc()));
+            return b;
+        }
+        return super.getDocsWithField(field);
+      }
+    };
+
+    Filter filter = new FieldValueFilter("with_matchall", true);
+    DocIdSet set = filter.getDocIdSet(filterReader.getContext(), null);
+    assertNull(set);
+
+    filter = new FieldValueFilter("with_matchno");
+    set = filter.getDocIdSet(filterReader.getContext(), null);
+    assertNull(set);
+
+    filter = new FieldValueFilter("with_bitset");
+    set = filter.getDocIdSet(filterReader.getContext(), null);
+    assertTrue(set instanceof BitDocIdSet);
+
     reader.close();
     directory.close();
   }
@@ -96,9 +147,12 @@ public class TestFieldValueFilter extends LuceneTestCase {
       if (random().nextBoolean()) {
         docStates[i] = 1;
         doc.add(newTextField("some", "value", Field.Store.YES));
+        doc.add(new SortedDocValuesField("some", new BytesRef("value")));
       }
       doc.add(newTextField("all", "test", Field.Store.NO));
+      doc.add(new SortedDocValuesField("all", new BytesRef("test")));
       doc.add(newTextField("id", "" + i, Field.Store.YES));
+      doc.add(new SortedDocValuesField("id", new BytesRef("" + i)));
       writer.addDocument(doc);
     }
     writer.commit();

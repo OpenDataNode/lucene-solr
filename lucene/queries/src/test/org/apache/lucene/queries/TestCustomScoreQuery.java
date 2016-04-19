@@ -1,5 +1,3 @@
-package org.apache.lucene.queries;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,15 +14,28 @@ package org.apache.lucene.queries;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queries;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.DocValues;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.NumericDocValues;
+import org.apache.lucene.index.Term;
 import org.apache.lucene.queries.function.FunctionQuery;
 import org.apache.lucene.queries.function.FunctionTestSetup;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.CheckHits;
 import org.apache.lucene.search.Explanation;
-import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.QueryUtils;
@@ -33,14 +44,6 @@ import org.apache.lucene.search.TermRangeQuery;
 import org.apache.lucene.search.TopDocs;
 import org.junit.BeforeClass;
 import org.junit.Test;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.Term;
 
 /**
  * Test CustomScoreQuery search.
@@ -50,26 +53,6 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
   @BeforeClass
   public static void beforeClass() throws Exception {
     createIndex(true);
-  }
-
-  /**
-   * Test that CustomScoreQuery of Type.BYTE returns the expected scores.
-   */
-  @Test
-  public void testCustomScoreByte() throws Exception {
-    // INT field values are small enough to be parsed as byte
-    doTestCustomScore(BYTE_VALUESOURCE, 1.0);
-    doTestCustomScore(BYTE_VALUESOURCE, 2.0);
-  }
-
-  /**
-   * Test that CustomScoreQuery of Type.SHORT returns the expected scores.
-   */
-  @Test
-  public void testCustomScoreShort() throws Exception {
-    // INT field values are small enough to be parsed as short
-    doTestCustomScore(SHORT_VALUESOURCE, 1.0);
-    doTestCustomScore(SHORT_VALUESOURCE, 3.0);
   }
 
   /**
@@ -86,11 +69,6 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
    */
   @Test
   public void testCustomScoreFloat() throws Exception {
-    // INT field can be parsed as float
-    doTestCustomScore(INT_AS_FLOAT_VALUESOURCE, 1.0);
-    doTestCustomScore(INT_AS_FLOAT_VALUESOURCE, 5.0);
-
-    // same values, but in float format
     doTestCustomScore(FLOAT_VALUESOURCE, 1.0);
     doTestCustomScore(FLOAT_VALUESOURCE, 6.0);
   }
@@ -109,7 +87,7 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
     }
     
     @Override
-    protected CustomScoreProvider getCustomScoreProvider(AtomicReaderContext context) {
+    protected CustomScoreProvider getCustomScoreProvider(LeafReaderContext context) {
       return new CustomScoreProvider(context) {
         @Override
         public float customScore(int doc, float subQueryScore, float valSrcScore) {
@@ -118,13 +96,13 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
 
         @Override
         public Explanation customExplain(int doc, Explanation subQueryExpl, Explanation valSrcExpl) {
-          float valSrcScore = valSrcExpl == null ? 0 : valSrcExpl.getValue();
-          Explanation exp = new Explanation(valSrcScore + subQueryExpl.getValue(), "custom score: sum of:");
-          exp.addDetail(subQueryExpl);
+          List<Explanation> subs = new ArrayList<>();
+          subs.add(subQueryExpl);
           if (valSrcExpl != null) {
-            exp.addDetail(valSrcExpl);
+            subs.add(valSrcExpl);
           }
-          return exp;
+          float valSrcScore = valSrcExpl == null ? 0 : valSrcExpl.getValue();
+          return Explanation.match(valSrcScore + subQueryExpl.getValue(), "custom score: sum of:", subs);
         }
       };
     }
@@ -144,7 +122,7 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
     }
 
     @Override
-    protected CustomScoreProvider getCustomScoreProvider(AtomicReaderContext context) {
+    protected CustomScoreProvider getCustomScoreProvider(LeafReaderContext context) {
       return new CustomScoreProvider(context) {
         @Override
         public float customScore(int doc, float subQueryScore, float valSrcScores[]) {
@@ -164,17 +142,12 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
           if (valSrcExpls.length == 0) {
             return subQueryExpl;
           }
-          Explanation exp = new Explanation(valSrcExpls[0].getValue() + subQueryExpl.getValue(), "sum of:");
-          exp.addDetail(subQueryExpl);
-          exp.addDetail(valSrcExpls[0]);
           if (valSrcExpls.length == 1) {
-            exp.setDescription("CustomMulAdd, sum of:");
-            return exp;
+            return Explanation.match(valSrcExpls[0].getValue() + subQueryExpl.getValue(), "CustomMulAdd, sum of:", subQueryExpl, valSrcExpls[0]);
+          } else {
+            Explanation exp = Explanation.match(valSrcExpls[0].getValue() + subQueryExpl.getValue(), "sum of:", subQueryExpl, valSrcExpls[0]);
+            return Explanation.match(valSrcExpls[1].getValue() * exp.getValue(), "custom score: product of:", valSrcExpls[1], exp);
           }
-          Explanation exp2 = new Explanation(valSrcExpls[1].getValue() * exp.getValue(), "custom score: product of:");
-          exp2.addDetail(valSrcExpls[1]);
-          exp2.addDetail(exp);
-          return exp2;
         }
       };
     }
@@ -183,8 +156,8 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
   private final class CustomExternalQuery extends CustomScoreQuery {
 
     @Override
-    protected CustomScoreProvider getCustomScoreProvider(AtomicReaderContext context) throws IOException {
-      final FieldCache.Ints values = FieldCache.DEFAULT.getInts(context.reader(), INT_FIELD, false);
+    protected CustomScoreProvider getCustomScoreProvider(LeafReaderContext context) throws IOException {
+      final NumericDocValues values = DocValues.getNumeric(context.reader(), INT_FIELD);
       return new CustomScoreProvider(context) {
         @Override
         public float customScore(int doc, float subScore, float valSrcScore) {
@@ -201,12 +174,12 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
 
   @Test
   public void testCustomExternalQuery() throws Exception {
-    BooleanQuery q1 = new BooleanQuery();
+    BooleanQuery.Builder q1 = new BooleanQuery.Builder();
     q1.add(new TermQuery(new Term(TEXT_FIELD, "first")), BooleanClause.Occur.SHOULD);
     q1.add(new TermQuery(new Term(TEXT_FIELD, "aid")), BooleanClause.Occur.SHOULD);
     q1.add(new TermQuery(new Term(TEXT_FIELD, "text")), BooleanClause.Occur.SHOULD);
     
-    final Query q = new CustomExternalQuery(q1);
+    final Query q = new CustomExternalQuery(q1.build());
     log(q);
 
     IndexReader r = DirectoryReader.open(dir);
@@ -252,46 +225,60 @@ public class TestCustomScoreQuery extends FunctionTestSetup {
     IndexSearcher s = newSearcher(r);
 
     // regular (boolean) query.
-    BooleanQuery q1 = new BooleanQuery();
-    q1.add(new TermQuery(new Term(TEXT_FIELD, "first")), BooleanClause.Occur.SHOULD);
-    q1.add(new TermQuery(new Term(TEXT_FIELD, "aid")), BooleanClause.Occur.SHOULD);
-    q1.add(new TermQuery(new Term(TEXT_FIELD, "text")), BooleanClause.Occur.SHOULD);
+    BooleanQuery.Builder q1b = new BooleanQuery.Builder();
+    q1b.add(new TermQuery(new Term(TEXT_FIELD, "first")), BooleanClause.Occur.SHOULD);
+    q1b.add(new TermQuery(new Term(TEXT_FIELD, "aid")), BooleanClause.Occur.SHOULD);
+    q1b.add(new TermQuery(new Term(TEXT_FIELD, "text")), BooleanClause.Occur.SHOULD);
+    Query q1 = q1b.build();
     log(q1);
 
     // custom query, that should score the same as q1.
-    BooleanQuery q2CustomNeutral = new BooleanQuery(true);
+    BooleanQuery.Builder q2CustomNeutralB = new BooleanQuery.Builder();
+    q2CustomNeutralB.setDisableCoord(true);
     Query q2CustomNeutralInner = new CustomScoreQuery(q1);
-    q2CustomNeutral.add(q2CustomNeutralInner, BooleanClause.Occur.SHOULD);
+    q2CustomNeutralB.add(new BoostQuery(q2CustomNeutralInner, (float)Math.sqrt(dboost)), BooleanClause.Occur.SHOULD);
     // a little tricky: we split the boost across an outer BQ and CustomScoreQuery
     // this ensures boosting is correct across all these functions (see LUCENE-4935)
-    q2CustomNeutral.setBoost((float)Math.sqrt(dboost));
-    q2CustomNeutralInner.setBoost((float)Math.sqrt(dboost));
+    Query q2CustomNeutral = q2CustomNeutralB.build();
+    q2CustomNeutral = new BoostQuery(q2CustomNeutral, (float)Math.sqrt(dboost));
     log(q2CustomNeutral);
 
     // custom query, that should (by default) multiply the scores of q1 by that of the field
-    CustomScoreQuery q3CustomMul = new CustomScoreQuery(q1, functionQuery);
-    q3CustomMul.setStrict(true);
-    q3CustomMul.setBoost(boost);
+    Query q3CustomMul;
+    {
+      CustomScoreQuery csq = new CustomScoreQuery(q1, functionQuery);
+      csq.setStrict(true);
+      q3CustomMul = csq;
+    }
+    q3CustomMul = new BoostQuery(q3CustomMul, boost);
     log(q3CustomMul);
 
     // custom query, that should add the scores of q1 to that of the field
-    CustomScoreQuery q4CustomAdd = new CustomAddQuery(q1, functionQuery);
-    q4CustomAdd.setStrict(true);
-    q4CustomAdd.setBoost(boost);
+    Query q4CustomAdd;
+    {
+      CustomScoreQuery csq = new CustomAddQuery(q1, functionQuery);
+      csq.setStrict(true);
+      q4CustomAdd = csq;
+    }
+    q4CustomAdd = new BoostQuery(q4CustomAdd, boost);
     log(q4CustomAdd);
 
     // custom query, that multiplies and adds the field score to that of q1
-    CustomScoreQuery q5CustomMulAdd = new CustomMulAddQuery(q1, functionQuery, functionQuery);
-    q5CustomMulAdd.setStrict(true);
-    q5CustomMulAdd.setBoost(boost);
+    Query q5CustomMulAdd;
+    {
+      CustomScoreQuery csq = new CustomMulAddQuery(q1, functionQuery, functionQuery);
+      csq.setStrict(true);
+      q5CustomMulAdd = csq;
+    }
+    q5CustomMulAdd = new BoostQuery(q5CustomMulAdd, boost);
     log(q5CustomMulAdd);
 
     // do al the searches 
-    TopDocs td1 = s.search(q1, null, 1000);
-    TopDocs td2CustomNeutral = s.search(q2CustomNeutral, null, 1000);
-    TopDocs td3CustomMul = s.search(q3CustomMul, null, 1000);
-    TopDocs td4CustomAdd = s.search(q4CustomAdd, null, 1000);
-    TopDocs td5CustomMulAdd = s.search(q5CustomMulAdd, null, 1000);
+    TopDocs td1 = s.search(q1, 1000);
+    TopDocs td2CustomNeutral = s.search(q2CustomNeutral, 1000);
+    TopDocs td3CustomMul = s.search(q3CustomMul, 1000);
+    TopDocs td4CustomAdd = s.search(q4CustomAdd, 1000);
+    TopDocs td5CustomMulAdd = s.search(q5CustomMulAdd, 1000);
 
     // put results in map so we can verify the scores although they have changed
     Map<Integer,Float> h1               = topDocsToMap(td1);

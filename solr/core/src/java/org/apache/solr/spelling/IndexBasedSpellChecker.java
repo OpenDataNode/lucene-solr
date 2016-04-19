@@ -1,4 +1,3 @@
-package org.apache.solr.spelling;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.spelling;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.spelling;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -28,9 +27,6 @@ import org.apache.solr.search.SolrIndexSearcher;
 
 import java.io.File;
 import java.io.IOException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 
 /**
  * <p>
@@ -45,7 +41,6 @@ import org.slf4j.LoggerFactory;
  * @since solr 1.3
  **/
 public class IndexBasedSpellChecker extends AbstractLuceneSpellChecker {
-  private static final Logger log = LoggerFactory.getLogger(IndexBasedSpellChecker.class);
 
   public static final String THRESHOLD_TOKEN_FREQUENCY = "thresholdTokenFrequency";
 
@@ -64,7 +59,7 @@ public class IndexBasedSpellChecker extends AbstractLuceneSpellChecker {
   private void initSourceReader() {
     if (sourceLocation != null) {
       try {
-        FSDirectory luceneIndexDir = FSDirectory.open(new File(sourceLocation));
+        FSDirectory luceneIndexDir = FSDirectory.open(new File(sourceLocation).toPath());
         this.reader = DirectoryReader.open(luceneIndexDir);
       } catch (IOException e) {
         throw new RuntimeException(e);
@@ -93,7 +88,7 @@ public class IndexBasedSpellChecker extends AbstractLuceneSpellChecker {
     // TODO: you should be able to specify the IWC params?
     // TODO: if we enable this, codec gets angry since field won't exist in the schema
     // config.setCodec(core.getCodec());
-    spellChecker.indexDictionary(dictionary, new IndexWriterConfig(core.getSolrConfig().luceneMatchVersion, null), false);
+    spellChecker.indexDictionary(dictionary, new IndexWriterConfig(null), false);
   }
 
   @Override

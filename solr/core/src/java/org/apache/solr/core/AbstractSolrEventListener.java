@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.core;
 
 import org.apache.solr.common.util.NamedList;
@@ -61,7 +60,7 @@ public class AbstractSolrEventListener implements SolrEventListener {
   /**
    * Add the {@link org.apache.solr.common.params.EventParams#EVENT} with either the {@link org.apache.solr.common.params.EventParams#NEW_SEARCHER}
    * or {@link org.apache.solr.common.params.EventParams#FIRST_SEARCHER} values depending on the value of currentSearcher.
-   * <p/>
+   * <p>
    * Makes a copy of NamedList and then adds the parameters.
    *
    *

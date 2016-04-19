@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.compressing;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,19 +14,20 @@ package org.apache.lucene.codecs.compressing;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.compressing;
 
 /** CompressionCodec that uses {@link CompressionMode#FAST_DECOMPRESSION} */
 public class FastDecompressionCompressingCodec extends CompressingCodec {
 
   /** Constructor that allows to configure the chunk size. */
-  public FastDecompressionCompressingCodec(int chunkSize, boolean withSegmentSuffix) {
+  public FastDecompressionCompressingCodec(int chunkSize, int maxDocsPerChunk, boolean withSegmentSuffix, int blockSize) {
     super("FastDecompressionCompressingStoredFields",
           withSegmentSuffix ? "FastDecompressionCompressingStoredFields" : "",
-          CompressionMode.FAST_DECOMPRESSION, chunkSize);
+          CompressionMode.FAST_DECOMPRESSION, chunkSize, maxDocsPerChunk, blockSize);
   }
 
   /** Default constructor. */
   public FastDecompressionCompressingCodec() {
-    this(1 << 14, false);
+    this(1 << 14, 256, false, 1024);
   }
 }

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler;
 
 import org.apache.lucene.util.TestUtil;
@@ -30,6 +29,7 @@ import org.junit.Test;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.ArrayList;
 
@@ -50,7 +50,7 @@ public class TestCSVLoader extends SolrTestCaseJ4 {
     // if you override setUp or tearDown, you better call
     // the super classes version
     super.setUp();
-    File tempDir = createTempDir("TestCSVLoader");
+    File tempDir = createTempDir("TestCSVLoader").toFile();
     file = new File(tempDir, "solr_tmp.csv");
     filename = file.getPath();
     cleanup();
@@ -62,7 +62,7 @@ public class TestCSVLoader extends SolrTestCaseJ4 {
     // if you override setUp or tearDown, you better call
     // the super classes version
     super.tearDown();
-    deleteFile();
+    Files.delete(file.toPath());
   }
 
   void makeFile(String contents) {
@@ -73,10 +73,6 @@ public class TestCSVLoader extends SolrTestCaseJ4 {
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
-  }
-
-  void deleteFile() {
-    file.delete();
   }
 
   void cleanup() {

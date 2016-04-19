@@ -1,4 +1,3 @@
-package org.apache.solr.rest.schema;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,12 +14,13 @@ package org.apache.solr.rest.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
+package org.apache.solr.rest.schema;
+import org.apache.solr.cloud.ZkSolrResourceLoader;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.util.SimpleOrderedMap;
+import org.apache.solr.core.CoreDescriptor;
 import org.apache.solr.rest.GETable;
 import org.apache.solr.rest.POSTable;
 import org.apache.solr.schema.IndexSchema;
@@ -33,6 +33,7 @@ import org.restlet.resource.ResourceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -46,7 +47,7 @@ import java.util.TreeSet;
 
 /**
  * This class responds to requests at /solr/(corename)/schema/fields
- * <p/>
+ * <p>
  * Two query parameters are supported:
  * <ul>
  * <li>
@@ -62,7 +63,7 @@ import java.util.TreeSet;
  * </ul>
  */
 public class FieldCollectionResource extends BaseFieldResource implements GETable, POSTable {
-  private static final Logger log = LoggerFactory.getLogger(FieldCollectionResource.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   private boolean includeDynamic;
 
   public FieldCollectionResource() {
@@ -132,7 +133,7 @@ public class FieldCollectionResource extends BaseFieldResource implements GETabl
           throw new SolrException(ErrorCode.BAD_REQUEST, message);
         } else {
           Object object = ObjectBuilder.fromJSON(entity.getText());
-          if ( ! (object instanceof List)) {
+          if (!(object instanceof List)) {
             String message = "Invalid JSON type " + object.getClass().getName() + ", expected List of the form"
                 + " (ignore the backslashes): [{\"name\":\"foo\",\"type\":\"text_general\", ...}, {...}, ...]";
             log.error(message);
@@ -177,6 +178,7 @@ public class FieldCollectionResource extends BaseFieldResource implements GETabl
               newFields.add(oldSchema.newField(fieldName, fieldType, map));
               newFieldArguments.add(new NewFieldArguments(fieldName, fieldType, map));
             }
+            IndexSchema newSchema = null;
             boolean firstAttempt = true;
             boolean success = false;
             while (!success) {
@@ -196,7 +198,7 @@ public class FieldCollectionResource extends BaseFieldResource implements GETabl
                 }
                 firstAttempt = false;
                 synchronized (oldSchema.getSchemaUpdateLock()) {
-                  IndexSchema newSchema = oldSchema.addFields(newFields, copyFields);
+                  newSchema = oldSchema.addFields(newFields, copyFields, true);
                   if (null != newSchema) {
                     getSolrCore().setLatestSchema(newSchema);
                     success = true;
@@ -209,6 +211,7 @@ public class FieldCollectionResource extends BaseFieldResource implements GETabl
                 oldSchema = getSolrCore().getLatestSchema();
               }
             }
+            waitForSchemaUpdateToPropagate(newSchema);
           }
         }
       }
@@ -218,20 +221,5 @@ public class FieldCollectionResource extends BaseFieldResource implements GETabl
     handlePostExecution(log);
 
     return new SolrOutputRepresentation();
-  }
-
-  private static class NewFieldArguments {
-    private String name;
-    private String type;
-    Map<String, Object> map;
-    NewFieldArguments(String name, String type, Map<String, Object> map){
-      this.name = name;
-      this.type = type;
-      this.map = map;
-    }
-
-    public String getName() { return name; }
-    public String getType() { return type; }
-    public Map<String, Object> getMap() { return map; }
   }
 }

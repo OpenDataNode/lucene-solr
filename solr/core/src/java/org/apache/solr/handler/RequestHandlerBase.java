@@ -14,15 +14,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler;
 
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
+import org.apache.solr.common.util.SuppressForbidden;
+import org.apache.solr.core.PluginInfo;
+import org.apache.solr.core.PluginBag;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.core.SolrInfoMBean;
+import org.apache.solr.handler.component.SearchHandler;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestHandler;
 import org.apache.solr.response.SolrQueryResponse;
@@ -31,14 +34,19 @@ import org.apache.solr.util.SolrPluginUtils;
 import org.apache.solr.util.stats.Snapshot;
 import org.apache.solr.util.stats.Timer;
 import org.apache.solr.util.stats.TimerContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.lang.invoke.MethodHandles;
 import java.net.URL;
 import java.util.concurrent.atomic.AtomicLong;
+
+import static org.apache.solr.core.RequestParams.USEPARAM;
 
 /**
  *
  */
-public abstract class RequestHandlerBase implements SolrRequestHandler, SolrInfoMBean {
+public abstract class RequestHandlerBase implements SolrRequestHandler, SolrInfoMBean, NestedRequestHandler {
 
   protected NamedList initArgs = null;
   protected SolrParams defaults;
@@ -51,11 +59,21 @@ public abstract class RequestHandlerBase implements SolrRequestHandler, SolrInfo
   private final AtomicLong numErrors = new AtomicLong();
   private final AtomicLong numTimeouts = new AtomicLong();
   private final Timer requestTimes = new Timer();
-  private final long handlerStart = System.currentTimeMillis();
+
+  private final long handlerStart;
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
+  private PluginInfo pluginInfo;
+
+  @SuppressForbidden(reason = "Need currentTimeMillis, used only for stats output")
+  public RequestHandlerBase() {
+    handlerStart = System.currentTimeMillis();
+  }
 
   /**
    * Initializes the {@link org.apache.solr.request.SolrRequestHandler} by creating three {@link org.apache.solr.common.params.SolrParams} named.
-   * <table border="1">
+   * <table border="1" summary="table of parameters">
    * <tr><th>Name</th><th>Description</th></tr>
    * <tr><td>defaults</td><td>Contains all of the named arguments contained within the list element named "defaults".</td></tr>
    * <tr><td>appends</td><td>Contains all of the named arguments contained within the list element named "appends".</td></tr>
@@ -130,13 +148,15 @@ public abstract class RequestHandlerBase implements SolrRequestHandler, SolrInfo
     numRequests.incrementAndGet();
     TimerContext timer = requestTimes.time();
     try {
-      SolrPluginUtils.setDefaults(req,defaults,appends,invariants);
+      if(pluginInfo != null && pluginInfo.attributes.containsKey(USEPARAM)) req.getContext().put(USEPARAM,pluginInfo.attributes.get(USEPARAM));
+      SolrPluginUtils.setDefaults(this, req, defaults, appends, invariants);
+      req.getContext().remove(USEPARAM);
       rsp.setHttpCaching(httpCaching);
       handleRequestBody( req, rsp );
       // count timeouts
       NamedList header = rsp.getResponseHeader();
       if(header != null) {
-        Object partialResults = header.get("partialResults");
+        Object partialResults = header.get(SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY);
         boolean timedOut = partialResults == null ? false : (Boolean)partialResults;
         if( timedOut ) {
           numTimeouts.incrementAndGet();
@@ -150,10 +170,10 @@ public abstract class RequestHandlerBase implements SolrRequestHandler, SolrInfo
           // TODO: should we allow this to be counted as an error (numErrors++)?
 
         } else {
-          SolrException.log(SolrCore.log,e);
+          SolrException.log(log, e);
         }
       } else {
-        SolrException.log(SolrCore.log,e);
+        SolrException.log(log, e);
         if (e instanceof SyntaxError) {
           e = new SolrException(SolrException.ErrorCode.BAD_REQUEST, e);
         }
@@ -177,7 +197,7 @@ public abstract class RequestHandlerBase implements SolrRequestHandler, SolrInfo
   @Override
   public abstract String getDescription();
   @Override
-  public abstract String getSource();
+  public String getSource() { return null; }
   
   @Override
   public String getVersion() {
@@ -193,6 +213,53 @@ public abstract class RequestHandlerBase implements SolrRequestHandler, SolrInfo
   public URL[] getDocs() {
     return null;  // this can be overridden, but not required
   }
+
+
+  @Override
+  public SolrRequestHandler getSubHandler(String subPath) {
+    return null;
+  }
+
+
+  /**
+   * Get the request handler registered to a given name.
+   *
+   * This function is thread safe.
+   */
+  public static SolrRequestHandler getRequestHandler(String handlerName, PluginBag<SolrRequestHandler> reqHandlers) {
+    if(handlerName == null) return null;
+    SolrRequestHandler handler = reqHandlers.get(handlerName);
+    int idx = 0;
+    if(handler == null) {
+      for (; ; ) {
+        idx = handlerName.indexOf('/', idx+1);
+        if (idx > 0) {
+          String firstPart = handlerName.substring(0, idx);
+          handler = reqHandlers.get(firstPart);
+          if (handler == null) continue;
+          if (handler instanceof NestedRequestHandler) {
+            return ((NestedRequestHandler) handler).getSubHandler(handlerName.substring(idx));
+          }
+        } else {
+          break;
+        }
+      }
+    }
+    return handler;
+  }
+
+  /**
+   *
+   * @param pluginInfo information about the plugin
+   */
+  public void setPluginInfo(PluginInfo pluginInfo){
+    if(this.pluginInfo==null) this.pluginInfo = pluginInfo;
+  }
+
+  public PluginInfo getPluginInfo(){
+    return  pluginInfo;
+  }
+
 
   @Override
   public NamedList<Object> getStatistics() {

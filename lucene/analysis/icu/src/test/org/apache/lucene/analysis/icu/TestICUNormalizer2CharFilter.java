@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.icu;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.icu;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.icu;
+
 
 import java.io.IOException;
 import java.io.Reader;
@@ -60,7 +60,8 @@ public class TestICUNormalizer2CharFilter extends BaseTokenStreamTestCase {
     CharFilter reader = new ICUNormalizer2CharFilter(new StringReader(input),
       Normalizer2.getInstance(null, "nfkc", Normalizer2.Mode.COMPOSE));
 
-    Tokenizer tokenStream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    Tokenizer tokenStream = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    tokenStream.setReader(reader);
 
     assertTokenStreamContents(tokenStream,
       new String[] {"°C", "No", "(株)", "グラム", "ザ", "ゾ", "ピゴ"},
@@ -76,7 +77,8 @@ public class TestICUNormalizer2CharFilter extends BaseTokenStreamTestCase {
     CharFilter reader = new ICUNormalizer2CharFilter(new StringReader(input),
       Normalizer2.getInstance(null, "nfkc_cf", Normalizer2.Mode.COMPOSE));
 
-    Tokenizer tokenStream = new NGramTokenizer(newAttributeFactory(), reader, 1, 1);
+    Tokenizer tokenStream = new NGramTokenizer(newAttributeFactory(), 1, 1);
+    tokenStream.setReader(reader);
 
     assertTokenStreamContents(tokenStream,
       new String[] {"ピ", "ゴ", "5", "°", "c", "n", "o", "(", "株", ")", "グ", "ラ", "ム", "ザ", "ゾ"},
@@ -92,7 +94,8 @@ public class TestICUNormalizer2CharFilter extends BaseTokenStreamTestCase {
     CharFilter reader = new ICUNormalizer2CharFilter(new StringReader(input),
       Normalizer2.getInstance(null, "nfkc_cf", Normalizer2.Mode.COMPOSE));
 
-    Tokenizer tokenStream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    Tokenizer tokenStream = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    tokenStream.setReader(reader);
 
     assertTokenStreamContents(tokenStream,
       new String[] {"صلى", "الله", "عليه", "وسلم"},
@@ -102,16 +105,16 @@ public class TestICUNormalizer2CharFilter extends BaseTokenStreamTestCase {
     );
   }
 
-  public void doTestMode(final Normalizer2 normalizer, int maxLength, int iterations) throws IOException {
+  public void doTestMode(final Normalizer2 normalizer, int maxLength, int iterations, final int bufferSize) throws IOException {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        return new TokenStreamComponents(new MockTokenizer(reader, MockTokenizer.KEYWORD, false));
+      protected TokenStreamComponents createComponents(String fieldName) {
+        return new TokenStreamComponents(new MockTokenizer(MockTokenizer.KEYWORD, false));
       }
 
       @Override
       protected Reader initReader(String fieldName, Reader reader) {
-        return new ICUNormalizer2CharFilter(reader, normalizer);
+        return new ICUNormalizer2CharFilter(reader, normalizer, bufferSize);
       }
     };
 
@@ -126,54 +129,56 @@ public class TestICUNormalizer2CharFilter extends BaseTokenStreamTestCase {
       }
       checkOneTerm(a, input, normalized);
     }
+    a.close();
   }
 
   public void testNFC() throws Exception {
-    doTestMode(Normalizer2.getInstance(null, "nfc", Normalizer2.Mode.COMPOSE), 20, RANDOM_MULTIPLIER*1000);
+    doTestMode(Normalizer2.getInstance(null, "nfc", Normalizer2.Mode.COMPOSE), 20, RANDOM_MULTIPLIER*1000, 128);
   }
   
   public void testNFCHuge() throws Exception {
-    doTestMode(Normalizer2.getInstance(null, "nfc", Normalizer2.Mode.COMPOSE), 8192, RANDOM_MULTIPLIER*100);
+    doTestMode(Normalizer2.getInstance(null, "nfc", Normalizer2.Mode.COMPOSE), 256, RANDOM_MULTIPLIER*500, 16);
   }
 
   public void testNFD() throws Exception {
-    doTestMode(Normalizer2.getInstance(null, "nfc", Normalizer2.Mode.DECOMPOSE), 20, RANDOM_MULTIPLIER*1000);
+    doTestMode(Normalizer2.getInstance(null, "nfc", Normalizer2.Mode.DECOMPOSE), 20, RANDOM_MULTIPLIER*1000, 128);
   }
   
   public void testNFDHuge() throws Exception {
-    doTestMode(Normalizer2.getInstance(null, "nfc", Normalizer2.Mode.DECOMPOSE), 8192, RANDOM_MULTIPLIER*100);
+    doTestMode(Normalizer2.getInstance(null, "nfc", Normalizer2.Mode.DECOMPOSE), 256, RANDOM_MULTIPLIER*500, 16);
   }
 
   public void testNFKC() throws Exception {
-    doTestMode(Normalizer2.getInstance(null, "nfkc", Normalizer2.Mode.COMPOSE), 20, RANDOM_MULTIPLIER*1000);
+    doTestMode(Normalizer2.getInstance(null, "nfkc", Normalizer2.Mode.COMPOSE), 20, RANDOM_MULTIPLIER*1000, 128);
   }
   
   public void testNFKCHuge() throws Exception {
-    doTestMode(Normalizer2.getInstance(null, "nfkc", Normalizer2.Mode.COMPOSE), 8192, RANDOM_MULTIPLIER*100);
+    doTestMode(Normalizer2.getInstance(null, "nfkc", Normalizer2.Mode.COMPOSE), 256, RANDOM_MULTIPLIER*500, 16);
   }
 
   public void testNFKD() throws Exception {
-    doTestMode(Normalizer2.getInstance(null, "nfkc", Normalizer2.Mode.DECOMPOSE), 20, RANDOM_MULTIPLIER*1000);
+    doTestMode(Normalizer2.getInstance(null, "nfkc", Normalizer2.Mode.DECOMPOSE), 20, RANDOM_MULTIPLIER*1000, 128);
   }
   
   public void testNFKDHuge() throws Exception {
-    doTestMode(Normalizer2.getInstance(null, "nfkc", Normalizer2.Mode.DECOMPOSE), 8192, RANDOM_MULTIPLIER*100);
+    doTestMode(Normalizer2.getInstance(null, "nfkc", Normalizer2.Mode.DECOMPOSE), 256, RANDOM_MULTIPLIER*500, 16);
   }
 
   public void testNFKC_CF() throws Exception {
-    doTestMode(Normalizer2.getInstance(null, "nfkc_cf", Normalizer2.Mode.COMPOSE), 20, RANDOM_MULTIPLIER*1000);
+    doTestMode(Normalizer2.getInstance(null, "nfkc_cf", Normalizer2.Mode.COMPOSE), 20, RANDOM_MULTIPLIER*1000, 128);
   }
   
   public void testNFKC_CFHuge() throws Exception {
-    doTestMode(Normalizer2.getInstance(null, "nfkc_cf", Normalizer2.Mode.COMPOSE), 8192, RANDOM_MULTIPLIER*100);
+    doTestMode(Normalizer2.getInstance(null, "nfkc_cf", Normalizer2.Mode.COMPOSE), 256, RANDOM_MULTIPLIER*500, 16);
   }
 
+  @AwaitsFix(bugUrl = "https://issues.apache.org/jira/browse/LUCENE-5595")
   public void testRandomStrings() throws IOException {
     // nfkc_cf
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        return new TokenStreamComponents(new MockTokenizer(reader, MockTokenizer.WHITESPACE, false));
+      protected TokenStreamComponents createComponents(String fieldName) {
+        return new TokenStreamComponents(new MockTokenizer(MockTokenizer.WHITESPACE, false));
       }
 
       @Override
@@ -183,13 +188,14 @@ public class TestICUNormalizer2CharFilter extends BaseTokenStreamTestCase {
     };
     checkRandomData(random(), a, 1000*RANDOM_MULTIPLIER);
     // huge strings
-    checkRandomData(random(), a, 100*RANDOM_MULTIPLIER, 8192);
+    checkRandomData(random(), a, 25*RANDOM_MULTIPLIER, 8192);
+    a.close();
 
     // nfkd
     a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        return new TokenStreamComponents(new MockTokenizer(reader, MockTokenizer.WHITESPACE, false));
+      protected TokenStreamComponents createComponents(String fieldName) {
+        return new TokenStreamComponents(new MockTokenizer(MockTokenizer.WHITESPACE, false));
       }
 
       @Override
@@ -199,15 +205,16 @@ public class TestICUNormalizer2CharFilter extends BaseTokenStreamTestCase {
     };
     checkRandomData(random(), a, 1000*RANDOM_MULTIPLIER);
     // huge strings
-    checkRandomData(random(), a, 100*RANDOM_MULTIPLIER, 8192);
+    checkRandomData(random(), a, 25*RANDOM_MULTIPLIER, 8192);
+    a.close();
   }
   
   public void testCuriousString() throws Exception {
     String text = "\udb40\udc3d\uf273\ue960\u06c8\ud955\udc13\ub7fc\u0692 \u2089\u207b\u2073\u2075";
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        return new TokenStreamComponents(new MockTokenizer(reader, MockTokenizer.WHITESPACE, false));
+      protected TokenStreamComponents createComponents(String fieldName) {
+        return new TokenStreamComponents(new MockTokenizer(MockTokenizer.WHITESPACE, false));
       }
 
       @Override
@@ -218,6 +225,7 @@ public class TestICUNormalizer2CharFilter extends BaseTokenStreamTestCase {
     for (int i = 0; i < 1000; i++) {
       checkAnalysisConsistency(random(), a, false, text);
     }
+    a.close();
   }
   
   public void testCuriousMassiveString() throws Exception {
@@ -396,8 +404,8 @@ public class TestICUNormalizer2CharFilter extends BaseTokenStreamTestCase {
     
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        return new TokenStreamComponents(new MockTokenizer(reader, MockTokenizer.WHITESPACE, false));
+      protected TokenStreamComponents createComponents(String fieldName) {
+        return new TokenStreamComponents(new MockTokenizer(MockTokenizer.WHITESPACE, false));
       }
 
       @Override
@@ -405,8 +413,9 @@ public class TestICUNormalizer2CharFilter extends BaseTokenStreamTestCase {
         return new ICUNormalizer2CharFilter(reader, Normalizer2.getInstance(null, "nfkc_cf", Normalizer2.Mode.COMPOSE));
       }
     };
-    for (int i = 0; i < 1000; i++) {
+    for (int i = 0; i < 25; i++) {
       checkAnalysisConsistency(random(), a, false, text);
     }
+    a.close();
   }
 }

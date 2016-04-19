@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,14 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
+import java.io.File;
+
+import org.apache.solr.client.solrj.SolrClient;
+import org.apache.solr.client.solrj.embedded.JettySolrRunner;
 import org.junit.BeforeClass;
-
+import org.junit.Test;
 
 public class ShardRoutingCustomTest extends AbstractFullDistribZkTestBase {
 
@@ -34,8 +37,8 @@ public class ShardRoutingCustomTest extends AbstractFullDistribZkTestBase {
     sliceCount = 0;
   }
 
-  @Override
-  public void doTest() throws Exception {
+  @Test
+  public void test() throws Exception {
     boolean testFinished = false;
     try {
       doCustomSharding();
@@ -51,7 +54,31 @@ public class ShardRoutingCustomTest extends AbstractFullDistribZkTestBase {
   private void doCustomSharding() throws Exception {
     printLayout();
 
-    startCloudJetty(collection, "shardA");
+    int totalReplicas = getTotalReplicas(collection);
+
+    File jettyDir = createTempDir("jetty").toFile();
+    jettyDir.mkdirs();
+    setupJettySolrHome(jettyDir);
+    JettySolrRunner j = createJetty(jettyDir, createTempDir().toFile().getAbsolutePath(), "shardA", "solrconfig.xml", null);
+    jettys.add(j);
+    SolrClient client = createNewSolrClient(j.getLocalPort());
+    clients.add(client);
+
+    int retries = 60;
+    while (--retries >= 0) {
+      // total replicas changed.. assume it was us
+      if (getTotalReplicas(collection) != totalReplicas) {
+       break;
+      }
+      Thread.sleep(500);
+    }
+
+    if (retries <= 0) {
+      fail("Timeout waiting for " + j + " to appear in clusterstate");
+      printLayout();
+    }
+
+    updateMappingsFromZk(this.jettys, this.clients);
 
     printLayout();
   }

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.miscellaneous;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,27 +14,27 @@ package org.apache.lucene.analysis.miscellaneous;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.miscellaneous;
+
 
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
-import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.snowball.SnowballFilter;
 
 import java.io.IOException;
-import java.io.StringReader;
 
 public class TestKeywordRepeatFilter extends BaseTokenStreamTestCase {
 
   public void testBasic() throws IOException {
     TokenStream ts = new RemoveDuplicatesTokenFilter(new SnowballFilter(new KeywordRepeatFilter(
-        new MockTokenizer(new StringReader("the birds are flying"), MockTokenizer.WHITESPACE, false)), "English"));
+        whitespaceMockTokenizer("the birds are flying")), "English"));
     assertTokenStreamContents(ts, new String[] { "the", "birds", "bird", "are", "flying", "fli"}, new int[] {1,1,0,1,1,0});
   }
 
 
   public void testComposition() throws IOException {
     TokenStream ts = new RemoveDuplicatesTokenFilter(new SnowballFilter(new KeywordRepeatFilter(new KeywordRepeatFilter(
-        new MockTokenizer(new StringReader("the birds are flying"), MockTokenizer.WHITESPACE, false))), "English"));
+        whitespaceMockTokenizer("the birds are flying"))), "English"));
     assertTokenStreamContents(ts, new String[] { "the", "birds", "bird", "are", "flying", "fli"}, new int[] {1,1,0,1,1,0});
   }
 

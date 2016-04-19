@@ -14,26 +14,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr;
 
 import org.apache.lucene.util.TestUtil;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.SentinelIntSet;
 import org.apache.lucene.util.mutable.MutableValueInt;
 import org.apache.solr.core.SolrInfoMBean;
 import org.apache.solr.common.SolrInputDocument;
+import org.apache.solr.common.params.CursorMarkParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.common.params.GroupParams;
+
 import static org.apache.solr.common.params.CursorMarkParams.CURSOR_MARK_PARAM;
 import static org.apache.solr.common.params.CursorMarkParams.CURSOR_MARK_NEXT;
 import static org.apache.solr.common.params.CursorMarkParams.CURSOR_MARK_START;
+
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.search.CursorMark; //jdoc
-
 import org.noggit.ObjectBuilder;
 
 import java.nio.ByteBuffer;
@@ -50,9 +50,8 @@ import org.junit.BeforeClass;
 import org.junit.After;
 
 /**
- * Tests of deep paging using {@link CursorMark} and {@link #CURSOR_MARK_PARAM}.
+ * Tests of deep paging using {@link CursorMark} and {@link CursorMarkParams#CURSOR_MARK_PARAM}.
  */
-@SuppressCodecs("Lucene3x")
 public class CursorPagingTest extends SolrTestCaseJ4 {
 
   /** solrconfig.xml file name, shared with other cursor related tests */
@@ -127,7 +126,7 @@ public class CursorPagingTest extends SolrTestCaseJ4 {
     SolrParams params = null;
     
     final String intsort = "int" + (random().nextBoolean() ? "" : "_dv");
-    final String intmissingsort = defaultCodecSupportsMissingDocValues() ? intsort : "int";
+    final String intmissingsort = intsort;
 
     // trivial base case: ensure cursorMark against an empty index doesn't blow up
     cursorMark = CURSOR_MARK_START;
@@ -535,7 +534,7 @@ public class CursorPagingTest extends SolrTestCaseJ4 {
 
     SentinelIntSet ids = assertFullWalkNoDups
       (10, params("q", "*:*",
-                  "rows",""+TestUtil.nextInt(random(),1,11),
+                  "rows",""+ TestUtil.nextInt(random(), 1, 11),
                   "fq", "-id:[1 TO 2]",
                   "fq", "-id:[6 TO 7]",
                   "fl", "id",
@@ -559,7 +558,7 @@ public class CursorPagingTest extends SolrTestCaseJ4 {
   public void testRandomSortsOnLargeIndex() throws Exception {
     final Collection<String> allFieldNames = getAllSortFieldNames();
 
-    final int initialDocs = TestUtil.nextInt(random(),100,200);
+    final int initialDocs = TestUtil.nextInt(random(), 100, 200);
     final int totalDocs = atLeast(500);
 
     // start with a smallish number of documents, and test that we can do a full walk using a 
@@ -574,7 +573,7 @@ public class CursorPagingTest extends SolrTestCaseJ4 {
     for (String f : allFieldNames) {
       for (String order : new String[] {" asc", " desc"}) {
         String sort = f + order + ("id".equals(f) ? "" : ", id" + order);
-        String rows = "" + TestUtil.nextInt(random(),13,50);
+        String rows = "" + TestUtil.nextInt(random(), 13, 50);
         SentinelIntSet ids = assertFullWalkNoDups(totalDocs, 
                                                   params("q", "*:*",
                                                          "fl","id",
@@ -594,7 +593,7 @@ public class CursorPagingTest extends SolrTestCaseJ4 {
     final int numRandomSorts = atLeast(3);
     for (int i = 0; i < numRandomSorts; i++) {
       final String sort = buildRandomSort(allFieldNames);
-      final String rows = "" + TestUtil.nextInt(random(),63,113);
+      final String rows = "" + TestUtil.nextInt(random(), 63, 113);
       final String fl = random().nextBoolean() ? "id" : "id,score";
       final boolean matchAll = random().nextBoolean();
       final String q = matchAll ? "*:*" : buildRandomQuery();
@@ -635,24 +634,13 @@ public class CursorPagingTest extends SolrTestCaseJ4 {
    * </p>
    * <ul>
    *  <li><code>_version_</code> is removed</li>
-   *  <li>
-   *    <code>*_dv_last</code>, <code>*_dv_first</code> and <code>*_dv</code>
-   *    fields are removed if the codec doesn't support missing DocValues
-   *  </li>
    * </ul>
-   * @see #defaultCodecSupportsMissingDocValues
    */
   public static List<String> pruneAndDeterministicallySort(Collection<String> raw) {
-
-    final boolean prune_dv = ! defaultCodecSupportsMissingDocValues();
 
     ArrayList<String> names = new ArrayList<>(37);
     for (String f : raw) {
       if (f.equals("_version_")) {
-        continue;
-      }
-      if (prune_dv && (f.endsWith("_dv_last") || f.endsWith("_dv_first"))
-                       || f.endsWith("_dv")) {
         continue;
       }
       names.add(f);
@@ -664,8 +652,8 @@ public class CursorPagingTest extends SolrTestCaseJ4 {
   }
 
   /**
-   * Given a set of params, executes a cursor query using {@link #CURSOR_MARK_START}
-   * and then continuously walks the results using {@link #CURSOR_MARK_START} as long
+   * Given a set of params, executes a cursor query using {@link CursorMarkParams#CURSOR_MARK_START}
+   * and then continuously walks the results using {@link CursorMarkParams#CURSOR_MARK_START} as long
    * as a non-0 number of docs ar returned.  This method records the the set of all id's
    * (must be positive ints) encountered and throws an assertion failure if any id is
    * encountered more than once, or if the set grows above maxSize
@@ -727,7 +715,7 @@ public class CursorPagingTest extends SolrTestCaseJ4 {
     String f = fieldNames[TestUtil.nextInt(random(), 0, fieldNames.length - 1)];
     String order = 0 == TestUtil.nextInt(random(), 0, 1) ? " asc" : " desc";
     String sort = f + order + (f.equals("id") ? "" : ", id" + order);
-    String rows = "" + TestUtil.nextInt(random(),13,50);
+    String rows = "" + TestUtil.nextInt(random(), 13, 50);
     String facetField = fieldsToFacetOn
         [TestUtil.nextInt(random(), 0, fieldsToFacetOn.length - 1)];
     String facetMethod = facetMethods
@@ -746,8 +734,8 @@ public class CursorPagingTest extends SolrTestCaseJ4 {
   }
 
   /**
-   * Given a set of params, executes a cursor query using {@link #CURSOR_MARK_START}
-   * and then continuously walks the results using {@link #CURSOR_MARK_START} as long
+   * Given a set of params, executes a cursor query using {@link CursorMarkParams#CURSOR_MARK_START}
+   * and then continuously walks the results using {@link CursorMarkParams#CURSOR_MARK_START} as long
    * as a non-0 number of docs ar returned.  This method records the the set of all id's
    * (must be positive ints) encountered and throws an assertion failure if any id is
    * encountered more than once, or if the set grows above maxSize.
@@ -830,7 +818,7 @@ public class CursorPagingTest extends SolrTestCaseJ4 {
 
   /**
    * Asserts that the query matches the specified JSON patterns and then returns the
-   * {@link #CURSOR_MARK_NEXT} value from the response
+   * {@link CursorMarkParams#CURSOR_MARK_NEXT} value from the response
    *
    * @see #assertJQ
    */
@@ -893,10 +881,10 @@ public class CursorPagingTest extends SolrTestCaseJ4 {
     }
     if (useField()) {
       doc.addField("str", skewed(randomXmlUsableUnicodeString(),
-                                 TestUtil.randomSimpleString(random(),1,1)));
+                                 TestUtil.randomSimpleString(random(), 1, 1)));
     }
     if (useField()) {
-      int numBytes = (Integer) skewed(TestUtil.nextInt(random(), 20, 50), 2);
+      int numBytes = (int) skewed(TestUtil.nextInt(random(), 20, 50), 2);
       byte[] randBytes = new byte[numBytes];
       random().nextBytes(randBytes);
       doc.addField("bin", ByteBuffer.wrap(randBytes));
@@ -933,8 +921,8 @@ public class CursorPagingTest extends SolrTestCaseJ4 {
       return "{!func}" + numericFields.get(0);
     } else {
       // several SHOULD clauses on range queries
-      int low = TestUtil.nextInt(random(),-2379,2);
-      int high = TestUtil.nextInt(random(),4,5713);
+      int low = TestUtil.nextInt(random(), -2379, 2);
+      int high = TestUtil.nextInt(random(), 4, 5713);
       return 
         numericFields.get(0) + ":[* TO 0] " +
         numericFields.get(1) + ":[0 TO *] " +
@@ -969,9 +957,7 @@ public class CursorPagingTest extends SolrTestCaseJ4 {
       String field = shuffledNames.get(i);
 
       // wrap in a function sometimes
-      if ( (!"score".equals(field) && !field.contains("bcd"))
-           && 
-           (0 == TestUtil.nextInt(random(), 0, 7)) ) {
+      if ( ! "score".equals(field) && 0 == TestUtil.nextInt(random(), 0, 7)) {
         // specific function doesn't matter, just proving that we can handle the concept.
         // but we do have to be careful with non numeric fields
         if (field.contains("float") || field.contains("double")

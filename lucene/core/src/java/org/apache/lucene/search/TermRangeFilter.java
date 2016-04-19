@@ -1,7 +1,3 @@
-package org.apache.lucene.search;
-
-import org.apache.lucene.util.BytesRef;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -18,6 +14,9 @@ import org.apache.lucene.util.BytesRef;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
+import org.apache.lucene.util.BytesRef;
 
 /**
  * A Filter that restricts search results to a range of term
@@ -27,11 +26,10 @@ import org.apache.lucene.util.BytesRef;
  * supplied range according to {@link
  * Byte#compareTo(Byte)},  It is not intended
  * for numerical ranges; use {@link NumericRangeFilter} instead.
- *
- * <p>If you construct a large number of range filters with different ranges but on the 
- * same field, {@link FieldCacheRangeFilter} may have significantly better performance. 
  * @since 2.9
+ * @deprecated Use {@link TermRangeQuery} and {@link BooleanClause.Occur#FILTER} clauses instead.
  */
+@Deprecated
 public class TermRangeFilter extends MultiTermQueryWrapperFilter<TermRangeQuery> {
     
   /**

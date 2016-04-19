@@ -1,17 +1,4 @@
 /*
- * Created on 25-Jan-2006
- */
-package org.apache.lucene.queryparser.xml.builders;
-
-import org.apache.lucene.queryparser.xml.*;
-import org.apache.lucene.search.CachingWrapperFilter;
-import org.apache.lucene.search.Filter;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.QueryWrapperFilter;
-import org.w3c.dom.Element;
-
-import java.util.Map;
-/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -27,6 +14,18 @@ import java.util.Map;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.xml.builders;
+
+import org.apache.lucene.queryparser.xml.*;
+import org.apache.lucene.search.CachingWrapperQuery;
+import org.apache.lucene.search.Filter;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.QueryCache;
+import org.apache.lucene.search.QueryWrapperFilter;
+import org.w3c.dom.Element;
+
+import java.util.Map;
 
 /**
  * Filters are cached in an LRU Cache keyed on the contained query or filter object. Using this will
@@ -36,19 +35,22 @@ import java.util.Map;
  * A good example of this might be a term query on a field with only 2 possible  values -
  * "true" or "false". In a large index, querying or filtering on this field requires reading
  * millions  of document ids from disk which can more usefully be cached as a filter bitset.
- * <p/>
+ * <p>
  * For Queries/Filters to be cached and reused the object must implement hashcode and
  * equals methods correctly so that duplicate queries/filters can be detected in the cache.
- * <p/>
+ * <p>
  * The CoreParser.maxNumCachedFilters property can be used to control the size of the LRU
  * Cache established during the construction of CoreParser instances.
+ * @deprecated You should plug a {@link QueryCache} into {@link IndexSearcher} instead
+ * and let it make decisions.
  */
+@Deprecated
 public class CachedFilterBuilder implements FilterBuilder {
 
   private final QueryBuilderFactory queryFactory;
   private final FilterBuilderFactory filterFactory;
 
-  private LRUCache<Object, Filter> filterCache;
+  private LRUCache<Object, Query> filterCache;
 
   private final int cacheSize;
 
@@ -81,20 +83,20 @@ public class CachedFilterBuilder implements FilterBuilder {
       f = filterFactory.getFilter(childElement);
       cacheKey = f;
     }
-    Filter cachedFilter = filterCache.get(cacheKey);
+    Query cachedFilter = filterCache.get(cacheKey);
     if (cachedFilter != null) {
-      return cachedFilter; // cache hit
+      return new QueryWrapperFilter(cachedFilter); // cache hit
     }
 
     //cache miss
     if (qb != null) {
       cachedFilter = new QueryWrapperFilter(q);
     } else {
-      cachedFilter = new CachingWrapperFilter(f);
+      cachedFilter = new CachingWrapperQuery(f);
     }
 
     filterCache.put(cacheKey, cachedFilter);
-    return cachedFilter;
+    return new QueryWrapperFilter(cachedFilter);
   }
 
   static class LRUCache<K, V> extends java.util.LinkedHashMap<K, V> {

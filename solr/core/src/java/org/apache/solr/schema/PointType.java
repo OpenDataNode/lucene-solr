@@ -14,28 +14,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.schema;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+import com.spatial4j.core.distance.DistanceUtils;
 import org.apache.lucene.document.FieldType;
+import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.valuesource.VectorValueSource;
-import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.SortField;
+import org.apache.lucene.uninverting.UninvertingReader.Type;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.MapSolrParams;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.response.TextResponseWriter;
 import org.apache.solr.search.QParser;
 import org.apache.solr.search.SpatialOptions;
-
-import java.io.IOException;
-import java.util.Map;
-import java.util.List;
-import java.util.ArrayList;
 
 /**
  * A point type that indexes a point in an n-dimensional space as separate fields and supports range queries.
@@ -119,6 +120,11 @@ public class PointType extends CoordinateFieldType implements SpatialQueryable {
   public SortField getSortField(SchemaField field, boolean top) {
     throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Sorting not supported on PointType " + field.getName());
   }
+  
+  @Override
+  public Type getUninversionType(SchemaField sf) {
+    return null;
+  }
 
   @Override
   /**
@@ -130,26 +136,28 @@ public class PointType extends CoordinateFieldType implements SpatialQueryable {
     String[] p1 = parseCommaSeparatedList(part1, dimension);
     String[] p2 = parseCommaSeparatedList(part2, dimension);
 
-    BooleanQuery result = new BooleanQuery(true);
+    BooleanQuery.Builder result = new BooleanQuery.Builder();
+    result.setDisableCoord(true);
     for (int i = 0; i < dimension; i++) {
       SchemaField subSF = subField(field, i, schema);
       // points must currently be ordered... should we support specifying any two opposite corner points?
       result.add(subSF.getType().getRangeQuery(parser, subSF, p1[i], p2[i], minInclusive, maxInclusive), BooleanClause.Occur.MUST);
     }
-    return result;
+    return result.build();
   }
 
   @Override
   public Query getFieldQuery(QParser parser, SchemaField field, String externalVal) {
     String[] p1 = parseCommaSeparatedList(externalVal, dimension);
     //TODO: should we assert that p1.length == dimension?
-    BooleanQuery bq = new BooleanQuery(true);
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
+    bq.setDisableCoord(true);
     for (int i = 0; i < dimension; i++) {
       SchemaField sf = subField(field, i, schema);
       Query tq = sf.getType().getFieldQuery(parser, sf, p1[i]);
       bq.add(tq, BooleanClause.Occur.MUST);
     }
-    return bq;
+    return bq.build();
   }
 
   /**
@@ -172,6 +180,7 @@ public class PointType extends CoordinateFieldType implements SpatialQueryable {
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, e);
     }
     IndexSchema schema = parser.getReq().getSchema();
+
     if (dimension == 1){
       //TODO: Handle distance measures
       String lower = String.valueOf(point[0] - options.distance);
@@ -180,7 +189,7 @@ public class PointType extends CoordinateFieldType implements SpatialQueryable {
       // points must currently be ordered... should we support specifying any two opposite corner points?
       return subSF.getType().getRangeQuery(parser, subSF, lower, upper, true, true);
     } else {
-      BooleanQuery tmp = new BooleanQuery();
+      BooleanQuery.Builder tmp = new BooleanQuery.Builder();
       //TODO: Handle distance measures, as this assumes Euclidean
       double[] ur = vectorBoxCorner(point, null, options.distance, true);
       double[] ll = vectorBoxCorner(point, null, options.distance, false);
@@ -189,7 +198,7 @@ public class PointType extends CoordinateFieldType implements SpatialQueryable {
         Query range = subSF.getType().getRangeQuery(parser, subSF, String.valueOf(ll[i]), String.valueOf(ur[i]), true, true);
         tmp.add(range, BooleanClause.Occur.MUST);
       }
-      return tmp;
+      return tmp.build();
     }
   }
 
@@ -265,6 +274,13 @@ public class PointType extends CoordinateFieldType implements SpatialQueryable {
               ") and values (" + externalVal + ").  Only " + i + " values specified");
     }
     return out;
+  }
+
+  @Override
+  public double getSphereRadius() {
+    // This won't likely be used. You should probably be using LatLonType instead if you felt the need for this.
+    // This is here just for backward compatibility reasons.
+    return DistanceUtils.EARTH_MEAN_RADIUS_KM;
   }
 
 }

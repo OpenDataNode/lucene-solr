@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.builders;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,17 +14,18 @@ package org.apache.lucene.queryparser.flexible.standard.builders;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.builders;
 
-import org.apache.lucene.queryparser.flexible.messages.MessageImpl;
 import org.apache.lucene.queryparser.flexible.core.QueryNodeException;
 import org.apache.lucene.queryparser.flexible.core.messages.QueryParserMessages;
 import org.apache.lucene.queryparser.flexible.core.nodes.MatchNoDocsQueryNode;
 import org.apache.lucene.queryparser.flexible.core.nodes.QueryNode;
+import org.apache.lucene.queryparser.flexible.messages.MessageImpl;
 import org.apache.lucene.queryparser.flexible.standard.parser.EscapeQuerySyntaxImpl;
-import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.MatchNoDocsQuery;
 
 /**
- * Builds an empty {@link BooleanQuery} object from a
+ * Builds a {@link MatchNoDocsQuery} object from a
  * {@link MatchNoDocsQueryNode} object.
  */
 public class MatchNoDocsQueryNodeBuilder implements StandardQueryBuilder {
@@ -36,7 +35,7 @@ public class MatchNoDocsQueryNodeBuilder implements StandardQueryBuilder {
   }
 
   @Override
-  public BooleanQuery build(QueryNode queryNode) throws QueryNodeException {
+  public MatchNoDocsQuery build(QueryNode queryNode) throws QueryNodeException {
 
     // validates node
     if (!(queryNode instanceof MatchNoDocsQueryNode)) {
@@ -46,7 +45,7 @@ public class MatchNoDocsQueryNodeBuilder implements StandardQueryBuilder {
               .getName()));
     }
 
-    return new BooleanQuery();
+    return new MatchNoDocsQuery();
 
   }
 

@@ -1,5 +1,3 @@
-package org.apache.lucene.search.similarities;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,12 @@ package org.apache.lucene.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.similarities;
+
 
 import java.io.IOException;
 
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.search.CollectionStatistics;
 import org.apache.lucene.search.TermStatistics;
@@ -46,15 +46,15 @@ public abstract class PerFieldSimilarityWrapper extends Similarity {
   }
 
   @Override
-  public final SimWeight computeWeight(float queryBoost, CollectionStatistics collectionStats, TermStatistics... termStats) {
+  public final SimWeight computeWeight(CollectionStatistics collectionStats, TermStatistics... termStats) {
     PerFieldSimWeight weight = new PerFieldSimWeight();
     weight.delegate = get(collectionStats.field());
-    weight.delegateWeight = weight.delegate.computeWeight(queryBoost, collectionStats, termStats);
+    weight.delegateWeight = weight.delegate.computeWeight(collectionStats, termStats);
     return weight;
   }
 
   @Override
-  public final SimScorer simScorer(SimWeight weight, AtomicReaderContext context) throws IOException {
+  public final SimScorer simScorer(SimWeight weight, LeafReaderContext context) throws IOException {
     PerFieldSimWeight perFieldWeight = (PerFieldSimWeight) weight;
     return perFieldWeight.delegate.simScorer(perFieldWeight.delegateWeight, context);
   }
@@ -74,8 +74,8 @@ public abstract class PerFieldSimilarityWrapper extends Similarity {
     }
     
     @Override
-    public void normalize(float queryNorm, float topLevelBoost) {
-      delegateWeight.normalize(queryNorm, topLevelBoost);
+    public void normalize(float queryNorm, float boost) {
+      delegateWeight.normalize(queryNorm, boost);
     }
   }
 }

@@ -1,5 +1,3 @@
-package org.apache.solr.search.grouping.distributed.responseprocessor;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.search.grouping.distributed.responseprocessor;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search.grouping.distributed.responseprocessor;
 
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.grouping.SearchGroup;
@@ -28,9 +27,10 @@ import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.handler.component.ResponseBuilder;
 import org.apache.solr.handler.component.ShardRequest;
 import org.apache.solr.handler.component.ShardResponse;
+import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.search.SortSpec;
 import org.apache.solr.search.grouping.distributed.ShardResponseProcessor;
-import org.apache.solr.search.grouping.distributed.command.Pair;
+import org.apache.solr.search.grouping.distributed.command.SearchGroupsFieldCommandResult;
 import org.apache.solr.search.grouping.distributed.shardresultserializer.SearchGroupsResultTransformer;
 
 import java.io.IOException;
@@ -50,10 +50,14 @@ public class SearchGroupShardResponseProcessor implements ShardResponseProcessor
   public void process(ResponseBuilder rb, ShardRequest shardRequest) {
     SortSpec ss = rb.getSortSpec();
     Sort groupSort = rb.getGroupingSpec().getGroupSort();
-    String[] fields = rb.getGroupingSpec().getFields();
+    final String[] fields = rb.getGroupingSpec().getFields();
+    Sort sortWithinGroup = rb.getGroupingSpec().getSortWithinGroup();
+    if (sortWithinGroup == null) { // TODO prevent it from being null in the first place
+      sortWithinGroup = Sort.RELEVANCE;
+    }
 
-    Map<String, List<Collection<SearchGroup<BytesRef>>>> commandSearchGroups = new HashMap<>();
-    Map<String, Map<SearchGroup<BytesRef>, Set<String>>> tempSearchGroupToShards = new HashMap<>();
+    final Map<String, List<Collection<SearchGroup<BytesRef>>>> commandSearchGroups = new HashMap<>(fields.length, 1.0f);
+    final Map<String, Map<SearchGroup<BytesRef>, Set<String>>> tempSearchGroupToShards = new HashMap<>(fields.length, 1.0f);
     for (String field : fields) {
       commandSearchGroups.put(field, new ArrayList<Collection<SearchGroup<BytesRef>>>(shardRequest.responses.size()));
       tempSearchGroupToShards.put(field, new HashMap<SearchGroup<BytesRef>, Set<String>>());
@@ -69,13 +73,13 @@ public class SearchGroupShardResponseProcessor implements ShardResponseProcessor
 
       NamedList<Object> shardInfo = null;
       if (rb.req.getParams().getBool(ShardParams.SHARDS_INFO, false)) {
-        shardInfo = new SimpleOrderedMap<>();
+        shardInfo = new SimpleOrderedMap<>(shardRequest.responses.size());
         rb.rsp.getValues().add(ShardParams.SHARDS_INFO + ".firstPhase", shardInfo);
       }
 
       for (ShardResponse srsp : shardRequest.responses) {
         if (shardInfo != null) {
-          SimpleOrderedMap<Object> nl = new SimpleOrderedMap<>();
+          SimpleOrderedMap<Object> nl = new SimpleOrderedMap<>(4);
 
           if (srsp.getException() != null) {
             Throwable t = srsp.getException();
@@ -98,25 +102,26 @@ public class SearchGroupShardResponseProcessor implements ShardResponseProcessor
           shardInfo.add(srsp.getShard(), nl);
         }
         if (rb.req.getParams().getBool(ShardParams.SHARDS_TOLERANT, false) && srsp.getException() != null) {
-          if(rb.rsp.getResponseHeader().get("partialResults") == null) {
-            rb.rsp.getResponseHeader().add("partialResults", Boolean.TRUE);
+          if(rb.rsp.getResponseHeader().get(SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY) == null) {
+            rb.rsp.getResponseHeader().add(SolrQueryResponse.RESPONSE_HEADER_PARTIAL_RESULTS_KEY, Boolean.TRUE);
           }
           continue; // continue if there was an error and we're tolerant.  
         }
         maxElapsedTime = (int) Math.max(maxElapsedTime, srsp.getSolrResponse().getElapsedTime());
         @SuppressWarnings("unchecked")
         NamedList<NamedList> firstPhaseResult = (NamedList<NamedList>) srsp.getSolrResponse().getResponse().get("firstPhase");
-        Map<String, Pair<Integer, Collection<SearchGroup<BytesRef>>>> result = serializer.transformToNative(firstPhaseResult, groupSort, null, srsp.getShard());
+        final Map<String, SearchGroupsFieldCommandResult> result = serializer.transformToNative(firstPhaseResult, groupSort, sortWithinGroup, srsp.getShard());
         for (String field : commandSearchGroups.keySet()) {
-          Pair<Integer, Collection<SearchGroup<BytesRef>>> firstPhaseCommandResult = result.get(field);
-          Integer groupCount = firstPhaseCommandResult.getA();
+          final SearchGroupsFieldCommandResult firstPhaseCommandResult = result.get(field);
+
+          final Integer groupCount = firstPhaseCommandResult.getGroupCount();
           if (groupCount != null) {
             Integer existingGroupCount = rb.mergedGroupCounts.get(field);
             // Assuming groups don't cross shard boundary...
             rb.mergedGroupCounts.put(field, existingGroupCount != null ? existingGroupCount + groupCount : groupCount);
           }
 
-          Collection<SearchGroup<BytesRef>> searchGroups = firstPhaseCommandResult.getB();
+          final Collection<SearchGroup<BytesRef>> searchGroups = firstPhaseCommandResult.getSearchGroups();
           if (searchGroups == null) {
             continue;
           }

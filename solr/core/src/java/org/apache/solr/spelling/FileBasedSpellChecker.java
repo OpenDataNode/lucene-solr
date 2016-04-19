@@ -18,6 +18,7 @@ package org.apache.solr.spelling;
 
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.lang.invoke.MethodHandles;
 import java.util.List;
 
 import org.apache.lucene.document.Field;
@@ -50,7 +51,7 @@ import org.apache.solr.search.SolrIndexSearcher;
  **/
 public class FileBasedSpellChecker extends AbstractLuceneSpellChecker {
 
-  private static final Logger log = LoggerFactory.getLogger(FileBasedSpellChecker.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   public static final String SOURCE_FILE_CHAR_ENCODING = "characterEncoding";
 
@@ -71,7 +72,7 @@ public class FileBasedSpellChecker extends AbstractLuceneSpellChecker {
     // TODO: you should be able to specify the IWC params?
     // TODO: if we enable this, codec gets angry since field won't exist in the schema
     // config.setCodec(core.getCodec());
-    spellChecker.indexDictionary(dictionary, new IndexWriterConfig(core.getSolrConfig().luceneMatchVersion, null), false);
+    spellChecker.indexDictionary(dictionary, new IndexWriterConfig(null), false);
   }
 
   /**
@@ -96,7 +97,7 @@ public class FileBasedSpellChecker extends AbstractLuceneSpellChecker {
 
         IndexWriter writer = new IndexWriter(
             ramDir,
-            new IndexWriterConfig(core.getSolrConfig().luceneMatchVersion, fieldType.getIndexAnalyzer()).
+            new IndexWriterConfig(fieldType.getIndexAnalyzer()).
                 setMaxBufferedDocs(150).
                 setMergePolicy(mp).
                 setOpenMode(IndexWriterConfig.OpenMode.CREATE)

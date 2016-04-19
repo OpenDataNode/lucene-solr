@@ -1,5 +1,3 @@
-package org.apache.lucene.document;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,17 +14,21 @@ package org.apache.lucene.document;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.document;
+
 
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import org.apache.lucene.analysis.MockTokenizer;
+import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.DocsAndPositionsEnum;
 import org.apache.lucene.index.Fields;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
@@ -65,7 +67,7 @@ public class TestDocument extends LuceneTestCase {
     
     assertTrue(binaryFld.binaryValue() != null);
     assertTrue(binaryFld.fieldType().stored());
-    assertFalse(binaryFld.fieldType().indexed());
+    assertEquals(IndexOptions.NONE, binaryFld.fieldType().indexOptions());
     
     String binaryTest = doc.getBinaryValue("binary").utf8ToString();
     assertTrue(binaryTest.equals(binaryVal));
@@ -190,7 +192,7 @@ public class TestDocument extends LuceneTestCase {
     Query query = new TermQuery(new Term("keyword", "test1"));
     
     // ensure that queries return expected results without DateFilter first
-    ScoreDoc[] hits = searcher.search(query, null, 1000).scoreDocs;
+    ScoreDoc[] hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(1, hits.length);
     
     doAssert(searcher.doc(hits[0].doc), true);
@@ -218,11 +220,9 @@ public class TestDocument extends LuceneTestCase {
     IndexReader reader = writer.getReader();
     
     IndexSearcher searcher = newSearcher(reader);
-    PhraseQuery query = new PhraseQuery();
-    query.add(new Term("indexed_not_tokenized", "test1"));
-    query.add(new Term("indexed_not_tokenized", "test2"));
+    PhraseQuery query = new PhraseQuery("indexed_not_tokenized", "test1", "test2");
     
-    ScoreDoc[] hits = searcher.search(query, null, 1000).scoreDocs;
+    ScoreDoc[] hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(1, hits.length);
     
     doAssert(searcher.doc(hits[0].doc), true);
@@ -236,7 +236,7 @@ public class TestDocument extends LuceneTestCase {
     FieldType stored = new FieldType();
     stored.setStored(true);
     FieldType indexedNotTokenized = new FieldType();
-    indexedNotTokenized.setIndexed(true);
+    indexedNotTokenized.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
     indexedNotTokenized.setTokenized(false);
     doc.add(new StringField("keyword", "test1", Field.Store.YES));
     doc.add(new StringField("keyword", "test2", Field.Store.YES));
@@ -244,10 +244,8 @@ public class TestDocument extends LuceneTestCase {
     doc.add(new TextField("text", "test2", Field.Store.YES));
     doc.add(new Field("unindexed", "test1", stored));
     doc.add(new Field("unindexed", "test2", stored));
-    doc
-        .add(new TextField("unstored", "test1", Field.Store.NO));
-    doc
-        .add(new TextField("unstored", "test2", Field.Store.NO));
+    doc.add(new TextField("unstored", "test1", Field.Store.NO));
+    doc.add(new TextField("unstored", "test2", Field.Store.NO));
     doc.add(new Field("indexed_not_tokenized", "test1", indexedNotTokenized));
     doc.add(new Field("indexed_not_tokenized", "test2", indexedNotTokenized));
     return doc;
@@ -303,7 +301,7 @@ public class TestDocument extends LuceneTestCase {
     Query query = new TermQuery(new Term("keyword", "test"));
     
     // ensure that queries return expected results without DateFilter first
-    ScoreDoc[] hits = searcher.search(query, null, 1000).scoreDocs;
+    ScoreDoc[] hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(3, hits.length);
     int result = 0;
     for (int i = 0; i < 3; i++) {
@@ -321,9 +319,11 @@ public class TestDocument extends LuceneTestCase {
   }
   
   // LUCENE-3616
-  public void testInvalidFields() {
+  public void testInvalidFields() throws Exception {
     try {
-      new Field("foo", new MockTokenizer(new StringReader("")), StringField.TYPE_STORED);
+      Tokenizer tok = new MockTokenizer();
+      tok.setReader(new StringReader(""));
+      new Field("foo", tok, StringField.TYPE_STORED);
       fail("did not hit expected exc");
     } catch (IllegalArgumentException iae) {
       // expected
@@ -379,14 +379,10 @@ public class TestDocument extends LuceneTestCase {
       Terms tvs = tvFields.terms(field);
       assertNotNull(tvs);
       assertEquals(2, tvs.size());
-      TermsEnum tvsEnum = tvs.iterator(null);
+      TermsEnum tvsEnum = tvs.iterator();
       assertEquals(new BytesRef("abc"), tvsEnum.next());
-      final DocsAndPositionsEnum dpEnum = tvsEnum.docsAndPositions(null, null);
-      if (field.equals("tv")) {
-        assertNull(dpEnum);
-      } else {
-        assertNotNull(dpEnum);
-      }
+      final PostingsEnum dpEnum = tvsEnum.postings(null, PostingsEnum.ALL);
+      assertNotNull(dpEnum);
       assertEquals(new BytesRef("xyz"), tvsEnum.next());
       assertNull(tvsEnum.next());
     }

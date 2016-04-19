@@ -1,4 +1,3 @@
-package org.apache.solr.rest.schema;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.rest.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.rest.schema;
 import org.apache.solr.rest.SolrRestletTestBase;
 import org.junit.Test;
 
@@ -24,7 +23,7 @@ public class TestSchemaSimilarityResource extends SolrRestletTestBase {
   public void testGetSchemaSimilarity() throws Exception {
     assertQ("/schema/similarity?indent=on&wt=xml",
             "count(/response/lst[@name='similarity']) = 1",
-            "/response/lst[@name='similarity']/str[@name='class'][.='org.apache.solr.search.similarities.DefaultSimilarityFactory']");
+            "/response/lst[@name='similarity']/str[@name='class'][.='solr.SchemaSimilarityFactory']");
   }
 }
 

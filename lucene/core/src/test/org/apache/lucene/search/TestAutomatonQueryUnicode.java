@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 
@@ -102,16 +102,13 @@ public class TestAutomatonQueryUnicode extends LuceneTestCase {
       throws IOException {
     AutomatonQuery query = new AutomatonQuery(newTerm("bogus"), automaton);
 
-    query.setRewriteMethod(MultiTermQuery.SCORING_BOOLEAN_QUERY_REWRITE);
+    query.setRewriteMethod(MultiTermQuery.SCORING_BOOLEAN_REWRITE);
     assertEquals(expected, automatonQueryNrHits(query));
 
-    query.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_FILTER_REWRITE);
+    query.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_REWRITE);
     assertEquals(expected, automatonQueryNrHits(query));
 
-    query.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_BOOLEAN_QUERY_REWRITE);
-    assertEquals(expected, automatonQueryNrHits(query));
-
-    query.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_AUTO_REWRITE_DEFAULT);
+    query.setRewriteMethod(MultiTermQuery.CONSTANT_SCORE_BOOLEAN_REWRITE);
     assertEquals(expected, automatonQueryNrHits(query));
   }
 

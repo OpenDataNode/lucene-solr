@@ -1,5 +1,3 @@
-package org.apache.solr.request;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,13 @@ package org.apache.solr.request;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.request;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.MultiDocValues.MultiSortedDocValues;
 import org.apache.lucene.index.MultiDocValues.MultiSortedSetDocValues;
@@ -35,6 +34,7 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LongValues;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.handler.component.FieldFacetStats;
+import org.apache.solr.handler.component.StatsField;
 import org.apache.solr.handler.component.StatsValues;
 import org.apache.solr.handler.component.StatsValuesFactory;
 import org.apache.solr.schema.FieldType;
@@ -52,10 +52,16 @@ import org.apache.solr.search.SolrIndexSearcher;
 public class DocValuesStats {
   private DocValuesStats() {}
   
-  public static StatsValues getCounts(SolrIndexSearcher searcher, String fieldName, DocSet docs, boolean calcDistinct, String[] facet) throws IOException {
-    SchemaField schemaField = searcher.getSchema().getField(fieldName);
-    FieldType ft = schemaField.getType();
-    StatsValues res = StatsValuesFactory.createStatsValues(schemaField, calcDistinct);
+  public static StatsValues getCounts(SolrIndexSearcher searcher, StatsField statsField, DocSet docs, String[] facet) throws IOException {
+
+    final SchemaField schemaField = statsField.getSchemaField(); 
+
+    assert null != statsField.getSchemaField()
+      : "DocValuesStats requires a StatsField using a SchemaField";
+
+    final String fieldName = schemaField.getName();
+    final FieldType ft = schemaField.getType();
+    final StatsValues res = StatsValuesFactory.createStatsValues(statsField);
     
     //Initialize facetstats, if facets have been passed in
     final FieldFacetStats[] facetStats = new FieldFacetStats[facet.length];
@@ -69,7 +75,7 @@ public class DocValuesStats {
       }
       
       SchemaField facetSchemaField = searcher.getSchema().getField(facetField);
-      facetStats[upto++] = new FieldFacetStats(searcher, facetField, schemaField, facetSchemaField, calcDistinct);
+      facetStats[upto++] = new FieldFacetStats(searcher, facetSchemaField, statsField);
     }
     // TODO: remove multiValuedFieldCache(), check dv type / uninversion type?
     final boolean multiValued = schemaField.multiValued() || ft.multiValuedFieldCache();
@@ -77,13 +83,13 @@ public class DocValuesStats {
     SortedSetDocValues si; // for term lookups only
     OrdinalMap ordinalMap = null; // for mapping per-segment ords to global ones
     if (multiValued) {
-      si = searcher.getAtomicReader().getSortedSetDocValues(fieldName);
+      si = searcher.getLeafReader().getSortedSetDocValues(fieldName);
       
       if (si instanceof MultiSortedSetDocValues) {
         ordinalMap = ((MultiSortedSetDocValues)si).mapping;
       }
     } else {
-      SortedDocValues single = searcher.getAtomicReader().getSortedDocValues(fieldName);
+      SortedDocValues single = searcher.getLeafReader().getSortedDocValues(fieldName);
       si = single == null ? null : DocValues.singleton(single);
       if (single instanceof MultiSortedDocValues) {
         ordinalMap = ((MultiSortedDocValues)single).mapping;
@@ -103,10 +109,10 @@ public class DocValuesStats {
     final int[] counts = new int[nTerms];
     
     Filter filter = docs.getTopFilter();
-    List<AtomicReaderContext> leaves = searcher.getTopReaderContext().leaves();
+    List<LeafReaderContext> leaves = searcher.getTopReaderContext().leaves();
     
     for (int subIndex = 0; subIndex < leaves.size(); subIndex++) {
-      AtomicReaderContext leaf = leaves.get(subIndex);
+      LeafReaderContext leaf = leaves.get(subIndex);
       DocIdSet dis = filter.getDocIdSet(leaf, null); // solr docsets already exclude any deleted docs
       DocIdSetIterator disi = null;
       

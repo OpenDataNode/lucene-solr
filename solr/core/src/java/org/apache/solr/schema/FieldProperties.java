@@ -14,11 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.schema;
 
-import java.util.Map;
 import java.util.HashMap;
+import java.util.Map;
 
 /**
  *
@@ -52,13 +51,16 @@ public abstract class FieldProperties {
   protected final static int STORE_OFFSETS       = 0x00004000;
   protected final static int DOC_VALUES          = 0x00008000;
 
+  protected final static int STORE_TERMPAYLOADS  = 0x00010000;
+  protected final static int USE_DOCVALUES_AS_STORED  = 0x00020000;
+
   static final String[] propertyNames = {
           "indexed", "tokenized", "stored",
           "binary", "omitNorms", "omitTermFreqAndPositions",
           "termVectors", "termPositions", "termOffsets",
           "multiValued",
           "sortMissingFirst","sortMissingLast","required", "omitPositions",
-          "storeOffsetsWithPositions", "docValues"
+          "storeOffsetsWithPositions", "docValues", "termPayloads", "useDocValuesAsStored"
   };
 
   static final Map<String,Integer> propertyMap = new HashMap<>();

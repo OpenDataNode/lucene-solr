@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.miscellaneous;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.miscellaneous;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.miscellaneous;
+
 
 import java.io.IOException;
 import java.util.List;
@@ -55,7 +55,6 @@ public class StemmerOverrideFilterFactory extends TokenFilterFactory implements 
   @Override
   public void inform(ResourceLoader loader) throws IOException {
     if (dictionaryFiles != null) {
-      assureMatchVersion();
       List<String> files = splitFileNames(dictionaryFiles);
       if (files.size() > 0) {
         StemmerOverrideFilter.Builder builder = new StemmerOverrideFilter.Builder(ignoreCase);

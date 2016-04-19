@@ -1,5 +1,3 @@
-package org.apache.lucene.replicator;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.replicator;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.replicator;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -150,7 +149,8 @@ public class IndexReplicationClientTest extends ReplicatorTestCase {
   @After
   @Override
   public void tearDown() throws Exception {
-    IOUtils.close(client, callback, publishWriter, replicator, publishDir, handlerDir);
+    publishWriter.close();
+    IOUtils.close(client, callback, replicator, publishDir, handlerDir);
     super.tearDown();
   }
   

@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.spans;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,15 +14,16 @@ package org.apache.lucene.queryparser.flexible.spans;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.spans;
 
 import org.apache.lucene.queryparser.flexible.core.nodes.FieldableNode;
 import org.apache.lucene.util.AttributeImpl;
+import org.apache.lucene.util.AttributeReflector;
 
 /**
  * This attribute is used by the {@link UniqueFieldQueryNodeProcessor}
  * processor. It holds a value that defines which is the unique field name that
- * should be set in every {@link FieldableNode}.<br/>
- * <br/>
+ * should be set in every {@link FieldableNode}.
  * 
  * @see UniqueFieldQueryNodeProcessor
  */
@@ -86,8 +85,8 @@ public class UniqueFieldAttributeImpl extends AttributeImpl implements
   }
 
   @Override
-  public String toString() {
-    return "<uniqueField uniqueField='" + this.uniqueField + "'/>";
+  public void reflectWith(AttributeReflector reflector) {
+    reflector.reflect(UniqueFieldAttribute.class, "uniqueField", uniqueField);
   }
 
 }

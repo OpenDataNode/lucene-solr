@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,11 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
 
-import java.io.File;
+
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -39,11 +39,11 @@ import org.apache.lucene.util.TestUtil;
 
 public class TestNRTCachingDirectory extends BaseDirectoryTestCase {
 
-  // TODO: RAMDir used here, because its still too slow to use e.g. SimpleFS
+  // TODO: RAMDir used here, because it's still too slow to use e.g. SimpleFS
   // for the threads tests... maybe because of the synchronization in listAll?
   // would be good to investigate further...
   @Override
-  protected Directory getDirectory(File path) throws IOException {
+  protected Directory getDirectory(Path path) throws IOException {
     return new NRTCachingDirectory(new RAMDirectory(),
                                    .1 + 2.0*random().nextDouble(),
                                    .1 + 5.0*random().nextDouble());
@@ -56,8 +56,7 @@ public class TestNRTCachingDirectory extends BaseDirectoryTestCase {
     analyzer.setMaxTokenLength(TestUtil.nextInt(random(), 1, IndexWriter.MAX_TERM_LENGTH));
     IndexWriterConfig conf = newIndexWriterConfig(analyzer);
     RandomIndexWriter w = new RandomIndexWriter(random(), cachedDir, conf);
-    final LineFileDocs docs = new LineFileDocs(random(),
-                                               defaultCodecSupportsDocValues());
+    final LineFileDocs docs = new LineFileDocs(random(), true);
     final int numDocs = TestUtil.nextInt(random(), 100, 400);
 
     if (VERBOSE) {
@@ -72,7 +71,7 @@ public class TestNRTCachingDirectory extends BaseDirectoryTestCase {
       w.addDocument(doc);
       if (random().nextInt(20) == 17) {
         if (r == null) {
-          r = DirectoryReader.open(w.w, false);
+          r = DirectoryReader.open(w.w);
         } else {
           final DirectoryReader r2 = DirectoryReader.openIfChanged(r);
           if (r2 != null) {
@@ -116,28 +115,11 @@ public class TestNRTCachingDirectory extends BaseDirectoryTestCase {
   public void verifyCompiles() throws Exception {
     Analyzer analyzer = null;
 
-    Directory fsDir = FSDirectory.open(new File("/path/to/index"));
+    Directory fsDir = FSDirectory.open(createTempDir("verify"));
     NRTCachingDirectory cachedFSDir = new NRTCachingDirectory(fsDir, 2.0, 25.0);
-    IndexWriterConfig conf = new IndexWriterConfig(TEST_VERSION_CURRENT, analyzer);
+    IndexWriterConfig conf = new IndexWriterConfig(analyzer);
     IndexWriter writer = new IndexWriter(cachedFSDir, conf);
     writer.close();
     cachedFSDir.close();
-  }
-
-  // LUCENE-5724
-  public void testLargeCFS() throws IOException {
-    Directory dir = new NRTCachingDirectory(newFSDirectory(createTempDir()), 2.0, 25.0);
-    IOContext context = new IOContext(new FlushInfo(0, 512*1024*1024));
-    IndexOutput out = dir.createOutput("big.bin", context);
-    byte[] bytes = new byte[512];
-    for(int i=0;i<1024*1024;i++) {
-      out.writeBytes(bytes, 0, bytes.length);
-    }
-    out.close();
-
-    Directory cfsDir = new CompoundFileDirectory(dir, "big.cfs", context, true);
-    dir.copy(cfsDir, "big.bin", "big.bin", context);
-    cfsDir.close();
-    dir.close();
   }
 }

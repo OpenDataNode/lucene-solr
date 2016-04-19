@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.core;
+
 
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.util.CharArraySet;
@@ -23,6 +23,7 @@ import org.apache.lucene.analysis.util.ResourceLoader;
 import org.apache.lucene.analysis.util.ResourceLoaderAware;
 import org.apache.lucene.analysis.util.TokenFilterFactory;
 import org.apache.lucene.analysis.util.WordlistLoader; // jdocs
+import org.apache.lucene.util.Version;
 
 import java.util.Map;
 import java.io.IOException;
@@ -35,7 +36,7 @@ import java.io.IOException;
  *   &lt;analyzer&gt;
  *     &lt;tokenizer class="solr.WhitespaceTokenizerFactory"/&gt;
  *     &lt;filter class="solr.StopFilterFactory" ignoreCase="true"
- *             words="stopwords.txt" format="wordset" /&gt;
+ *             words="stopwords.txt" format="wordset"
  *   &lt;/analyzer&gt;
  * &lt;/fieldType&gt;</pre>
  *
@@ -77,7 +78,7 @@ public class StopFilterFactory extends TokenFilterFactory implements ResourceLoa
   private final String stopWordFiles;
   private final String format;
   private final boolean ignoreCase;
-  private final boolean enablePositionIncrements;
+  private boolean enablePositionIncrements;
   
   /** Creates a new StopFilterFactory */
   public StopFilterFactory(Map<String,String> args) {
@@ -85,7 +86,17 @@ public class StopFilterFactory extends TokenFilterFactory implements ResourceLoa
     stopWordFiles = get(args, "words");
     format = get(args, "format", (null == stopWordFiles ? null : FORMAT_WORDSET));
     ignoreCase = getBoolean(args, "ignoreCase", false);
-    enablePositionIncrements = getBoolean(args, "enablePositionIncrements", true);
+
+    if (luceneMatchVersion.onOrAfter(Version.LUCENE_5_0_0) == false) {
+      boolean defaultValue = luceneMatchVersion.onOrAfter(Version.LUCENE_4_4_0);
+      enablePositionIncrements = getBoolean(args, "enablePositionIncrements", defaultValue);
+      if (enablePositionIncrements == false && luceneMatchVersion.onOrAfter(Version.LUCENE_4_4_0)) {
+        throw new IllegalArgumentException("enablePositionIncrements=false is not supported anymore as of Lucene 4.4");
+      }
+    } else if (args.containsKey("enablePositionIncrements")) {
+      throw new IllegalArgumentException("enablePositionIncrements is not a valid option as of Lucene 5.0");
+    }
+    
     if (!args.isEmpty()) {
       throw new IllegalArgumentException("Unknown parameters: " + args);
     }
@@ -105,16 +116,8 @@ public class StopFilterFactory extends TokenFilterFactory implements ResourceLoa
       if (null != format) {
         throw new IllegalArgumentException("'format' can not be specified w/o an explicit 'words' file: " + format);
       }
-      if (luceneMatchVersion == null) {
-        stopWords = new CharArraySet(StopAnalyzer.ENGLISH_STOP_WORDS_SET, ignoreCase);
-      } else {
-        stopWords = new CharArraySet(luceneMatchVersion, StopAnalyzer.ENGLISH_STOP_WORDS_SET, ignoreCase);
-      }
+      stopWords = new CharArraySet(StopAnalyzer.ENGLISH_STOP_WORDS_SET, ignoreCase);
     }
-  }
-
-  public boolean isEnablePositionIncrements() {
-    return enablePositionIncrements;
   }
 
   public boolean isIgnoreCase() {
@@ -127,13 +130,12 @@ public class StopFilterFactory extends TokenFilterFactory implements ResourceLoa
 
   @Override
   public TokenStream create(TokenStream input) {
-    StopFilter stopFilter;
-    if (luceneMatchVersion == null) {
-      stopFilter = new StopFilter(input, stopWords);
+    if (luceneMatchVersion.onOrAfter(Version.LUCENE_4_4_0)) {
+      return new StopFilter(input, stopWords);
     } else {
-      stopFilter = new StopFilter(luceneMatchVersion, input,stopWords);
+      @SuppressWarnings("deprecation")
+      final TokenStream filter = new Lucene43StopFilter(enablePositionIncrements, input, stopWords);
+      return filter;
     }
-    stopFilter.setEnablePositionIncrements(enablePositionIncrements);
-    return stopFilter;
   }
 }

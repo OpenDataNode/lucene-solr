@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,11 @@ package org.apache.lucene.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis;
+
 
 import org.apache.lucene.analysis.tokenattributes.*;
+import org.apache.lucene.util.AttributeReflector;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.Attribute;
 import org.apache.lucene.util.AttributeImpl;
@@ -94,10 +95,13 @@ public class TestToken extends LuceneTestCase {
     public boolean equals(Object o) { return (o instanceof SenselessAttributeImpl); }
     @Override
     public int hashCode() { return 0; }
+    @Override
+    public void reflectWith(AttributeReflector reflector) {}
   }
 
   public void testTokenAttributeFactory() throws Exception {
-    TokenStream ts = new MockTokenizer(Token.TOKEN_ATTRIBUTE_FACTORY, new StringReader("foo bar"), MockTokenizer.WHITESPACE, false, MockTokenizer.DEFAULT_MAX_TOKEN_LENGTH);
+    TokenStream ts = new MockTokenizer(Token.TOKEN_ATTRIBUTE_FACTORY, MockTokenizer.WHITESPACE, false, MockTokenizer.DEFAULT_MAX_TOKEN_LENGTH);
+    ((Tokenizer)ts).setReader(new StringReader("foo bar"));
     
     assertTrue("SenselessAttribute is not implemented by SenselessAttributeImpl",
       ts.addAttribute(SenselessAttribute.class) instanceof SenselessAttributeImpl);

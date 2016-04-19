@@ -1,6 +1,4 @@
-package org.apache.lucene.analysis.ja;
-
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.ja;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.ja;
+
 
 import org.apache.lucene.analysis.CharFilter;
 import org.apache.lucene.analysis.util.RollingCharBuffer;
@@ -28,11 +28,11 @@ import java.io.Reader;
  * <p>
  * Sequences of iteration marks are supported.  In case an illegal sequence of iteration
  * marks is encountered, the implementation emits the illegal source character as-is
- * without considering its script.  For example, with input "&#x003f;&#x309d", we get
- * "&#x003f;&#x003f" even though "&#x003f;" isn't hiragana.
+ * without considering its script.  For example, with input "?ゝ", we get
+ * "??" even though the question mark isn't hiragana.
  * </p>
  * <p>
- * Note that a full stop punctuation character "&#x3002;" (U+3002) can not be iterated
+ * Note that a full stop punctuation character "。" (U+3002) can not be iterated
  * (see below). Iteration marks themselves can be emitted in case they are illegal,
  * i.e. if they go back past the beginning of the character stream.
  * </p>

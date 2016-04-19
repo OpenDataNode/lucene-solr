@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.builders;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard.builders;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.builders;
 
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.flexible.core.QueryNodeException;
@@ -38,6 +37,7 @@ public class RegexpQueryNodeBuilder implements StandardQueryBuilder {
   public RegexpQuery build(QueryNode queryNode) throws QueryNodeException {
     RegexpQueryNode regexpNode = (RegexpQueryNode) queryNode;
 
+    // TODO: make the maxStates configurable w/ a reasonable default (QueryParserBase uses 10000)
     RegexpQuery q = new RegexpQuery(new Term(regexpNode.getFieldAsString(),
         regexpNode.textToBytesRef()));
 

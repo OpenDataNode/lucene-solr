@@ -1,5 +1,3 @@
-package org.apache.solr.spelling.suggest;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.spelling.suggest;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.spelling.suggest;
 
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -55,7 +54,7 @@ public class FileDictionaryFactory extends DictionaryFactory {
       return new FileDictionary(new InputStreamReader(
           core.getResourceLoader().openResource(sourceLocation), StandardCharsets.UTF_8), fieldDelimiter);
     } catch (IOException e) {
-      throw new RuntimeException();
+      throw new RuntimeException(e);
     }
   }
   

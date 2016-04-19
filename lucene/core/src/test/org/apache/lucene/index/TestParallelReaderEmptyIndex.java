@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,12 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -29,7 +31,7 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 
 /**
- * Some tests for {@link ParallelAtomicReader}s with empty indexes
+ * Some tests for {@link ParallelLeafReader}s with empty indexes
  */
 public class TestParallelReaderEmptyIndex extends LuceneTestCase {
 
@@ -48,16 +50,16 @@ public class TestParallelReaderEmptyIndex extends LuceneTestCase {
 
     IndexWriter iwOut = new IndexWriter(rdOut, newIndexWriterConfig(new MockAnalyzer(random())));
     
-    ParallelAtomicReader apr = new ParallelAtomicReader(
+    ParallelLeafReader apr = new ParallelLeafReader(
         SlowCompositeReaderWrapper.wrap(DirectoryReader.open(rd1)),
         SlowCompositeReaderWrapper.wrap(DirectoryReader.open(rd2)));
     
     // When unpatched, Lucene crashes here with a NoSuchElementException (caused by ParallelTermEnum)
-    iwOut.addIndexes(apr);
+    iwOut.addIndexes(SlowCodecReaderWrapper.wrap(apr));
     iwOut.forceMerge(1);
     
     // 2nd try with a readerless parallel reader
-    iwOut.addIndexes(new ParallelAtomicReader());
+    iwOut.addIndexes(SlowCodecReaderWrapper.wrap(new ParallelLeafReader()));
     iwOut.forceMerge(1);
 
     ParallelCompositeReader cpr = new ParallelCompositeReader(
@@ -65,11 +67,11 @@ public class TestParallelReaderEmptyIndex extends LuceneTestCase {
         DirectoryReader.open(rd2));
     
     // When unpatched, Lucene crashes here with a NoSuchElementException (caused by ParallelTermEnum)
-    iwOut.addIndexes(cpr);
-    iwOut.forceMerge(1);
-    
-    // 2nd try with a readerless parallel reader
-    iwOut.addIndexes(new ParallelCompositeReader());
+    List<CodecReader> leaves = new ArrayList<>();
+    for (LeafReaderContext leaf : cpr.leaves()) {
+      leaves.add(SlowCodecReaderWrapper.wrap(leaf.reader()));
+    }
+    iwOut.addIndexes(leaves.toArray(new CodecReader[0]));
     iwOut.forceMerge(1);
     
     iwOut.close();
@@ -103,7 +105,7 @@ public class TestParallelReaderEmptyIndex extends LuceneTestCase {
       iw.addDocument(doc);
       iw.close();
 
-      IndexWriterConfig dontMergeConfig = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()))
+      IndexWriterConfig dontMergeConfig = new IndexWriterConfig(new MockAnalyzer(random()))
         .setMergePolicy(NoMergePolicy.INSTANCE);
       if (VERBOSE) {
         System.out.println("\nTEST: make 2nd writer");
@@ -135,12 +137,12 @@ public class TestParallelReaderEmptyIndex extends LuceneTestCase {
 
     IndexWriter iwOut = new IndexWriter(rdOut, newIndexWriterConfig(new MockAnalyzer(random())));
     final DirectoryReader reader1, reader2;
-    ParallelAtomicReader pr = new ParallelAtomicReader(
+    ParallelLeafReader pr = new ParallelLeafReader(
         SlowCompositeReaderWrapper.wrap(reader1 = DirectoryReader.open(rd1)),
         SlowCompositeReaderWrapper.wrap(reader2 = DirectoryReader.open(rd2)));
 
     // When unpatched, Lucene crashes here with an ArrayIndexOutOfBoundsException (caused by TermVectorsWriter)
-    iwOut.addIndexes(pr);
+    iwOut.addIndexes(SlowCodecReaderWrapper.wrap(pr));
 
     // ParallelReader closes any IndexReader you added to it:
     pr.close();

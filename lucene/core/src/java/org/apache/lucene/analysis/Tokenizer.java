@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,14 @@ package org.apache.lucene.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis;
+
+
+import java.io.IOException;
+import java.io.Reader;
 
 import org.apache.lucene.util.AttributeFactory;
 import org.apache.lucene.util.AttributeSource;
-
-import java.io.Reader;
-import java.io.IOException;
 
 /** A Tokenizer is a TokenStream whose input is a Reader.
   <p>
@@ -38,21 +38,21 @@ public abstract class Tokenizer extends TokenStream {
   /** Pending reader: not actually assigned to input until reset() */
   private Reader inputPending = ILLEGAL_STATE_READER;
 
-  /** Construct a token stream processing the given input. */
-  protected Tokenizer(Reader input) {
-    if (input == null) {
-      throw new NullPointerException("input must not be null");
-    }
-    this.inputPending = input;
+  /**
+   * Construct a tokenizer with no input, awaiting a call to {@link #setReader(java.io.Reader)}
+   * to provide input.
+   */
+  protected Tokenizer() {
+    //
   }
-  
-  /** Construct a token stream processing the given input using the given AttributeFactory. */
-  protected Tokenizer(AttributeFactory factory, Reader input) {
+
+  /**
+   * Construct a tokenizer with no input, awaiting a call to {@link #setReader(java.io.Reader)} to
+   * provide input.
+   * @param factory attribute factory.
+   */
+  protected Tokenizer(AttributeFactory factory) {
     super(factory);
-    if (input == null) {
-      throw new NullPointerException("input must not be null");
-    }
-    this.inputPending = input;
   }
 
   /**
@@ -83,14 +83,14 @@ public abstract class Tokenizer extends TokenStream {
   /** Expert: Set a new reader on the Tokenizer.  Typically, an
    *  analyzer (in its tokenStream method) will use
    *  this to re-use a previously created tokenizer. */
-  public final void setReader(Reader input) throws IOException {
+  public final void setReader(Reader input) {
     if (input == null) {
       throw new NullPointerException("input must not be null");
     } else if (this.input != ILLEGAL_STATE_READER) {
       throw new IllegalStateException("TokenStream contract violation: close() call missing");
     }
     this.inputPending = input;
-    assert setReaderTestPoint();
+    setReaderTestPoint();
   }
   
   @Override
@@ -100,10 +100,8 @@ public abstract class Tokenizer extends TokenStream {
     inputPending = ILLEGAL_STATE_READER;
   }
 
-  // only used by assert, for testing
-  boolean setReaderTestPoint() {
-    return true;
-  }
+  // only used for testing
+  void setReaderTestPoint() {}
   
   private static final Reader ILLEGAL_STATE_READER = new Reader() {
     @Override

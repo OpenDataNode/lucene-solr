@@ -14,10 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -33,6 +33,9 @@ import org.apache.solr.common.util.DataInputInputStream;
 import org.apache.solr.common.util.FastInputStream;
 import org.apache.solr.common.util.FastOutputStream;
 import org.apache.solr.common.util.JavaBinCodec;
+import org.apache.solr.common.util.ObjectReleaseTracker;
+import org.apache.solr.util.FSHDFSUtils;
+import org.apache.solr.util.FSHDFSUtils.CallerInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,7 +57,9 @@ import org.slf4j.LoggerFactory;
  *
  */
 public class HdfsTransactionLog extends TransactionLog {
-  public static Logger log = LoggerFactory.getLogger(HdfsTransactionLog.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+  private static boolean debug = log.isDebugEnabled();
+  private static boolean trace = log.isTraceEnabled();
 
 
   Path tlogFile;
@@ -63,11 +68,13 @@ public class HdfsTransactionLog extends TransactionLog {
   private FSDataOutputStream tlogOutStream;
   private FileSystem fs;
 
-  HdfsTransactionLog(FileSystem fs, Path tlogFile, Collection<String> globalStrings) {
-    this(fs, tlogFile, globalStrings, false);
+  private volatile boolean isClosed = false;
+
+  HdfsTransactionLog(FileSystem fs, Path tlogFile, Collection<String> globalStrings, Integer tlogDfsReplication) {
+    this(fs, tlogFile, globalStrings, false, tlogDfsReplication);
   }
 
-  HdfsTransactionLog(FileSystem fs, Path tlogFile, Collection<String> globalStrings, boolean openExisting) {
+  HdfsTransactionLog(FileSystem fs, Path tlogFile, Collection<String> globalStrings, boolean openExisting, Integer tlogDfsReplication) {
     super();
     boolean success = false;
     this.fs = fs;
@@ -78,13 +85,19 @@ public class HdfsTransactionLog extends TransactionLog {
       }
       this.tlogFile = tlogFile;
       
-      // TODO: look into forcefully taking over any lease
       if (fs.exists(tlogFile) && openExisting) {
+        FSHDFSUtils.recoverFileLease(fs, tlogFile, fs.getConf(), new CallerInfo(){
+
+          @Override
+          public boolean isCallerClosed() {
+            return isClosed;
+          }});
+        
         tlogOutStream = fs.append(tlogFile);
       } else {
         fs.delete(tlogFile, false);
         
-        tlogOutStream = fs.create(tlogFile, (short)1);
+        tlogOutStream = fs.create(tlogFile, (short)tlogDfsReplication.intValue());
         tlogOutStream.hsync();
       }
 
@@ -114,6 +127,8 @@ public class HdfsTransactionLog extends TransactionLog {
 
       success = true;
 
+      assert ObjectReleaseTracker.track(this);
+      
     } catch (IOException e) {
       throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, e);
     } finally {
@@ -288,7 +303,7 @@ public class HdfsTransactionLog extends TransactionLog {
   }
   
   @Override
-  protected void close() {
+  public void close() {
     try {
       if (debug) {
         log.debug("Closing tlog" + this);
@@ -305,6 +320,8 @@ public class HdfsTransactionLog extends TransactionLog {
       log.error("Exception closing tlog.", e);
       throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, e);
     } finally {
+      isClosed  = true;
+      assert ObjectReleaseTracker.release(this);
       if (deleteOnClose) {
         try {
           fs.delete(tlogFile, true);
@@ -420,6 +437,16 @@ public class HdfsTransactionLog extends TransactionLog {
       synchronized (HdfsTransactionLog.this) {
         return "LogReader{" + "file=" + tlogFile + ", position=" + fis.position() + ", end=" + fos.size() + "}";
       }
+    }
+    
+    @Override
+    public long currentPos() {
+      return fis.position();
+    }
+    
+    @Override
+    public long currentSize() {
+      return sz;
     }
 
   }

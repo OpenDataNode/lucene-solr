@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler;
 
 import org.apache.lucene.util.BytesRef;
@@ -38,7 +37,7 @@ import java.util.Set;
 
 /**
  * Provides the ability to specify multiple field types and field names in the same request. Expected parameters:
- * <table border="1">
+ * <table border="1" summary="table of parameters">
  * <tr>
  * <th align="left">Name</th>
  * <th align="left">Type</th>
@@ -107,11 +106,6 @@ public class FieldAnalysisRequestHandler extends AnalysisRequestHandlerBase {
     return "Provide a breakdown of the analysis process of field/query text";
   }
 
-  @Override
-  public String getSource() {
-    return null;
-  }
-
   // ================================================= Helper methods ================================================
 
   /**
@@ -143,7 +137,7 @@ public class FieldAnalysisRequestHandler extends AnalysisRequestHandlerBase {
     String value = solrParams.get(AnalysisParams.FIELD_VALUE);
     if (analysisRequest.getQuery() == null && value == null)  {
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
-          "One of analysis.value or q or analysis.query parameters must be specified");
+          "One of analysis.fieldvalue, q, or analysis.query parameters must be specified");
     }
 
     Iterable<ContentStream> streams = req.getContentStreams();
@@ -212,8 +206,8 @@ public class FieldAnalysisRequestHandler extends AnalysisRequestHandlerBase {
    *
    * @return NamedList containing the tokens produced by the analyzers of the given field, separated into an index and
    *         a query group
-   */
-  private NamedList<NamedList> analyzeValues(FieldAnalysisRequest analysisRequest, FieldType fieldType, String fieldName) {
+   */ // package access for testing
+  NamedList<NamedList> analyzeValues(FieldAnalysisRequest analysisRequest, FieldType fieldType, String fieldName) {
 
     final String queryValue = analysisRequest.getQuery();
     final Set<BytesRef> termsToMatch = (queryValue != null && analysisRequest.isShowMatch())

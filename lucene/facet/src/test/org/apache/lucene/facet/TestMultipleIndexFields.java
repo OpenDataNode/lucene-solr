@@ -1,5 +1,3 @@
-package org.apache.lucene.facet;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.facet;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -30,8 +29,8 @@ import org.apache.lucene.facet.taxonomy.TaxonomyReader;
 import org.apache.lucene.facet.taxonomy.TaxonomyWriter;
 import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyReader;
 import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter;
-import org.apache.lucene.index.AtomicReader;
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.index.RandomIndexWriter;
@@ -91,7 +90,8 @@ public class TestMultipleIndexFields extends FacetTestCase {
 
     assertOrdinalsExist("$facets", ir);
 
-    IOUtils.close(tr, ir, iw, tw, indexDir, taxoDir);
+    iw.close();
+    IOUtils.close(tr, ir, tw, indexDir, taxoDir);
   }
 
   @Test
@@ -130,7 +130,8 @@ public class TestMultipleIndexFields extends FacetTestCase {
     assertOrdinalsExist("$facets", ir);
     assertOrdinalsExist("$author", ir);
 
-    IOUtils.close(tr, ir, iw, tw, indexDir, taxoDir);
+    iw.close();
+    IOUtils.close(tr, ir, tw, indexDir, taxoDir);
   }
 
   @Test
@@ -173,12 +174,13 @@ public class TestMultipleIndexFields extends FacetTestCase {
     assertOrdinalsExist("$music", ir);
     assertOrdinalsExist("$music", ir);
 
-    IOUtils.close(tr, ir, iw, tw, indexDir, taxoDir);
+    iw.close();
+    IOUtils.close(tr, ir, tw, indexDir, taxoDir);
   }
 
   private void assertOrdinalsExist(String field, IndexReader ir) throws IOException {
-    for (AtomicReaderContext context : ir.leaves()) {
-      AtomicReader r = context.reader();
+    for (LeafReaderContext context : ir.leaves()) {
+      LeafReader r = context.reader();
       if (r.getBinaryDocValues(field) != null) {
         return; // not all segments must have this DocValues
       }
@@ -224,7 +226,8 @@ public class TestMultipleIndexFields extends FacetTestCase {
     assertOrdinalsExist("$bands", ir);
     assertOrdinalsExist("$composers", ir);
 
-    IOUtils.close(tr, ir, iw, tw, indexDir, taxoDir);
+    iw.close();
+    IOUtils.close(tr, ir, tw, indexDir, taxoDir);
   }
 
   @Test
@@ -267,8 +270,8 @@ public class TestMultipleIndexFields extends FacetTestCase {
     assertOrdinalsExist("$music", ir);
     assertOrdinalsExist("$literature", ir);
 
-    IOUtils.close(tr, ir, iw, tw);
-    IOUtils.close(indexDir, taxoDir);
+    iw.close();
+    IOUtils.close(tr, ir, iw, tw, indexDir, taxoDir);
   }
 
   private void assertCorrectResults(Facets facets) throws IOException {

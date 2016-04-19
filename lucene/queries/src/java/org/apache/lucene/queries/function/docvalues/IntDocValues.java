@@ -1,5 +1,3 @@
-package org.apache.lucene.queries.function.docvalues;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queries.function.docvalues;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queries.function.docvalues;
 
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.queries.function.FunctionValues;
@@ -103,7 +102,7 @@ public abstract class IntDocValues extends FunctionValues {
 
     return new ValueSourceScorer(reader, this) {
       @Override
-      public boolean matchesValue(int doc) {
+      public boolean matches(int doc) {
         int val = intVal(doc);
         // only check for deleted if it's the default value
         // if (val==0 && reader.isDeleted(doc)) return false;

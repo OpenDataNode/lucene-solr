@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.uima;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.uima;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.uima;
+
 
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.uima.ae.AEProviderFactory;
@@ -46,15 +46,15 @@ public abstract class BaseUIMATokenizer extends Tokenizer {
   protected CAS cas;
 
   protected BaseUIMATokenizer
-      (AttributeFactory factory, Reader reader, String descriptorPath, Map<String, Object> configurationParameters) {
-    super(factory, reader);
+      (AttributeFactory factory, String descriptorPath, Map<String, Object> configurationParameters) {
+    super(factory);
     this.descriptorPath = descriptorPath;
     this.configurationParameters = configurationParameters;
   }
 
   /**
    * analyzes the tokenizer input using the given analysis engine
-   * <p/>
+   * <p>
    * {@link #cas} will be filled with  extracted metadata (UIMA annotations, feature structures)
    *
    * @throws IOException If there is a low-level I/O error.

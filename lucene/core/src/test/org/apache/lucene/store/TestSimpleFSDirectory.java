@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,11 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
 
-import java.io.File;
+
 import java.io.IOException;
+import java.nio.file.Path;
 
 /**
  * Tests SimpleFSDirectory
@@ -26,7 +26,7 @@ import java.io.IOException;
 public class TestSimpleFSDirectory extends BaseDirectoryTestCase {
 
   @Override
-  protected Directory getDirectory(File path) throws IOException {
+  protected Directory getDirectory(Path path) throws IOException {
     return new SimpleFSDirectory(path);
   }
 }

@@ -1,5 +1,3 @@
-package org.apache.solr.update.processor;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.update.processor;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.update.processor;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -32,9 +31,6 @@ import org.apache.solr.common.util.NamedList;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.update.AddUpdateCommand;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Removes duplicate values found in fields matching the specified conditions.  
@@ -58,8 +54,6 @@ import org.slf4j.LoggerFactory;
  */
 public class UniqFieldsUpdateProcessorFactory extends FieldValueSubsetUpdateProcessorFactory {
 
-  public final static Logger log = LoggerFactory.getLogger(UniqFieldsUpdateProcessorFactory.class);
-
   @Override
   public FieldMutatingUpdateProcessor.FieldNameSelector 
     getDefaultSelector(final SolrCore core) {
@@ -67,22 +61,6 @@ public class UniqFieldsUpdateProcessorFactory extends FieldValueSubsetUpdateProc
     return FieldMutatingUpdateProcessor.SELECT_NO_FIELDS;
   }
 
-  @SuppressWarnings("unchecked")
-  @Override
-  public void init(@SuppressWarnings("rawtypes") NamedList args) {
-    // legacy init param support, will be removed in 5.0
-    // no idea why this was ever implimented as <lst> should have just been <arr>
-    NamedList<String> flst = (NamedList<String>) args.remove("fields");
-    if(flst != null){
-      log.warn("Use of the 'fields' init param in UniqFieldsUpdateProcessorFactory is deprecated, please use 'fieldName' (or another FieldMutatingUpdateProcessorFactory selector option) instead");
-      log.info("Replacing 'fields' init param with (individual) 'fieldName' params");
-      for (Map.Entry<String,String> entry : flst) {
-        args.add("fieldName", entry.getValue());
-      }
-    }
-    super.init(args);
-  }
-  
   @Override
   @SuppressWarnings("unchecked")
   public Collection pickSubset(Collection values) {

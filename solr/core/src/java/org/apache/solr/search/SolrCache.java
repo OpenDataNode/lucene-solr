@@ -14,14 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.search;
 
 import org.apache.solr.core.SolrInfoMBean;
 
 import java.util.Map;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 
 /**
@@ -30,8 +27,6 @@ import org.slf4j.LoggerFactory;
  *
  */
 public interface SolrCache<K,V> extends SolrInfoMBean {
-  public final static Logger log = LoggerFactory.getLogger(SolrCache.class);
-
 
   /**
    * The initialization routine.  Instance specific arguments are passed in

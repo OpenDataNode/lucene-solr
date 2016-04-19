@@ -14,11 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update;
 
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.Vector;
 
 import org.apache.solr.core.DirectoryFactory;
@@ -42,7 +42,7 @@ import org.slf4j.LoggerFactory;
  */
 
 public abstract class UpdateHandler implements SolrInfoMBean {
-  protected final static Logger log = LoggerFactory.getLogger(UpdateHandler.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   protected final SolrCore core;
 
@@ -128,6 +128,8 @@ public abstract class UpdateHandler implements SolrInfoMBean {
       if (!core.isReloaded() && !core.getDirectoryFactory().isPersistent()) {
         ulog.clearLog(core, ulogPluginInfo);
       }
+      
+      log.info("Using UpdateLog implementation: " + ulog.getClass().getName());
       
       ulog.init(ulogPluginInfo);
 

@@ -1,5 +1,3 @@
-package org.apache.solr.client.solrj.request;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,11 @@ package org.apache.solr.client.solrj.request;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.client.solrj.request;
 
 import junit.framework.Assert;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.solr.SolrJettyTestBase;
 import org.apache.solr.client.solrj.response.SolrPingResponse;
 import org.apache.solr.common.SolrException;
@@ -27,6 +27,8 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.io.File;
+
 /**
  * Test SolrPing in Solrj
  */
@@ -34,7 +36,9 @@ public class SolrPingTest extends SolrJettyTestBase {
   
   @BeforeClass
   public static void beforeClass() throws Exception {
-    initCore("solrconfig.xml", "schema.xml", "solrj/solr", "collection1");
+    File testHome = createTempDir().toFile();
+    FileUtils.copyDirectory(getFile("solrj/solr"), testHome);
+    initCore("solrconfig.xml", "schema.xml", testHome.getAbsolutePath(), "collection1");
   }
   
   @Before
@@ -47,8 +51,8 @@ public class SolrPingTest extends SolrJettyTestBase {
     SolrInputDocument doc = new SolrInputDocument();
     doc.setField("id", 1);
     doc.setField("terms_s", "samsung");
-    getSolrServer().add(doc);
-    getSolrServer().commit(true, true);
+    getSolrClient().add(doc);
+    getSolrClient().commit(true, true);
   }
   
   @Test
@@ -56,9 +60,9 @@ public class SolrPingTest extends SolrJettyTestBase {
     SolrPing ping = new SolrPing();
     SolrPingResponse rsp = null;
     ping.setActionEnable();
-    ping.process(getSolrServer());
+    ping.process(getSolrClient());
     ping.removeAction();
-    rsp = ping.process(getSolrServer());
+    rsp = ping.process(getSolrClient());
     Assert.assertNotNull(rsp);
   }
   
@@ -68,12 +72,12 @@ public class SolrPingTest extends SolrJettyTestBase {
     SolrPingResponse rsp = null;
     ping.setActionDisable();
     try {
-      ping.process(getSolrServer());
+      ping.process(getSolrClient());
     } catch (Exception e) {
       throw new Exception("disable action failed!");
     }
     ping.setActionPing();
-    rsp = ping.process(getSolrServer());
+    rsp = ping.process(getSolrClient());
     // the above line should fail with a 503 SolrException.
     Assert.assertNotNull(rsp);
   }

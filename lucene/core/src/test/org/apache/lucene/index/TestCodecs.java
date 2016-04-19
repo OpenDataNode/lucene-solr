@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,13 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Random;
@@ -27,32 +29,20 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.FieldsProducer;
-import org.apache.lucene.codecs.PostingsConsumer;
-import org.apache.lucene.codecs.TermStats;
-import org.apache.lucene.codecs.TermsConsumer;
-import org.apache.lucene.codecs.lucene3x.Lucene3xCodec;
-import org.apache.lucene.codecs.lucene40.Lucene40RWCodec;
-import org.apache.lucene.codecs.lucene41.Lucene41RWCodec;
-import org.apache.lucene.codecs.lucene42.Lucene42RWCodec;
-import org.apache.lucene.codecs.mocksep.MockSepPostingsFormat;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field.Store;
-import org.apache.lucene.document.FieldType;
-import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.document.StringField;
-import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.FieldInfo.DocValuesType;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.OpenBitSet;
+import org.apache.lucene.util.StringHelper;
 import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.Version;
 import org.junit.BeforeClass;
@@ -100,38 +90,12 @@ public class TestCodecs extends LuceneTestCase {
       this.omitTF = omitTF;
       this.storePayloads = storePayloads;
       // TODO: change this test to use all three
-      fieldInfo = fieldInfos.addOrUpdate(name, new IndexableFieldType() {
-
-        @Override
-        public boolean indexed() { return true; }
-
-        @Override
-        public boolean stored() { return false; }
-
-        @Override
-        public boolean tokenized() { return false; }
-
-        @Override
-        public boolean storeTermVectors() { return false; }
-
-        @Override
-        public boolean storeTermVectorOffsets() { return false; }
-
-        @Override
-        public boolean storeTermVectorPositions() { return false; }
-
-        @Override
-        public boolean storeTermVectorPayloads() { return false; }
-
-        @Override
-        public boolean omitNorms() { return false; }
-
-        @Override
-        public IndexOptions indexOptions() { return omitTF ? IndexOptions.DOCS_ONLY : IndexOptions.DOCS_AND_FREQS_AND_POSITIONS; }
-
-        @Override
-        public DocValuesType docValueType() { return null; }
-      });
+      fieldInfo = fieldInfos.getOrAdd(name);
+      if (omitTF) {
+        fieldInfo.setIndexOptions(IndexOptions.DOCS);
+      } else {
+        fieldInfo.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
+      }
       if (storePayloads) {
         fieldInfo.setStorePayloads();
       }
@@ -145,22 +109,6 @@ public class TestCodecs extends LuceneTestCase {
     @Override
     public int compareTo(final FieldData other) {
       return fieldInfo.name.compareTo(other.fieldInfo.name);
-    }
-
-    public void write(final FieldsConsumer consumer) throws Throwable {
-      Arrays.sort(terms);
-      final TermsConsumer termsConsumer = consumer.addField(fieldInfo);
-      long sumTotalTermCount = 0;
-      long sumDF = 0;
-      OpenBitSet visitedDocs = new OpenBitSet();
-      for (final TermData term : terms) {
-        for (int i = 0; i < term.docs.length; i++) {
-          visitedDocs.set(term.docs[i]);
-        }
-        sumDF += term.docs.length;
-        sumTotalTermCount += term.write(termsConsumer);
-      }
-      termsConsumer.finish(omitTF ? -1 : sumTotalTermCount, sumDF, (int) visitedDocs.cardinality());
     }
   }
 
@@ -191,30 +139,6 @@ public class TestCodecs extends LuceneTestCase {
     @Override
     public int compareTo(final TermData o) {
       return text.compareTo(o.text);
-    }
-
-    public long write(final TermsConsumer termsConsumer) throws Throwable {
-      final PostingsConsumer postingsConsumer = termsConsumer.startTerm(text);
-      long totTF = 0;
-      for(int i=0;i<docs.length;i++) {
-        final int termDocFreq;
-        if (field.omitTF) {
-          termDocFreq = -1;
-        } else {
-          termDocFreq = positions[i].length;
-        }
-        postingsConsumer.startDoc(docs[i], termDocFreq);
-        if (!field.omitTF) {
-          totTF += positions[i].length;
-          for(int j=0;j<positions[i].length;j++) {
-            final PositionData pos = positions[i][j];
-            postingsConsumer.addPosition(pos.pos, pos.payload, -1, -1);
-          }
-        }
-        postingsConsumer.finishDoc();
-      }
-      termsConsumer.finishTerm(text, new TermStats(docs.length, field.omitTF ? -1 : totTF));
-      return totTF;
     }
   }
 
@@ -297,11 +221,11 @@ public class TestCodecs extends LuceneTestCase {
     final FieldData[] fields = new FieldData[] {field};
     final FieldInfos fieldInfos = builder.finish();
     final Directory dir = newDirectory();
-    this.write(fieldInfos, dir, fields, true);
     Codec codec = Codec.getDefault();
-    final SegmentInfo si = new SegmentInfo(dir, Version.LATEST, SEGMENT, 10000, false, codec, null);
-
-    final FieldsProducer reader = codec.postingsFormat().fieldsProducer(new SegmentReadState(dir, si, fieldInfos, newIOContext(random()), DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR));
+    final SegmentInfo si = new SegmentInfo(dir, Version.LATEST, SEGMENT, 10000, false, codec, Collections.<String,String>emptyMap(), StringHelper.randomId(), new HashMap<String,String>());
+    
+    this.write(si, fieldInfos, dir, fields);
+    final FieldsProducer reader = codec.postingsFormat().fieldsProducer(new SegmentReadState(dir, si, fieldInfos, newIOContext(random())));
 
     final Iterator<String> fieldsEnum = reader.iterator();
     String fieldName = fieldsEnum.next();
@@ -309,9 +233,9 @@ public class TestCodecs extends LuceneTestCase {
     final Terms terms2 = reader.terms(fieldName);
     assertNotNull(terms2);
 
-    final TermsEnum termsEnum = terms2.iterator(null);
+    final TermsEnum termsEnum = terms2.iterator();
 
-    DocsEnum docsEnum = null;
+    PostingsEnum postingsEnum = null;
     for(int i=0;i<NUM_TERMS;i++) {
       final BytesRef term = termsEnum.next();
       assertNotNull(term);
@@ -321,9 +245,9 @@ public class TestCodecs extends LuceneTestCase {
       // make sure it properly fully resets (rewinds) its
       // internal state:
       for(int iter=0;iter<2;iter++) {
-        docsEnum = TestUtil.docs(random(), termsEnum, null,  docsEnum, DocsEnum.FLAG_NONE);
-        assertEquals(terms[i].docs[0], docsEnum.nextDoc());
-        assertEquals(DocIdSetIterator.NO_MORE_DOCS, docsEnum.nextDoc());
+        postingsEnum = TestUtil.docs(random(), termsEnum, postingsEnum, PostingsEnum.NONE);
+        assertEquals(terms[i].docs[0], postingsEnum.nextDoc());
+        assertEquals(DocIdSetIterator.NO_MORE_DOCS, postingsEnum.nextDoc());
       }
     }
     assertNull(termsEnum.next());
@@ -354,14 +278,14 @@ public class TestCodecs extends LuceneTestCase {
       System.out.println("TEST: now write postings");
     }
 
-    this.write(fieldInfos, dir, fields, false);
     Codec codec = Codec.getDefault();
-    final SegmentInfo si = new SegmentInfo(dir, Version.LATEST, SEGMENT, 10000, false, codec, null);
+    final SegmentInfo si = new SegmentInfo(dir, Version.LATEST, SEGMENT, 10000, false, codec, Collections.<String,String>emptyMap(), StringHelper.randomId(), new HashMap<String,String>());
+    this.write(si, fieldInfos, dir, fields);
 
     if (VERBOSE) {
       System.out.println("TEST: now read postings");
     }
-    final FieldsProducer terms = codec.postingsFormat().fieldsProducer(new SegmentReadState(dir, si, fieldInfos, newIOContext(random()), DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR));
+    final FieldsProducer terms = codec.postingsFormat().fieldsProducer(new SegmentReadState(dir, si, fieldInfos, newIOContext(random())));
 
     final Verify[] threads = new Verify[NUM_TEST_THREADS-1];
     for(int i=0;i<NUM_TEST_THREADS-1;i++) {
@@ -379,64 +303,6 @@ public class TestCodecs extends LuceneTestCase {
 
     terms.close();
     dir.close();
-  }
-
-  public void testSepPositionAfterMerge() throws IOException {
-    final Directory dir = newDirectory();
-    final IndexWriterConfig config = newIndexWriterConfig(new MockAnalyzer(random()));
-    config.setMergePolicy(newLogMergePolicy());
-    config.setCodec(TestUtil.alwaysPostingsFormat(new MockSepPostingsFormat()));
-    final IndexWriter writer = new IndexWriter(dir, config);
-
-    try {
-      final PhraseQuery pq = new PhraseQuery();
-      pq.add(new Term("content", "bbb"));
-      pq.add(new Term("content", "ccc"));
-
-      final Document doc = new Document();
-      FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
-      customType.setOmitNorms(true);
-      doc.add(newField("content", "aaa bbb ccc ddd", customType));
-
-      // add document and force commit for creating a first segment
-      writer.addDocument(doc);
-      writer.commit();
-
-      ScoreDoc[] results = this.search(writer, pq, 5);
-      assertEquals(1, results.length);
-      assertEquals(0, results[0].doc);
-
-      // add document and force commit for creating a second segment
-      writer.addDocument(doc);
-      writer.commit();
-
-      // at this point, there should be at least two segments
-      results = this.search(writer, pq, 5);
-      assertEquals(2, results.length);
-      assertEquals(0, results[0].doc);
-
-      writer.forceMerge(1);
-
-      // optimise to merge the segments.
-      results = this.search(writer, pq, 5);
-      assertEquals(2, results.length);
-      assertEquals(0, results[0].doc);
-    }
-    finally {
-      writer.close();
-      dir.close();
-    }
-  }
-
-  private ScoreDoc[] search(final IndexWriter writer, final Query q, final int n) throws IOException {
-    final IndexReader reader = writer.getReader();
-    final IndexSearcher searcher = newSearcher(reader);
-    try {
-      return searcher.search(q, null, n).scoreDocs;
-    }
-    finally {
-      reader.close();
-    }
   }
 
   private class Verify extends Thread {
@@ -461,21 +327,21 @@ public class TestCodecs extends LuceneTestCase {
       }
     }
 
-    private void verifyDocs(final int[] docs, final PositionData[][] positions, final DocsEnum docsEnum, final boolean doPos) throws Throwable {
+    private void verifyDocs(final int[] docs, final PositionData[][] positions, final PostingsEnum postingsEnum, final boolean doPos) throws Throwable {
       for(int i=0;i<docs.length;i++) {
-        final int doc = docsEnum.nextDoc();
+        final int doc = postingsEnum.nextDoc();
         assertTrue(doc != DocIdSetIterator.NO_MORE_DOCS);
         assertEquals(docs[i], doc);
         if (doPos) {
-          this.verifyPositions(positions[i], ((DocsAndPositionsEnum) docsEnum));
+          this.verifyPositions(positions[i], postingsEnum);
         }
       }
-      assertEquals(DocIdSetIterator.NO_MORE_DOCS, docsEnum.nextDoc());
+      assertEquals(DocIdSetIterator.NO_MORE_DOCS, postingsEnum.nextDoc());
     }
 
     byte[] data = new byte[10];
 
-    private void verifyPositions(final PositionData[] positions, final DocsAndPositionsEnum posEnum) throws Throwable {
+    private void verifyPositions(final PositionData[] positions, final PostingsEnum posEnum) throws Throwable {
       for(int i=0;i<positions.length;i++) {
         final int pos = posEnum.nextPosition();
         assertEquals(positions[i].pos, pos);
@@ -496,11 +362,7 @@ public class TestCodecs extends LuceneTestCase {
 
       for(int iter=0;iter<NUM_TEST_ITER;iter++) {
         final FieldData field = fields[random().nextInt(fields.length)];
-        final TermsEnum termsEnum = termsDict.terms(field.fieldInfo.name).iterator(null);
-        if (si.getCodec() instanceof Lucene3xCodec) {
-          // code below expects unicode sort order
-          continue;
-        }
+        final TermsEnum termsEnum = termsDict.terms(field.fieldInfo.name).iterator();
 
         int upto = 0;
         // Test straight enum of the terms:
@@ -520,9 +382,9 @@ public class TestCodecs extends LuceneTestCase {
         assertEquals(status, TermsEnum.SeekStatus.FOUND);
         assertEquals(term.docs.length, termsEnum.docFreq());
         if (field.omitTF) {
-          this.verifyDocs(term.docs, term.positions, TestUtil.docs(random(), termsEnum, null, null, DocsEnum.FLAG_NONE), false);
+          this.verifyDocs(term.docs, term.positions, TestUtil.docs(random(), termsEnum, null, PostingsEnum.NONE), false);
         } else {
-          this.verifyDocs(term.docs, term.positions, termsEnum.docsAndPositions(null, null), true);
+          this.verifyDocs(term.docs, term.positions, termsEnum.postings(null, PostingsEnum.ALL), true);
         }
 
         // Test random seek by ord:
@@ -540,9 +402,9 @@ public class TestCodecs extends LuceneTestCase {
           assertTrue(termsEnum.term().bytesEquals(new BytesRef(term.text2)));
           assertEquals(term.docs.length, termsEnum.docFreq());
           if (field.omitTF) {
-            this.verifyDocs(term.docs, term.positions, TestUtil.docs(random(), termsEnum, null, null, DocsEnum.FLAG_NONE), false);
+            this.verifyDocs(term.docs, term.positions, TestUtil.docs(random(), termsEnum, null, PostingsEnum.NONE), false);
           } else {
-            this.verifyDocs(term.docs, term.positions, termsEnum.docsAndPositions(null, null), true);
+            this.verifyDocs(term.docs, term.positions, termsEnum.postings(null, PostingsEnum.ALL), true);
           }
         }
 
@@ -590,22 +452,15 @@ public class TestCodecs extends LuceneTestCase {
         do {
           term = field.terms[upto];
           if (random().nextInt(3) == 1) {
-            final DocsEnum docs;
-            final DocsEnum docsAndFreqs;
-            final DocsAndPositionsEnum postings;
+            final PostingsEnum postings;
             if (!field.omitTF) {
-              postings = termsEnum.docsAndPositions(null, null);
-              if (postings != null) {
-                docs = docsAndFreqs = postings;
-              } else {
-                docs = docsAndFreqs = TestUtil.docs(random(), termsEnum, null, null, DocsEnum.FLAG_FREQS);
-              }
+              // TODO: we should randomize which postings features are available, but
+              // need to coordinate this with the checks below that rely on such features
+              postings = termsEnum.postings(null, PostingsEnum.ALL);
             } else {
-              postings = null;
-              docsAndFreqs = null;
-              docs = TestUtil.docs(random(), termsEnum, null, null, DocsEnum.FLAG_NONE);
+              postings = TestUtil.docs(random(), termsEnum, null, PostingsEnum.FREQS);
             }
-            assertNotNull(docs);
+            assertNotNull(postings);
             int upto2 = -1;
             boolean ended = false;
             while(upto2 < term.docs.length-1) {
@@ -616,10 +471,10 @@ public class TestCodecs extends LuceneTestCase {
                 final int inc = 1+random().nextInt(left-1);
                 upto2 += inc;
                 if (random().nextInt(2) == 1) {
-                  doc = docs.advance(term.docs[upto2]);
+                  doc = postings.advance(term.docs[upto2]);
                   assertEquals(term.docs[upto2], doc);
                 } else {
-                  doc = docs.advance(1+term.docs[upto2]);
+                  doc = postings.advance(1+term.docs[upto2]);
                   if (doc == DocIdSetIterator.NO_MORE_DOCS) {
                     // skipped past last doc
                     assert upto2 == term.docs.length-1;
@@ -634,7 +489,7 @@ public class TestCodecs extends LuceneTestCase {
                   }
                 }
               } else {
-                doc = docs.nextDoc();
+                doc = postings.nextDoc();
                 assertTrue(doc != -1);
                 upto2++;
               }
@@ -648,7 +503,7 @@ public class TestCodecs extends LuceneTestCase {
             }
 
             if (!ended) {
-              assertEquals(DocIdSetIterator.NO_MORE_DOCS, docs.nextDoc());
+              assertEquals(DocIdSetIterator.NO_MORE_DOCS, postings.nextDoc());
             }
           }
           upto++;
@@ -660,23 +515,259 @@ public class TestCodecs extends LuceneTestCase {
     }
   }
 
-  private void write(final FieldInfos fieldInfos, final Directory dir, final FieldData[] fields, boolean allowPreFlex) throws Throwable {
+  private static class DataFields extends Fields {
+    private final FieldData[] fields;
 
-    final int termIndexInterval = TestUtil.nextInt(random(), 13, 27);
-    final Codec codec = Codec.getDefault();
-    final SegmentInfo si = new SegmentInfo(dir, Version.LATEST, SEGMENT, 10000, false, codec, null);
-    final SegmentWriteState state = new SegmentWriteState(InfoStream.getDefault(), dir, si, fieldInfos, termIndexInterval, null, newIOContext(random()));
-
-    final FieldsConsumer consumer = codec.postingsFormat().fieldsConsumer(state);
-    Arrays.sort(fields);
-    for (final FieldData field : fields) {
-      if (!allowPreFlex && codec instanceof Lucene3xCodec) {
-        // code below expects unicode sort order
-        continue;
-      }
-      field.write(consumer);
+    public DataFields(FieldData[] fields) {
+      // already sorted:
+      this.fields = fields;
     }
-    consumer.close();
+
+    @Override
+    public Iterator<String> iterator() {
+      return new Iterator<String>() {
+        int upto = -1;
+
+        @Override
+        public boolean hasNext() {
+          return upto+1 < fields.length;
+        }
+
+        @Override
+        public String next() {
+          upto++;
+          return fields[upto].fieldInfo.name;
+        }
+
+        @Override
+        public void remove() {
+          throw new UnsupportedOperationException();
+        }
+      };
+    }
+
+    @Override
+    public Terms terms(String field) {
+      // Slow linear search:
+      for(FieldData fieldData : fields) {
+        if (fieldData.fieldInfo.name.equals(field)) {
+          return new DataTerms(fieldData);
+        }
+      }
+      return null;
+    }
+
+    @Override
+    public int size() {
+      return fields.length;
+    }
+  }
+
+  private static class DataTerms extends Terms {
+    final FieldData fieldData;
+
+    public DataTerms(FieldData fieldData) {
+      this.fieldData = fieldData;
+    }
+
+    @Override
+    public TermsEnum iterator() {
+      return new DataTermsEnum(fieldData);
+    }
+
+    @Override
+    public long size() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public long getSumTotalTermFreq() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public long getSumDocFreq() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public int getDocCount() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean hasFreqs() {
+      return fieldData.fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS) >= 0;
+    }
+
+    @Override
+    public boolean hasOffsets() {
+      return fieldData.fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS) >= 0;
+    }
+
+    @Override
+    public boolean hasPositions() {
+      return fieldData.fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS) >= 0;
+    }
+
+    @Override
+    public boolean hasPayloads() {
+      return fieldData.fieldInfo.hasPayloads();
+    }
+  }
+
+  private static class DataTermsEnum extends TermsEnum {
+    final FieldData fieldData;
+    private int upto = -1;
+
+    public DataTermsEnum(FieldData fieldData) {
+      this.fieldData = fieldData;
+    }
+
+    @Override
+    public BytesRef next() {
+      upto++;
+      if (upto == fieldData.terms.length) {
+        return null;
+      }
+
+      return term();
+    }
+
+    @Override
+    public BytesRef term() {
+      return fieldData.terms[upto].text;
+    }
+
+    @Override
+    public SeekStatus seekCeil(BytesRef text) {
+      // Stupid linear impl:
+      for(int i=0;i<fieldData.terms.length;i++) {
+        int cmp = fieldData.terms[i].text.compareTo(text);
+        if (cmp == 0) {
+          upto = i;
+          return SeekStatus.FOUND;
+        } else if (cmp > 0) {
+          upto = i;
+          return SeekStatus.NOT_FOUND;
+        }
+      }
+
+      return SeekStatus.END;
+    }
+
+    @Override
+    public void seekExact(long ord) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public long ord() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public int docFreq() {
+      throw new UnsupportedOperationException();
+    }
+  
+    @Override
+    public long totalTermFreq() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public PostingsEnum postings(PostingsEnum reuse, int flags) {
+      return new DataPostingsEnum(fieldData.terms[upto]);
+    }
+
+  }
+
+  private static class DataPostingsEnum extends PostingsEnum {
+    final TermData termData;
+    int docUpto = -1;
+    int posUpto;
+
+    public DataPostingsEnum(TermData termData) {
+      this.termData = termData;
+    }
+
+    @Override
+    public long cost() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public int nextDoc() {
+      docUpto++;
+      if (docUpto == termData.docs.length) {
+        return NO_MORE_DOCS;
+      }
+      posUpto = -1;
+      return docID();
+    }
+
+    @Override
+    public int docID() {
+      return termData.docs[docUpto];
+    }
+
+    @Override
+    public int advance(int target) {
+      // Slow linear impl:
+      nextDoc();
+      while (docID() < target) {
+        nextDoc();
+      }
+
+      return docID();
+    }
+
+    @Override
+    public int freq() {
+      return termData.positions[docUpto].length;
+    }
+
+    @Override
+    public int nextPosition() {
+      posUpto++;
+      return termData.positions[docUpto][posUpto].pos;
+    }
+
+    @Override
+    public BytesRef getPayload() {
+      return termData.positions[docUpto][posUpto].payload;
+    }
+    
+    @Override
+    public int startOffset() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public int endOffset() {
+      throw new UnsupportedOperationException();
+    }
+  }
+
+  private void write(SegmentInfo si, final FieldInfos fieldInfos, final Directory dir, final FieldData[] fields) throws Throwable {
+
+    final Codec codec = si.getCodec();
+    final SegmentWriteState state = new SegmentWriteState(InfoStream.getDefault(), dir, si, fieldInfos, null, newIOContext(random()));
+
+    Arrays.sort(fields);
+    FieldsConsumer consumer = codec.postingsFormat().fieldsConsumer(state);
+    boolean success = false;
+    try {
+      consumer.write(new DataFields(fields));
+      success = true;
+    } finally {
+      if (success) {
+        IOUtils.close(consumer);
+      } else {
+        IOUtils.closeWhileHandlingException(consumer);
+      }
+    }
   }
   
   public void testDocsOnlyFreq() throws Exception {
@@ -696,38 +787,13 @@ public class TestCodecs extends LuceneTestCase {
     
     Term term = new Term("f", new BytesRef("doc"));
     DirectoryReader reader = DirectoryReader.open(dir);
-    for (AtomicReaderContext ctx : reader.leaves()) {
-      DocsEnum de = ctx.reader().termDocsEnum(term);
+    for (LeafReaderContext ctx : reader.leaves()) {
+      PostingsEnum de = ctx.reader().postings(term);
       while (de.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
         assertEquals("wrong freq for doc " + de.docID(), 1, de.freq());
       }
     }
     reader.close();
-    
-    dir.close();
-  }
-  
-  public void testDisableImpersonation() throws Exception {
-    Codec[] oldCodecs = new Codec[] { new Lucene40RWCodec(), new Lucene41RWCodec(), new Lucene42RWCodec() };
-    Directory dir = newDirectory();
-    IndexWriterConfig conf = newIndexWriterConfig(new MockAnalyzer(random()));
-    conf.setCodec(oldCodecs[random().nextInt(oldCodecs.length)]);
-    IndexWriter writer = new IndexWriter(dir, conf);
-    
-    Document doc = new Document();
-    doc.add(new StringField("f", "bar", Store.YES));
-    doc.add(new NumericDocValuesField("n", 18L));
-    writer.addDocument(doc);
-    
-    OLD_FORMAT_IMPERSONATION_IS_ACTIVE = false;
-    try {
-      writer.close();
-      fail("should not have succeeded to impersonate an old format!");
-    } catch (UnsupportedOperationException e) {
-      writer.rollback();
-    } finally {
-      OLD_FORMAT_IMPERSONATION_IS_ACTIVE = true;
-    }
     
     dir.close();
   }

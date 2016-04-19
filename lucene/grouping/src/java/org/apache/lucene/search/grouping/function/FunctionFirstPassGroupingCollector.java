@@ -1,5 +1,3 @@
-package org.apache.lucene.search.grouping.function;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,9 @@ package org.apache.lucene.search.grouping.function;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.grouping.function;
 
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.search.Sort;
@@ -77,8 +76,8 @@ public class FunctionFirstPassGroupingCollector extends AbstractFirstPassGroupin
   }
 
   @Override
-  public void setNextReader(AtomicReaderContext readerContext) throws IOException {
-    super.setNextReader(readerContext);
+  protected void doSetNextReader(LeafReaderContext readerContext) throws IOException {
+    super.doSetNextReader(readerContext);
     FunctionValues values = groupByVS.getValues(vsContext, readerContext);
     filler = values.getValueFiller();
     mval = filler.getValue();

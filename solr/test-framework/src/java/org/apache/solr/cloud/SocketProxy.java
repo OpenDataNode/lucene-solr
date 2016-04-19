@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,12 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.invoke.MethodHandles;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -45,9 +45,12 @@ import org.slf4j.LoggerFactory;
  */
 public class SocketProxy {
   
-  private static final transient Logger log = LoggerFactory.getLogger(SocketProxy.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   public static final int ACCEPT_TIMEOUT_MILLIS = 100;
+
+  // should be as large as the HttpShardHandlerFactory socket timeout ... or larger?
+  public static final int PUMP_SOCKET_TIMEOUT_MS = 100 * 1000;
   
   private URI proxyUrl;
   private URI target;
@@ -59,24 +62,40 @@ public class SocketProxy {
   
   public List<Bridge> connections = new LinkedList<Bridge>();
   
-  private int listenPort = 0;
+  private final int listenPort;
   
   private int receiveBufferSize = -1;
   
   private boolean pauseAtStart = false;
   
   private int acceptBacklog = 50;
-  
-  public SocketProxy() throws Exception {}
-  
-  public SocketProxy(URI uri) throws Exception {
-    this(0, uri);
+
+  private boolean usesSSL;
+
+  public SocketProxy() throws Exception {
+    this(0, false);
   }
   
-  public SocketProxy(int port, URI uri) throws Exception {
-    listenPort = port;
+  public SocketProxy( boolean useSSL) throws Exception {
+    this(0, useSSL);
+  }
+  
+  public SocketProxy(int port, boolean useSSL) throws Exception {
+    int listenPort = port;
+    this.usesSSL = useSSL;
+    serverSocket = createServerSocket(useSSL);
+    serverSocket.setReuseAddress(true);
+    if (receiveBufferSize > 0) {
+      serverSocket.setReceiveBufferSize(receiveBufferSize);
+    }
+    serverSocket.bind(new InetSocketAddress(listenPort), acceptBacklog);
+    this.listenPort = serverSocket.getLocalPort();
+  }
+  
+  public void open(URI uri) throws Exception {
     target = uri;
-    open();
+    proxyUrl = urlFromSocket(target, serverSocket);
+    doOpen();
   }
   
   public String toString() {
@@ -91,18 +110,8 @@ public class SocketProxy {
     target = tcpBrokerUri;
   }
   
-  public void open() throws Exception {
-    serverSocket = createServerSocket(target);
-    serverSocket.setReuseAddress(true);
-    if (receiveBufferSize > 0) {
-      serverSocket.setReceiveBufferSize(receiveBufferSize);
-    }
-    if (proxyUrl == null) {
-      serverSocket.bind(new InetSocketAddress(listenPort), acceptBacklog);
-      proxyUrl = urlFromSocket(target, serverSocket);
-    } else {
-      serverSocket.bind(new InetSocketAddress(proxyUrl.getPort()));
-    }
+  private void doOpen() throws Exception {
+    
     acceptor = new Acceptor(serverSocket, target);
     if (pauseAtStart) {
       acceptor.pause();
@@ -112,19 +121,19 @@ public class SocketProxy {
     closed = new CountDownLatch(1);
   }
   
-  private boolean isSsl(URI target) {
-    return "ssl".equals(target.getScheme());
+  public int getListenPort() {
+    return listenPort;
   }
   
-  private ServerSocket createServerSocket(URI target) throws Exception {
-    if (isSsl(target)) {
+  private ServerSocket createServerSocket(boolean useSSL) throws Exception {
+    if (useSSL) {
       return SSLServerSocketFactory.getDefault().createServerSocket();
     }
     return new ServerSocket();
   }
   
-  private Socket createSocket(URI target) throws Exception {
-    if (isSsl(target)) {
+  private Socket createSocket(boolean useSSL) throws Exception {
+    if (useSSL) {
       return SSLSocketFactory.getDefault().createSocket();
     }
     return new Socket();
@@ -142,7 +151,7 @@ public class SocketProxy {
     synchronized (this.connections) {
       connections = new ArrayList<Bridge>(this.connections);
     }
-    log.warn("Closing " + connections.size()+" connections to: "+getUrl());
+    log.warn("Closing " + connections.size()+" connections to: "+getUrl()+", target: "+target);
     for (Bridge con : connections) {
       closeConnection(con);
     }
@@ -175,7 +184,16 @@ public class SocketProxy {
   public void reopen() {
     log.info("Re-opening connectivity to "+getUrl());
     try {
-      open();
+      if (proxyUrl == null) {
+        throw new IllegalStateException("Can not call open before open(URI uri).");
+      }
+      serverSocket = createServerSocket(usesSSL);
+      serverSocket.setReuseAddress(true);
+      if (receiveBufferSize > 0) {
+        serverSocket.setReceiveBufferSize(receiveBufferSize);
+      }
+      serverSocket.bind(new InetSocketAddress(proxyUrl.getPort()));
+      doOpen();
     } catch (Exception e) {
       log.debug("exception on reopen url:" + getUrl(), e);
     }
@@ -257,7 +275,7 @@ public class SocketProxy {
     
     public Bridge(Socket socket, URI target) throws Exception {
       receiveSocket = socket;
-      sendSocket = createSocket(target);
+      sendSocket = createSocket(usesSSL);
       if (receiveBufferSize > 0) {
         sendSocket.setReceiveBufferSize(receiveBufferSize);
       }
@@ -291,9 +309,9 @@ public class SocketProxy {
     }
     
     private void linkWithThreads(Socket source, Socket dest) {
-      requestThread = new Pump(source, dest);
+      requestThread = new Pump("Request", source, dest);
       requestThread.start();
-      responseThread = new Pump(dest, source);
+      responseThread = new Pump("Response", dest, source);
       responseThread.start();
     }
     
@@ -303,8 +321,8 @@ public class SocketProxy {
       private Socket destination;
       private AtomicReference<CountDownLatch> pause = new AtomicReference<CountDownLatch>();
       
-      public Pump(Socket source, Socket dest) {
-        super("SocketProxy-DataTransfer-" + source.getPort() + ":"
+      public Pump(String kind, Socket source, Socket dest) {
+        super("SocketProxy-"+kind+"-" + source.getPort() + ":"
             + dest.getPort());
         src = source;
         destination = dest;
@@ -321,17 +339,34 @@ public class SocketProxy {
       
       public void run() {
         byte[] buf = new byte[1024];
+
         try {
-          InputStream in = src.getInputStream();
-          OutputStream out = destination.getOutputStream();
+          src.setSoTimeout(PUMP_SOCKET_TIMEOUT_MS);
+        } catch (SocketException e) {
+          log.error("Failed to set socket timeout on "+src+" due to: "+e);
+          throw new RuntimeException(e);
+        }
+
+        InputStream in = null;
+        OutputStream out = null;
+        try {
+          in = src.getInputStream();
+          out = destination.getOutputStream();
           while (true) {
-            int len = in.read(buf);
+            int len = -1;
+            try {
+              len = in.read(buf);
+            } catch (SocketTimeoutException ste) {
+              log.warn(ste+" when reading from "+src);
+            }
+
             if (len == -1) {
               log.debug("read eof from:" + src);
               break;
             }
             pause.get().await();
-            out.write(buf, 0, len);
+            if (len > 0)
+              out.write(buf, 0, len);
           }
         } catch (Exception e) {
           log.debug("read/write failed, reason: " + e.getLocalizedMessage());
@@ -342,6 +377,21 @@ public class SocketProxy {
               close();
             }
           } catch (Exception ignore) {}
+        } finally {
+          if (in != null) {
+            try {
+              in.close();
+            } catch (Exception exc) {
+              log.debug(exc+" when closing InputStream on socket: "+src);
+            }
+          }
+          if (out != null) {
+            try {
+              out.close();
+            } catch (Exception exc) {
+              log.debug(exc+" when closing OutputStream on socket: "+destination);
+            }
+          }
         }
       }
     }
@@ -404,4 +454,3 @@ public class SocketProxy {
   }
   
 }
-

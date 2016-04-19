@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 import java.util.HashSet;
@@ -38,8 +38,8 @@ public class TestIndexWriterOutOfFileDescriptors extends LuceneTestCase {
     //System.out.println("rate=" + rate);
     dir.setRandomIOExceptionRateOnOpen(rate);
     int iters = atLeast(20);
-    LineFileDocs docs = new LineFileDocs(random(), defaultCodecSupportsDocValues());
-    IndexReader r = null;
+    LineFileDocs docs = new LineFileDocs(random());
+    DirectoryReader r = null;
     DirectoryReader r2 = null;
     boolean any = false;
     MockDirectoryWrapper dirCopy = null;
@@ -68,9 +68,9 @@ public class TestIndexWriterOutOfFileDescriptors extends LuceneTestCase {
         if (r != null && random().nextInt(5) == 3) {
           if (random().nextBoolean()) {
             if (VERBOSE) {
-              System.out.println("TEST: addIndexes IR[]");
+              System.out.println("TEST: addIndexes LR[]");
             }
-            w.addIndexes(new IndexReader[] {r});
+            TestUtil.addIndexesSlowly(w, r);
           } else {
             if (VERBOSE) {
               System.out.println("TEST: addIndexes Directory[]");
@@ -84,12 +84,18 @@ public class TestIndexWriterOutOfFileDescriptors extends LuceneTestCase {
           w.addDocument(docs.nextDoc());
         }
         dir.setRandomIOExceptionRateOnOpen(0.0);
-        w.close();
+        if (ms instanceof ConcurrentMergeScheduler) {
+          ((ConcurrentMergeScheduler) ms).sync();
+        }
+        // If exc hit CMS then writer will be tragically closed:
+        if (w.getTragicException() == null) {
+          w.close();
+        }
         w = null;
 
         // NOTE: This is O(N^2)!  Only enable for temporary debugging:
         //dir.setRandomIOExceptionRateOnOpen(0.0);
-        //TestUtil.checkIndex(dir);
+        //_TestUtil.checkIndex(dir);
         //dir.setRandomIOExceptionRateOnOpen(rate);
 
         // Verify numDocs only increases, to catch IndexWriter
@@ -114,7 +120,7 @@ public class TestIndexWriterOutOfFileDescriptors extends LuceneTestCase {
         if (VERBOSE) {
           System.out.println("TEST: iter=" + iter + ": success");
         }
-      } catch (IOException ioe) {
+      } catch (AssertionError | IOException ioe) {
         if (VERBOSE) {
           System.out.println("TEST: iter=" + iter + ": exception");
           ioe.printStackTrace();
@@ -135,8 +141,10 @@ public class TestIndexWriterOutOfFileDescriptors extends LuceneTestCase {
         dirCopy = newMockFSDirectory(createTempDir("TestIndexWriterOutOfFileDescriptors.copy"));
         Set<String> files = new HashSet<>();
         for (String file : dir.listAll()) {
-          dir.copy(dirCopy, file, file, IOContext.DEFAULT);
-          files.add(file);
+          if (file.startsWith(IndexFileNames.SEGMENTS) || IndexFileNames.CODEC_FILE_PATTERN.matcher(file).matches()) {
+            dirCopy.copyFrom(dir, file, file, IOContext.DEFAULT);
+            files.add(file);
+          }
         }
         dirCopy.sync(files);
         // Have IW kiss the dir so we remove any leftover

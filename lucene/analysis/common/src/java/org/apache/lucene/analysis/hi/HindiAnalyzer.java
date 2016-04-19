@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.hi;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,31 +14,27 @@ package org.apache.lucene.analysis.hi;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.hi;
+
 
 import java.io.IOException;
 import java.io.Reader;
 
 import org.apache.lucene.analysis.miscellaneous.SetKeywordMarkerFilter;
 import org.apache.lucene.analysis.standard.StandardTokenizer;
+import org.apache.lucene.analysis.standard.std40.StandardTokenizer40;
 import org.apache.lucene.analysis.util.CharArraySet;
 import org.apache.lucene.analysis.util.StopwordAnalyzerBase;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.core.DecimalDigitFilter;
 import org.apache.lucene.analysis.core.LowerCaseFilter;
 import org.apache.lucene.analysis.core.StopFilter;
 import org.apache.lucene.analysis.in.IndicNormalizationFilter;
-import org.apache.lucene.analysis.in.IndicTokenizer;
 import org.apache.lucene.util.Version;
 
 /**
  * Analyzer for Hindi.
- * <p>
- * <a name="version"/>
- * <p>You must specify the required {@link Version}
- * compatibility when creating HindiAnalyzer:
- * <ul>
- *   <li> As of 3.6, StandardTokenizer is used for tokenization
- * </ul>
  */
 public final class HindiAnalyzer extends StopwordAnalyzerBase {
   private final CharArraySet stemExclusionSet;
@@ -90,16 +84,6 @@ public final class HindiAnalyzer extends StopwordAnalyzerBase {
     super(stopwords);
     this.stemExclusionSet = CharArraySet.unmodifiableSet(CharArraySet.copy(stemExclusionSet));
   }
-
-  /**
-   * @deprecated Use {@link #HindiAnalyzer(CharArraySet, CharArraySet)}
-   */
-  @Deprecated
-  public HindiAnalyzer(Version matchVersion, CharArraySet stopwords, CharArraySet stemExclusionSet) {
-    super(matchVersion, stopwords);
-    this.stemExclusionSet = CharArraySet.unmodifiableSet(
-        CharArraySet.copy(matchVersion, stemExclusionSet));
-  }
   
   /**
    * Builds an analyzer with the given stop words 
@@ -108,14 +92,6 @@ public final class HindiAnalyzer extends StopwordAnalyzerBase {
    */
   public HindiAnalyzer(CharArraySet stopwords) {
     this(stopwords, CharArraySet.EMPTY_SET);
-  }
-
-  /**
-   * @deprecated Use {@link #HindiAnalyzer(CharArraySet)}
-   */
-  @Deprecated
-  public HindiAnalyzer(Version version, CharArraySet stopwords) {
-    this(version, stopwords, CharArraySet.EMPTY_SET);
   }
   
   /**
@@ -127,40 +103,34 @@ public final class HindiAnalyzer extends StopwordAnalyzerBase {
   }
 
   /**
-   * @deprecated Use {@link #HindiAnalyzer()}
-   */
-  @Deprecated
-  public HindiAnalyzer(Version version) {
-    this(version, DefaultSetHolder.DEFAULT_STOP_SET);
-  }
-
-  /**
    * Creates
    * {@link org.apache.lucene.analysis.Analyzer.TokenStreamComponents}
    * used to tokenize all the text in the provided {@link Reader}.
    * 
    * @return {@link org.apache.lucene.analysis.Analyzer.TokenStreamComponents}
    *         built from a {@link StandardTokenizer} filtered with
-   *         {@link LowerCaseFilter}, {@link IndicNormalizationFilter},
+   *         {@link LowerCaseFilter}, {@link DecimalDigitFilter}, {@link IndicNormalizationFilter},
    *         {@link HindiNormalizationFilter}, {@link SetKeywordMarkerFilter}
    *         if a stem exclusion set is provided, {@link HindiStemFilter}, and
    *         Hindi Stop words
    */
   @Override
-  protected TokenStreamComponents createComponents(String fieldName,
-      Reader reader) {
+  protected TokenStreamComponents createComponents(String fieldName) {
     final Tokenizer source;
-    if (getVersion().onOrAfter(Version.LUCENE_3_6)) {
-      source = new StandardTokenizer(getVersion(), reader);
+    if (getVersion().onOrAfter(Version.LUCENE_4_7_0)) {
+      source = new StandardTokenizer();
     } else {
-      source = new IndicTokenizer(getVersion(), reader);
+      source = new StandardTokenizer40();
     }
-    TokenStream result = new LowerCaseFilter(getVersion(), source);
+    TokenStream result = new LowerCaseFilter(source);
+    if (getVersion().onOrAfter(Version.LUCENE_5_4_0)) {
+      result = new DecimalDigitFilter(result);
+    }
     if (!stemExclusionSet.isEmpty())
       result = new SetKeywordMarkerFilter(result, stemExclusionSet);
     result = new IndicNormalizationFilter(result);
     result = new HindiNormalizationFilter(result);
-    result = new StopFilter(getVersion(), result, stopwords);
+    result = new StopFilter(result, stopwords);
     result = new HindiStemFilter(result);
     return new TokenStreamComponents(source, result);
   }

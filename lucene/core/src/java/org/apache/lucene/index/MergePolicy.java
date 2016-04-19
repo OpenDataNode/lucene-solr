@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,16 +14,19 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
 
-import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.MergeInfo;
-import org.apache.lucene.util.FixedBitSet;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.MergeInfo;
+import org.apache.lucene.store.RateLimiter;
+import org.apache.lucene.util.FixedBitSet;
 
 /**
  * <p>Expert: a MergePolicy determines the sequence of
@@ -86,8 +87,9 @@ public abstract class MergePolicy {
    *  an individual primitive merge operation, resulting in
    *  a single new segment.  The merge spec includes the
    *  subset of segments to be merged as well as whether the
-   *  new segment should use the compound file format. */
-
+   *  new segment should use the compound file format.
+   *
+   * @lucene.experimental */
   public static class OneMerge {
 
     SegmentCommitInfo info;         // used by IndexWriter
@@ -107,25 +109,35 @@ public abstract class MergePolicy {
     /** Segments to be merged. */
     public final List<SegmentCommitInfo> segments;
 
+    /** A private {@link RateLimiter} for this merge, used to rate limit writes and abort. */
+    public final MergeRateLimiter rateLimiter;
+
+    volatile long mergeStartNS = -1;
+
     /** Total number of documents in segments to be merged, not accounting for deletions. */
-    public final int totalDocCount;
-    boolean aborted;
+    public final int totalMaxDoc;
     Throwable error;
-    boolean paused;
 
     /** Sole constructor.
      * @param segments List of {@link SegmentCommitInfo}s
      *        to be merged. */
     public OneMerge(List<SegmentCommitInfo> segments) {
-      if (0 == segments.size())
+      if (0 == segments.size()) {
         throw new RuntimeException("segments must include at least one segment");
+      }
       // clone the list, as the in list may be based off original SegmentInfos and may be modified
       this.segments = new ArrayList<>(segments);
       int count = 0;
       for(SegmentCommitInfo info : segments) {
-        count += info.info.getDocCount();
+        count += info.info.maxDoc();
       }
-      totalDocCount = count;
+      totalMaxDoc = count;
+
+      rateLimiter = new MergeRateLimiter(this);
+    }
+
+    /** Called by {@link IndexWriter} after the merge is done and all readers have been closed. */
+    public void mergeFinished() throws IOException {
     }
 
     /** Expert: Get the list of readers to merge. Note that this list does not
@@ -134,12 +146,12 @@ public abstract class MergePolicy {
      *  reorders doc IDs, it must override {@link #getDocMap} too so that
      *  deletes that happened during the merge can be applied to the newly
      *  merged segment. */
-    public List<AtomicReader> getMergeReaders() throws IOException {
+    public List<CodecReader> getMergeReaders() throws IOException {
       if (readers == null) {
         throw new IllegalStateException("IndexWriter has not initialized readers from the segment infos yet");
       }
-      final List<AtomicReader> readers = new ArrayList<>(this.readers.size());
-      for (AtomicReader reader : this.readers) {
+      final List<CodecReader> readers = new ArrayList<>(this.readers.size());
+      for (SegmentReader reader : this.readers) {
         if (reader.numDocs() > 0) {
           readers.add(reader);
         }
@@ -148,11 +160,19 @@ public abstract class MergePolicy {
     }
     
     /**
-     * Expert: Sets the {@link SegmentCommitInfo} of this {@link OneMerge}.
+     * Expert: Sets the {@link SegmentCommitInfo} of the merged segment.
      * Allows sub-classes to e.g. set diagnostics properties.
      */
-    public void setInfo(SegmentCommitInfo info) {
+    public void setMergeInfo(SegmentCommitInfo info) {
       this.info = info;
+    }
+
+    /**
+     * Returns the {@link SegmentCommitInfo} for the merged segment,
+     * or null if it hasn't been set yet.
+     */
+    public SegmentCommitInfo getMergeInfo() {
+      return info;
     }
 
     /** Expert: If {@link #getMergeReaders()} reorders document IDs, this method
@@ -181,73 +201,24 @@ public abstract class MergePolicy {
       return error;
     }
 
-    /** Mark this merge as aborted.  If this is called
-     *  before the merge is committed then the merge will
-     *  not be committed. */
-    synchronized void abort() {
-      aborted = true;
-      notifyAll();
-    }
-
-    /** Returns true if this merge was aborted. */
-    synchronized boolean isAborted() {
-      return aborted;
-    }
-
-    /** Called periodically by {@link IndexWriter} while
-     *  merging to see if the merge is aborted. */
-    public synchronized void checkAborted(Directory dir) throws MergeAbortedException {
-      if (aborted) {
-        throw new MergeAbortedException("merge is aborted: " + segString(dir));
-      }
-
-      while (paused) {
-        try {
-          // In theory we could wait() indefinitely, but we
-          // do 1000 msec, defensively
-          wait(1000);
-        } catch (InterruptedException ie) {
-          throw new RuntimeException(ie);
-        }
-        if (aborted) {
-          throw new MergeAbortedException("merge is aborted: " + segString(dir));
-        }
-      }
-    }
-
-    /** Set or clear whether this merge is paused paused (for example
-     *  {@link ConcurrentMergeScheduler} will pause merges
-     *  if too many are running). */
-    synchronized public void setPause(boolean paused) {
-      this.paused = paused;
-      if (!paused) {
-        // Wakeup merge thread, if it's waiting
-        notifyAll();
-      }
-    }
-
-    /** Returns true if this merge is paused.
-     *
-     *  @see #setPause(boolean) */
-    synchronized public boolean getPause() {
-      return paused;
-    }
-
     /** Returns a readable description of the current merge
      *  state. */
-    public String segString(Directory dir) {
+    public String segString() {
       StringBuilder b = new StringBuilder();
       final int numSegments = segments.size();
       for(int i=0;i<numSegments;i++) {
-        if (i > 0) b.append(' ');
-        b.append(segments.get(i).toString(dir, 0));
+        if (i > 0) {
+          b.append(' ');
+        }
+        b.append(segments.get(i).toString());
       }
       if (info != null) {
         b.append(" into ").append(info.info.name);
       }
-      if (maxNumSegments != -1)
+      if (maxNumSegments != -1) {
         b.append(" [maxNumSegments=" + maxNumSegments + "]");
-      if (aborted) {
+      }
+      if (rateLimiter.getAbort()) {
         b.append(" [ABORTED]");
       }
       return b.toString();
@@ -270,14 +241,14 @@ public abstract class MergePolicy {
     public int totalNumDocs() throws IOException {
       int total = 0;
       for (SegmentCommitInfo info : segments) {
-        total += info.info.getDocCount();
+        total += info.info.maxDoc();
       }
       return total;
     }
 
     /** Return {@link MergeInfo} describing this merge. */
-    public MergeInfo getMergeInfo() {
-      return new MergeInfo(totalDocCount, estimatedMergeBytes, isExternal, maxNumSegments);
+    public MergeInfo getStoreMergeInfo() {
+      return new MergeInfo(totalMaxDoc, estimatedMergeBytes, isExternal, maxNumSegments);
     }    
   }
 
@@ -312,8 +283,9 @@ public abstract class MergePolicy {
       StringBuilder b = new StringBuilder();
       b.append("MergeSpec:\n");
       final int count = merges.size();
-      for(int i=0;i<count;i++)
-        b.append("  ").append(1 + i).append(": ").append(merges.get(i).segString(dir));
+      for(int i=0;i<count;i++) {
+        b.append("  ").append(1 + i).append(": ").append(merges.get(i).segString());
+      }
       return b.toString();
     }
   }
@@ -343,9 +315,9 @@ public abstract class MergePolicy {
   }
 
   /** Thrown when a merge was explicity aborted because
-   *  {@link IndexWriter#close(boolean)} was called with
-   *  <code>false</code>.  Normally this exception is
-   *  privately caught and suppresed by {@link IndexWriter}.  */
+   *  {@link IndexWriter#abortMerges} was called.  Normally
+   *  this exception is privately caught and suppresed by
+   *  {@link IndexWriter}. */
   public static class MergeAbortedException extends IOException {
     /** Create a {@link MergeAbortedException}. */
     public MergeAbortedException() {
@@ -411,7 +383,7 @@ public abstract class MergePolicy {
 
   /**
    * Determine what set of merge operations is necessary in
-   * order to merge to <= the specified segment count. {@link IndexWriter} calls this when its
+   * order to merge to {@code <=} the specified segment count. {@link IndexWriter} calls this when its
    * {@link IndexWriter#forceMerge} method is called. This call is always
    * synchronized on the {@link IndexWriter} instance so only one thread at a
    * time will call this method.
@@ -477,9 +449,9 @@ public abstract class MergePolicy {
   protected long size(SegmentCommitInfo info, IndexWriter writer) throws IOException {
     long byteSize = info.sizeInBytes();
     int delCount = writer.numDeletedDocs(info);
-    double delRatio = (info.info.getDocCount() <= 0 ? 0.0f : ((float)delCount / (float)info.info.getDocCount()));
+    double delRatio = info.info.maxDoc() <= 0 ? 0.0f : (float) delCount / (float) info.info.maxDoc();
     assert delRatio <= 1.0;
-    return (info.info.getDocCount() <= 0 ?  byteSize : (long)(byteSize * (1.0 - delRatio)));
+    return (info.info.maxDoc() <= 0 ? byteSize : (long) (byteSize * (1.0 - delRatio)));
   }
   
   /** Returns true if this single info is already fully merged (has no
@@ -489,7 +461,6 @@ public abstract class MergePolicy {
     assert writer != null;
     boolean hasDeletions = writer.numDeletedDocs(info) > 0;
     return !hasDeletions &&
-      !info.info.hasSeparateNorms() &&
       info.info.dir == writer.getDirectory() &&
       useCompoundFile(infos, info, writer) == info.info.getUseCompoundFile();
   }
@@ -497,7 +468,7 @@ public abstract class MergePolicy {
   /** Returns current {@code noCFSRatio}.
    *
    *  @see #setNoCFSRatio */
-  public final double getNoCFSRatio() {
+  public double getNoCFSRatio() {
     return noCFSRatio;
   }
 
@@ -506,7 +477,7 @@ public abstract class MergePolicy {
    *  non-compound file even if compound file is enabled.
    *  Set to 1.0 to always use CFS regardless of merge
    *  size. */
-  public final void setNoCFSRatio(double noCFSRatio) {
+  public void setNoCFSRatio(double noCFSRatio) {
     if (noCFSRatio < 0.0 || noCFSRatio > 1.0) {
       throw new IllegalArgumentException("noCFSRatio must be 0.0 to 1.0 inclusive; got " + noCFSRatio);
     }
@@ -523,12 +494,11 @@ public abstract class MergePolicy {
    *  non-compound file even if compound file is enabled.
    *  Set this to Double.POSITIVE_INFINITY (default) and noCFSRatio to 1.0
    *  to always use CFS regardless of merge size. */
-  public final void setMaxCFSSegmentSizeMB(double v) {
+  public void setMaxCFSSegmentSizeMB(double v) {
     if (v < 0.0) {
       throw new IllegalArgumentException("maxCFSSegmentSizeMB must be >=0 (got " + v + ")");
     }
     v *= 1024 * 1024;
-    this.maxCFSSegmentSize = (v > Long.MAX_VALUE) ? Long.MAX_VALUE : (long) v;
+    this.maxCFSSegmentSize = v > Long.MAX_VALUE ? Long.MAX_VALUE : (long) v;
   }
-
 }

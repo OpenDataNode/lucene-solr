@@ -19,6 +19,7 @@ package org.apache.solr.handler.extraction;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringWriter;
+import java.lang.invoke.MethodHandles;
 import java.util.Locale;
 
 import org.apache.commons.io.IOUtils;
@@ -45,6 +46,7 @@ import org.apache.tika.parser.DefaultParser;
 import org.apache.tika.parser.ParseContext;
 import org.apache.tika.parser.Parser;
 import org.apache.tika.parser.PasswordProvider;
+import org.apache.tika.parser.html.HtmlMapper;
 import org.apache.tika.sax.XHTMLContentHandler;
 import org.apache.tika.sax.xpath.Matcher;
 import org.apache.tika.sax.xpath.MatchingContentHandler;
@@ -65,7 +67,7 @@ import org.xml.sax.SAXException;
  **/
 public class ExtractingDocumentLoader extends ContentStreamLoader {
 
-  private static final Logger log = LoggerFactory.getLogger(ExtractingDocumentLoader.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   /**
    * Extract Only supported format
@@ -90,13 +92,16 @@ public class ExtractingDocumentLoader extends ContentStreamLoader {
   private final AddUpdateCommand templateAdd;
 
   protected TikaConfig config;
+  protected ParseContextConfig parseContextConfig;
   protected SolrContentHandlerFactory factory;
 
   public ExtractingDocumentLoader(SolrQueryRequest req, UpdateRequestProcessor processor,
-                           TikaConfig config, SolrContentHandlerFactory factory) {
+                           TikaConfig config, ParseContextConfig parseContextConfig,
+                                  SolrContentHandlerFactory factory) {
     this.params = req.getParams();
     this.core = req.getCore();
     this.config = config;
+    this.parseContextConfig = parseContextConfig;
     this.processor = processor;
 
     templateAdd = new AddUpdateCommand(req);
@@ -198,7 +203,11 @@ public class ExtractingDocumentLoader extends ContentStreamLoader {
 
         try{
           //potentially use a wrapper handler for parsing, but we still need the SolrContentHandler for getting the document.
-          ParseContext context = new ParseContext();//TODO: should we design a way to pass in parse context?
+          ParseContext context = parseContextConfig.create();
+
+
+          context.set(Parser.class, parser);
+          context.set(HtmlMapper.class, MostlyPassthroughHtmlMapper.INSTANCE);
 
           // Password handling
           RegexRulesPasswordProvider epp = new RegexRulesPasswordProvider();
@@ -250,4 +259,34 @@ public class ExtractingDocumentLoader extends ContentStreamLoader {
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Stream type of " + streamType + " didn't match any known parsers.  Please supply the " + ExtractingParams.STREAM_TYPE + " parameter.");
     }
   }
-}
+
+  public static class MostlyPassthroughHtmlMapper implements HtmlMapper {
+    public static final HtmlMapper INSTANCE = new MostlyPassthroughHtmlMapper();
+
+    /** 
+     * Keep all elements and their content.
+     *  
+     * Apparently &lt;SCRIPT&gt; and &lt;STYLE&gt; elements are blocked elsewhere
+     */
+    @Override
+    public boolean isDiscardElement(String name) {     
+      return false;
+    }
+
+    /** Lowercases the attribute name */
+    @Override
+    public String mapSafeAttribute(String elementName, String attributeName) {
+      return attributeName.toLowerCase(Locale.ENGLISH);
+    }
+
+    /**
+     * Lowercases the element name, but returns null for &lt;BR&gt;,
+     * which suppresses the start-element event for lt;BR&gt; tags.
+     */
+    @Override
+    public String mapSafeElement(String name) {
+      String lowerName = name.toLowerCase(Locale.ROOT);
+      return lowerName.equals("br") ? null : lowerName;
+    }
+   }
+ }

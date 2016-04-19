@@ -1,4 +1,3 @@
-package org.apache.solr.rest;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,9 +14,10 @@ package org.apache.solr.rest;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.rest;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -42,8 +42,8 @@ import org.slf4j.LoggerFactory;
  * needs to be managed using the REST API.
  */
 public abstract class ManagedResource {
-    
-  public static final Logger log = LoggerFactory.getLogger(ManagedResource.class);
+  
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   /**
    * Marker interface to indicate a ManagedResource implementation class also supports
@@ -185,10 +185,22 @@ public abstract class ManagedResource {
           "Failed to load stored data for "+resourceId+" due to: "+ioExc, ioExc);
     }
 
-    Object managedData = null;    
+    Object managedData = processStoredData(data);
+
+    if (managedInitArgs == null)
+      managedInitArgs = new NamedList<>();
+
+    onManagedDataLoadedFromStorage(managedInitArgs, managedData);
+  }
+
+  /**
+   * Processes the stored data.
+   */
+  protected Object processStoredData(Object data) throws SolrException {
+    Object managedData = null;
     if (data != null) {
       if (!(data instanceof Map)) {
-        throw new SolrException(ErrorCode.SERVER_ERROR, 
+        throw new SolrException(ErrorCode.SERVER_ERROR,
             "Stored data for "+resourceId+" is not a valid JSON object!");
       }
 
@@ -196,37 +208,32 @@ public abstract class ManagedResource {
       Map<String,Object> initArgsMap = (Map<String,Object>)jsonMap.get(INIT_ARGS_JSON_FIELD);
       managedInitArgs = new NamedList<>(initArgsMap);
       log.info("Loaded initArgs {} for {}", managedInitArgs, resourceId);
-      
+
       if (jsonMap.containsKey(MANAGED_JSON_LIST_FIELD)) {
         Object jsonList = jsonMap.get(MANAGED_JSON_LIST_FIELD);
         if (!(jsonList instanceof List)) {
-          String errMsg = 
+          String errMsg =
               String.format(Locale.ROOT,
                   "Expected JSON array as value for %s but client sent a %s instead!",
                   MANAGED_JSON_LIST_FIELD, jsonList.getClass().getName());
           throw new SolrException(ErrorCode.SERVER_ERROR, errMsg);
         }
-        
+
         managedData = jsonList;
       } else if (jsonMap.containsKey(MANAGED_JSON_MAP_FIELD)) {
         Object jsonObj = jsonMap.get(MANAGED_JSON_MAP_FIELD);
         if (!(jsonObj instanceof Map)) {
-          String errMsg = 
+          String errMsg =
               String.format(Locale.ROOT,
                   "Expected JSON map as value for %s but client sent a %s instead!",
                   MANAGED_JSON_MAP_FIELD, jsonObj.getClass().getName());
           throw new SolrException(ErrorCode.SERVER_ERROR, errMsg);
         }
-        
+
         managedData = jsonObj;
-      }      
+      }
     }
-    
-    if (managedInitArgs == null) {
-      managedInitArgs = new NamedList<>();
-    }
-        
-    onManagedDataLoadedFromStorage(managedInitArgs, managedData);
+    return managedData;
   }
   
   /**
@@ -259,7 +266,7 @@ public abstract class ManagedResource {
           // note: the data we're managing now remains in a dubious state
           // however the text analysis component remains unaffected 
           // (at least until core reload)
-          log.error("Failed to load stop words from storage due to: "+reloadExc);
+          log.error("Failed to load data from storage due to: "+reloadExc);
         }
       }
       
@@ -316,7 +323,7 @@ public abstract class ManagedResource {
    * Builds the JSON object to be stored, containing initArgs and managed data fields. 
    */
   protected Map<String,Object> buildMapToStore(Object managedData) {
-    Map<String,Object> toStore = new LinkedHashMap<>();
+    Map<String,Object> toStore = new LinkedHashMap<>(4, 1.0f);
     toStore.put(INIT_ARGS_JSON_FIELD, convertNamedListToMap(managedInitArgs));
     
     // report important dates when data was init'd / updated

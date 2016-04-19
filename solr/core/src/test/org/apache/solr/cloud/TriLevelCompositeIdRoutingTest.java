@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,17 +14,26 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
+import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrDocument;
 import org.junit.BeforeClass;
+import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.lang.invoke.MethodHandles;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 
 
+@Slow
 public class TriLevelCompositeIdRoutingTest extends ShardRoutingTest {
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   int NUM_APPS = 5;
   int NUM_USERS = 10;
@@ -45,14 +52,12 @@ public class TriLevelCompositeIdRoutingTest extends ShardRoutingTest {
 
   public TriLevelCompositeIdRoutingTest() {
     schemaString = "schema15.xml";      // we need a string id
-    super.sliceCount = 12;             // a lot of slices for more ranges and buckets
-    super.shardCount = 24;
-    super.fixShardCount = true;
-
+    sliceCount = TEST_NIGHTLY ? 12 : 2;             // a lot of slices for more ranges and buckets
+    fixShardCount(TEST_NIGHTLY ? 24 : 3);
   }
 
-  @Override
-  public void doTest() throws Exception {
+  @Test
+  public void test() throws Exception {
     boolean testFinished = false;
     try {
       handle.clear();
@@ -71,7 +76,6 @@ public class TriLevelCompositeIdRoutingTest extends ShardRoutingTest {
       }
     }
   }
-
 
   private void doTriLevelHashingTest() throws Exception {
     log.info("### STARTING doTriLevelHashingTest");
@@ -151,10 +155,4 @@ public class TriLevelCompositeIdRoutingTest extends ShardRoutingTest {
   private String getKey(String id) {
     return id.substring(0, id.lastIndexOf('!'));
   }
-
-  @Override
-  public void tearDown() throws Exception {
-    super.tearDown();
-  }
-
 }

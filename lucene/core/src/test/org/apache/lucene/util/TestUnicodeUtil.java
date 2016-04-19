@@ -1,5 +1,3 @@
-package org.apache.lucene.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
+
 
 /*
  * Some of this code came from the excellent Unicode
@@ -197,9 +197,7 @@ public class TestUnicodeUtil extends LuceneTestCase {
         assertFalse(rc == -1);
         assertEquals(cpString.substring(rs, rs + rc), str);
         continue;
-      } catch (IndexOutOfBoundsException e1) {
-        // Ignored.
-      } catch (IllegalArgumentException e2) {
+      } catch (IndexOutOfBoundsException | IllegalArgumentException e1) {
         // Ignored.
       }
       assertTrue(rc == -1);
@@ -214,6 +212,16 @@ public class TestUnicodeUtil extends LuceneTestCase {
       CharsRefBuilder cRef = new CharsRefBuilder();
       cRef.copyUTF8Bytes(ref);
       assertEquals(cRef.toString(), unicode);
+    }
+  }
+
+  public void testCalcUTF16toUTF8Length() {
+    int num = atLeast(5000);
+    for (int i = 0; i < num; i++) {
+      String unicode = TestUtil.randomUnicodeString(random());
+      byte[] utf8 = new byte[unicode.length() * UnicodeUtil.MAX_UTF8_BYTES_PER_CHAR];
+      int len = UnicodeUtil.UTF16toUTF8(unicode, 0, unicode.length(), utf8);
+      assertEquals(len, UnicodeUtil.calcUTF16toUTF8Length(unicode, 0, unicode.length()));
     }
   }
 }

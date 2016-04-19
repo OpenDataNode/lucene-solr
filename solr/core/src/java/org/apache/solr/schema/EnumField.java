@@ -1,5 +1,3 @@
-package org.apache.solr.schema;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,15 +14,41 @@ package org.apache.solr.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.schema;
+
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathConstants;
+import javax.xml.xpath.XPathExpressionException;
+import javax.xml.xpath.XPathFactory;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.invoke.MethodHandles;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 import org.apache.lucene.document.FieldType;
+import org.apache.lucene.document.NumericDocValuesField;
+import org.apache.lucene.document.SortedSetDocValuesField;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.valuesource.EnumFieldSource;
-import org.apache.lucene.search.*;
+import org.apache.lucene.search.ConstantScoreQuery;
+import org.apache.lucene.search.DocValuesRangeQuery;
+import org.apache.lucene.search.NumericRangeQuery;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.SortField;
+import org.apache.lucene.uninverting.UninvertingReader.Type;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.CharsRef;
+import org.apache.lucene.util.CharsRefBuilder;
 import org.apache.lucene.util.NumericUtils;
 import org.apache.solr.common.EnumFieldValue;
 import org.apache.solr.common.SolrException;
@@ -37,26 +61,12 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
-import javax.xml.xpath.XPath;
-import javax.xml.xpath.XPathConstants;
-import javax.xml.xpath.XPathExpressionException;
-import javax.xml.xpath.XPathFactory;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.HashMap;
-import java.util.Locale;
-import java.util.Map;
-
 /***
  * Field type for support of string values with custom sort order.
  */
 public class EnumField extends PrimitiveFieldType {
 
-  public static final Logger log = LoggerFactory.getLogger(EnumField.class);
-  protected static final Locale LOCALE = Locale.getDefault();
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   protected static final String PARAM_ENUMS_CONFIG = "enumsConfig";
   protected static final String PARAM_ENUM_NAME = "enumName";
   protected static final Integer DEFAULT_VALUE = -1;
@@ -92,11 +102,11 @@ public class EnumField extends PrimitiveFieldType {
         final Document doc = dbf.newDocumentBuilder().parse(is);
         final XPathFactory xpathFactory = XPathFactory.newInstance();
         final XPath xpath = xpathFactory.newXPath();
-        final String xpathStr = String.format(LOCALE, "/enumsConfig/enum[@name='%s']", enumName);
+        final String xpathStr = String.format(Locale.ROOT, "/enumsConfig/enum[@name='%s']", enumName);
         final NodeList nodes = (NodeList) xpath.evaluate(xpathStr, doc, XPathConstants.NODESET);
         final int nodesLength = nodes.getLength();
         if (nodesLength == 0) {
-          String exceptionMessage = String.format(LOCALE, "No enum configuration found for enum '%s' in %s.",
+          String exceptionMessage = String.format(Locale.ENGLISH, "No enum configuration found for enum '%s' in %s.",
                   enumName, enumsConfigFile);
           throw new SolrException(SolrException.ErrorCode.NOT_FOUND, exceptionMessage);
         }
@@ -110,12 +120,12 @@ public class EnumField extends PrimitiveFieldType {
           final Node valueNode = valueNodes.item(i);
           final String valueStr = valueNode.getTextContent();
           if ((valueStr == null) || (valueStr.length() == 0)) {
-            final String exceptionMessage = String.format(LOCALE, "A value was defined with an no value in enum '%s' in %s.",
+            final String exceptionMessage = String.format(Locale.ENGLISH, "A value was defined with an no value in enum '%s' in %s.",
                     enumName, enumsConfigFile);
             throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, exceptionMessage);
           }
           if (enumStringToIntMap.containsKey(valueStr)) {
-            final String exceptionMessage = String.format(LOCALE, "A duplicated definition was found for value '%s' in enum '%s' in %s.",
+            final String exceptionMessage = String.format(Locale.ENGLISH, "A duplicated definition was found for value '%s' in enum '%s' in %s.",
                     valueStr, enumName, enumsConfigFile);
             throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, exceptionMessage);
           }
@@ -123,13 +133,7 @@ public class EnumField extends PrimitiveFieldType {
           enumStringToIntMap.put(valueStr, i);
         }
       }
-      catch (ParserConfigurationException e) {
-        throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Error parsing enums config.", e);
-      }
-      catch (SAXException e) {
-        throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Error parsing enums config.", e);
-      }
-      catch (XPathExpressionException e) {
+      catch (ParserConfigurationException | XPathExpressionException | SAXException e) {
         throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Error parsing enums config.", e);
       }
     }
@@ -147,7 +151,7 @@ public class EnumField extends PrimitiveFieldType {
     }
 
     if ((enumStringToIntMap.size() == 0) || (enumIntToStringMap.size() == 0)) {
-      String exceptionMessage = String.format(LOCALE, "Invalid configuration was defined for enum '%s' in %s.",
+      String exceptionMessage = String.format(Locale.ENGLISH, "Invalid configuration was defined for enum '%s' in %s.",
               enumName, enumsConfigFile);
       throw new SolrException(SolrException.ErrorCode.NOT_FOUND, exceptionMessage);
     }
@@ -179,9 +183,18 @@ public class EnumField extends PrimitiveFieldType {
   public SortField getSortField(SchemaField field, boolean top) {
     field.checkSortability();
     final Object missingValue = Integer.MIN_VALUE;
-    SortField sf = new SortField(field.getName(), FieldCache.NUMERIC_UTILS_INT_PARSER, top);
+    SortField sf = new SortField(field.getName(), SortField.Type.INT, top);
     sf.setMissingValue(missingValue);
     return sf;
+  }
+  
+  @Override
+  public Type getUninversionType(SchemaField sf) {
+    if (sf.multiValued()) {
+      return Type.SORTED_SET_INTEGER;
+    } else {
+      return Type.INTEGER;
+    }
   }
 
   /**
@@ -189,8 +202,8 @@ public class EnumField extends PrimitiveFieldType {
    */
   @Override
   public ValueSource getValueSource(SchemaField field, QParser qparser) {
-    field.checkFieldCacheSource(qparser);
-    return new EnumFieldSource(field.getName(), FieldCache.NUMERIC_UTILS_INT_PARSER, enumIntToStringMap, enumStringToIntMap);
+    field.checkFieldCacheSource();
+    return new EnumFieldSource(field.getName(), enumIntToStringMap, enumStringToIntMap);
   }
 
   /**
@@ -220,6 +233,14 @@ public class EnumField extends PrimitiveFieldType {
    * {@inheritDoc}
    */
   @Override
+  public FieldType.NumericType getNumericType() {
+    return FieldType.NumericType.INT;
+  }
+
+  /**
+   * {@inheritDoc}
+   */
+  @Override
   public Query getRangeQuery(QParser parser, SchemaField field, String min, String max, boolean minInclusive, boolean maxInclusive) {
     Integer minValue = stringValueToIntValue(min);
     Integer maxValue = stringValueToIntValue(max);
@@ -231,9 +252,9 @@ public class EnumField extends PrimitiveFieldType {
     Query query = null;
     final boolean matchOnly = field.hasDocValues() && !field.indexed();
     if (matchOnly) {
-      query = new ConstantScoreQuery(FieldCacheRangeFilter.newIntRange(field.getName(),
-              min == null ? null : minValue,
-              max == null ? null : maxValue,
+      query = new ConstantScoreQuery(DocValuesRangeQuery.newLongRange(field.getName(),
+              min == null ? null : minValue.longValue(),
+              max == null ? null : maxValue.longValue(),
               minInclusive, maxInclusive));
     } else {
       query = NumericRangeQuery.newIntRange(field.getName(), DEFAULT_PRECISION_STEP,
@@ -249,10 +270,7 @@ public class EnumField extends PrimitiveFieldType {
    * {@inheritDoc}
    */
   @Override
-  public void checkSchemaField(final SchemaField field) {
-    if (field.hasDocValues() && !field.multiValued() && !(field.isRequired() || field.getDefaultValue() != null)) {
-      throw new IllegalStateException("Field " + this + " has single-valued doc values enabled, but has no default value and is not required");
-    }
+  public void checkSchemaField(SchemaField field) {
   }
 
   /**
@@ -263,24 +281,22 @@ public class EnumField extends PrimitiveFieldType {
     if (val == null)
       return null;
 
-    final BytesRef bytes = new BytesRef(NumericUtils.BUF_SIZE_LONG);
+    final BytesRefBuilder bytes = new BytesRefBuilder();
     readableToIndexed(val, bytes);
-    return bytes.utf8ToString();
+    return bytes.get().utf8ToString();
   }
 
   /**
    * {@inheritDoc}
    */
   @Override
-  public void readableToIndexed(CharSequence val, BytesRef result) {
+  public void readableToIndexed(CharSequence val, BytesRefBuilder result) {
     final String s = val.toString();
     if (s == null)
       return;
 
     final Integer intValue = stringValueToIntValue(s);
-    BytesRefBuilder b = new BytesRefBuilder();
-    NumericUtils.intToPrefixCoded(intValue, 0, b);
-    result.copyBytes(b.get());
+    NumericUtils.intToPrefixCoded(intValue, 0, result);
   }
 
   /**
@@ -319,13 +335,13 @@ public class EnumField extends PrimitiveFieldType {
    * {@inheritDoc}
    */
   @Override
-  public CharsRef indexedToReadable(BytesRef input, CharsRef output) {
+  public CharsRef indexedToReadable(BytesRef input, CharsRefBuilder output) {
     final Integer intValue = NumericUtils.prefixCodedToInt(input);
     final String stringValue = intValueToStringValue(intValue);
     output.grow(stringValue.length());
-    output.length = stringValue.length();
-    stringValue.getChars(0, output.length, output.chars, 0);
-    return output;
+    output.setLength(stringValue.length());
+    stringValue.getChars(0, output.length(), output.chars(), 0);
+    return output.get();
   }
 
   /**
@@ -372,14 +388,14 @@ public class EnumField extends PrimitiveFieldType {
     String intAsString =  intValue.toString();
     final FieldType newType = new FieldType();
 
-    newType.setIndexed(field.indexed());
     newType.setTokenized(field.isTokenized());
     newType.setStored(field.stored());
     newType.setOmitNorms(field.omitNorms());
-    newType.setIndexOptions(getIndexOptions(field, intAsString));
+    newType.setIndexOptions(field.indexed() ? getIndexOptions(field, intAsString) : IndexOptions.NONE);
     newType.setStoreTermVectors(field.storeTermVector());
     newType.setStoreTermVectorOffsets(field.storeTermOffsets());
     newType.setStoreTermVectorPositions(field.storeTermPositions());
+    newType.setStoreTermVectorPayloads(field.storeTermPayloads());
     newType.setNumericType(FieldType.NumericType.INT);
     newType.setNumericPrecisionStep(DEFAULT_PRECISION_STEP);
 
@@ -388,6 +404,30 @@ public class EnumField extends PrimitiveFieldType {
 
     f.setBoost(boost);
     return f;
+  }
+
+  /**
+   * {@inheritDoc}
+   */
+  @Override
+  public List<IndexableField> createFields(SchemaField sf, Object value, float boost) {
+    if (sf.hasDocValues()) {
+      List<IndexableField> fields = new ArrayList<>();
+      final IndexableField field = createField(sf, value, boost);
+      fields.add(field);
+
+      if (sf.multiValued()) {
+        BytesRefBuilder bytes = new BytesRefBuilder();
+        readableToIndexed(stringValueToIntValue(value.toString()).toString(), bytes);
+        fields.add(new SortedSetDocValuesField(sf.getName(), bytes.toBytesRef()));
+      } else {
+        final long bits = field.numericValue().intValue();
+        fields.add(new NumericDocValuesField(sf.getName(), bits));
+      }
+      return fields;
+    } else {
+      return Collections.singletonList(createField(sf, value, boost));
+    }
   }
 
   /**

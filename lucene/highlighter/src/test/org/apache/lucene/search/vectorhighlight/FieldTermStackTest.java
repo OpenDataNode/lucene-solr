@@ -1,4 +1,3 @@
-package org.apache.lucene.search.vectorhighlight;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.lucene.search.vectorhighlight;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.lucene.search.vectorhighlight;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.BooleanClause.Occur;
@@ -42,10 +41,10 @@ public class FieldTermStackTest extends AbstractTestCase {
   public void test2Terms() throws Exception {
     makeIndex();
     
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add( tq( "b" ), Occur.SHOULD );
     query.add( tq( "c" ), Occur.SHOULD );
-    FieldQuery fq = new FieldQuery( query, true, true );
+    FieldQuery fq = new FieldQuery( query.build(), true, true );
     FieldTermStack stack = new FieldTermStack( reader, 0, F, fq );
     assertEquals( 8, stack.termList.size() );
     assertEquals( "b(6,7,3)", stack.pop().toString() );
@@ -97,10 +96,10 @@ public class FieldTermStackTest extends AbstractTestCase {
   public void test2TermsB() throws Exception {
     makeIndexB();
     
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add( tq( "bc" ), Occur.SHOULD );
     query.add( tq( "ef" ), Occur.SHOULD );
-    FieldQuery fq = new FieldQuery( query, true, true );
+    FieldQuery fq = new FieldQuery( query.build(), true, true );
     FieldTermStack stack = new FieldTermStack( reader, 0, F, fq );
     assertEquals( 3, stack.termList.size() );
     assertEquals( "bc(4,6,4)", stack.pop().toString() );

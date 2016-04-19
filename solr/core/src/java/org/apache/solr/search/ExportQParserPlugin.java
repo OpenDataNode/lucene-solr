@@ -14,10 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.search;
 
-import com.carrotsearch.hppc.IntArrayList;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.solr.handler.component.MergeStrategy;
 import org.apache.solr.request.SolrRequestInfo;
@@ -26,17 +24,13 @@ import org.apache.lucene.index.*;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.common.params.SolrParams;
-import org.apache.lucene.util.OpenBitSet;
+
 import java.io.IOException;
 import java.util.Map;
-import java.util.Set;
 
 public class ExportQParserPlugin extends QParserPlugin {
 
   public static final String NAME = "xport";
-  
-  public void init(NamedList namedList) {
-  }
   
   public QParser createParser(String qstr, SolrParams localParams, SolrParams params, SolrQueryRequest request) {
     return new ExportQParser(qstr, localParams, params, request);
@@ -63,14 +57,6 @@ public class ExportQParserPlugin extends QParserPlugin {
     private Query mainQuery;
     private Object id;
 
-    public Query clone() {
-      ExportQuery clone = new ExportQuery();
-      clone.id = id;
-      clone.leafCount = leafCount;
-      clone.mainQuery = mainQuery;
-      return clone;
-    }
-
     public RankQuery wrap(Query mainQuery) {
       this.mainQuery = mainQuery;
       return this;
@@ -81,15 +67,14 @@ public class ExportQParserPlugin extends QParserPlugin {
     }
 
     public Weight createWeight(IndexSearcher searcher) throws IOException {
-      return mainQuery.createWeight(searcher);
+      return mainQuery.createWeight(searcher, true);
     }
 
     public Query rewrite(IndexReader reader) throws IOException {
+      if (getBoost() != 1f) {
+        return super.rewrite(reader);
+      }
       return this.mainQuery.rewrite(reader);
-    }
-
-    public void extractTerms(Set<Term> terms) {
-      this.mainQuery.extractTerms(terms);
     }
 
     public TopDocsCollector getTopDocsCollector(int len,
@@ -100,16 +85,15 @@ public class ExportQParserPlugin extends QParserPlugin {
     }
 
     public int hashCode() {
-      return id.hashCode()+((int)getBoost());
+      return 31 * super.hashCode() + id.hashCode();
     }
     
     public boolean equals(Object o) {
-      if(o instanceof ExportQuery) {
-        ExportQuery q = (ExportQuery)o;
-        return (this.id == q.id && getBoost() == q.getBoost());
-      } else {
+      if (super.equals(o) == false) {
         return false;
       }
+      ExportQuery q = (ExportQuery)o;
+      return id == q.id;
     }
     
     public String toString(String s) {
@@ -123,34 +107,42 @@ public class ExportQParserPlugin extends QParserPlugin {
     public ExportQuery(SolrParams localParams, SolrParams params, SolrQueryRequest request) throws IOException {
       this.leafCount = request.getSearcher().getTopReaderContext().leaves().size();
       id = new Object();
+      mainQuery = new MatchNoDocsQuery();
     }
   }
   
   private class ExportCollector extends TopDocsCollector  {
 
     private FixedBitSet[] sets;
-    private FixedBitSet set;
 
     public ExportCollector(FixedBitSet[] sets) {
       super(null);
       this.sets = sets;
     }
-    
-    public void setNextReader(AtomicReaderContext context) throws IOException {
-      this.set = new FixedBitSet(context.reader().maxDoc());
+
+    @Override
+    public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
+      final FixedBitSet set = new FixedBitSet(context.reader().maxDoc());
       this.sets[context.ord] = set;
-    }
-    
-    public void collect(int docId) throws IOException{
-      ++totalHits;
-      set.set(docId);
+      return new LeafCollector() {
+        
+        @Override
+        public void setScorer(Scorer scorer) throws IOException {}
+        
+        @Override
+        public void collect(int docId) throws IOException{
+          ++totalHits;
+          set.set(docId);
+        }
+      };
     }
 
     private ScoreDoc[] getScoreDocs(int howMany) {
-      ScoreDoc[] docs = new ScoreDoc[howMany];
+      ScoreDoc[] docs = new ScoreDoc[Math.min(totalHits, howMany)];
       for(int i=0; i<docs.length; i++) {
         docs[i] = new ScoreDoc(i,0);
       }
+
       return docs;
     }
 
@@ -161,17 +153,16 @@ public class ExportQParserPlugin extends QParserPlugin {
         Map context = req.getContext();
         context.put("export", sets);
         context.put("totalHits", totalHits);
-
       }
-      return new TopDocs(totalHits, getScoreDocs(howMany), 0.0f);
+
+      ScoreDoc[] scoreDocs = getScoreDocs(howMany);
+      assert scoreDocs.length <= totalHits;
+      return new TopDocs(totalHits, scoreDocs, 0.0f);
     }
 
-    public void setScorer(Scorer scorer) throws IOException {
-
-    }
-    
-    public boolean acceptsDocsOutOfOrder() {
-      return false;
+    @Override
+    public boolean needsScores() {
+      return true; // TODO: is this the case?
     }
   }
 }

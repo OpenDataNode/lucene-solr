@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,27 +14,36 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
-import org.apache.solr.SolrTestCaseJ4;
-import org.apache.solr.common.cloud.SolrZkClient;
-import org.apache.solr.core.CoreContainer;
-import org.apache.solr.core.CoreDescriptor;
-import org.apache.zookeeper.KeeperException;
-import org.junit.Test;
-
+import java.lang.invoke.MethodHandles;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.solr.SolrTestCaseJ4;
+import org.apache.solr.common.cloud.SolrZkClient;
+import org.apache.solr.core.CloudConfig;
+import org.apache.solr.core.CoreContainer;
+import org.apache.solr.core.CoreDescriptor;
+import org.apache.zookeeper.KeeperException;
+import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class TestLeaderElectionZkExpiry extends SolrTestCaseJ4 {
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
   public static final String SOLRXML = "<solr></solr>";
   private static final int MAX_NODES = 16;
   private static final int MIN_NODES = 4;
 
   @Test
   public void testLeaderElectionWithZkExpiry() throws Exception {
-    String zkDir = createTempDir("zkData").getAbsolutePath();
-    String ccDir = createTempDir("testLeaderElectionWithZkExpiry-solr").getAbsolutePath();
+    String zkDir = createTempDir("zkData").toFile().getAbsolutePath();
+    Path ccDir = createTempDir("testLeaderElectionWithZkExpiry-solr");
     CoreContainer cc = createCoreContainer(ccDir, SOLRXML);
     final ZkTestServer server = new ZkTestServer(zkDir);
     server.setTheTickTime(1000);
@@ -45,9 +52,12 @@ public class TestLeaderElectionZkExpiry extends SolrTestCaseJ4 {
       server.run();
       AbstractZkTestCase.tryCleanSolrZkNode(server.getZkHost());
       AbstractZkTestCase.makeSolrZkNode(server.getZkHost());
-      cc.load();
 
-      final ZkController zkController = new ZkController(cc, server.getZkAddress(), 15000, 30000, "dummy.host.com", "8984", "/solr", 180000, 180000, true, new CurrentCoreDescriptorProvider() {
+      CloudConfig cloudConfig = new CloudConfig.CloudConfigBuilder("dummy.host.com", 8984, "solr")
+          .setLeaderConflictResolveWait(180000)
+          .setLeaderVoteWait(180000)
+          .build();
+      final ZkController zkController = new ZkController(cc, server.getZkAddress(), 15000, cloudConfig, new CurrentCoreDescriptorProvider() {
         @Override
         public List<CoreDescriptor> getCurrentDescriptors() {
           return Collections.EMPTY_LIST;
@@ -74,7 +84,7 @@ public class TestLeaderElectionZkExpiry extends SolrTestCaseJ4 {
         boolean found = false;
         while (System.nanoTime() < timeout) {
           try {
-            String leaderNode = OverseerCollectionProcessor.getLeaderNode(zc);
+            String leaderNode = OverseerCollectionConfigSetProcessor.getLeaderNode(zc);
             if (leaderNode != null && !leaderNode.trim().isEmpty()) {
               log.info("Time={} Overseer leader is = {}", System.nanoTime(), leaderNode);
               found = true;

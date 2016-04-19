@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 
@@ -58,7 +58,39 @@ public abstract class DocIdSetIterator {
       }
     };
   }
-  
+
+  /** A {@link DocIdSetIterator} that matches all documents up to
+   *  {@code maxDoc - 1}. */
+  public static final DocIdSetIterator all(final int maxDoc) {
+    return new DocIdSetIterator() {
+      int doc = -1;
+
+      @Override
+      public int docID() {
+        return doc;
+      }
+
+      @Override
+      public int nextDoc() throws IOException {
+        return advance(doc + 1);
+      }
+
+      @Override
+      public int advance(int target) throws IOException {
+        doc = target;
+        if (doc >= maxDoc) {
+          doc = NO_MORE_DOCS;
+        }
+        return doc;
+      }
+
+      @Override
+      public long cost() {
+        return maxDoc;
+      }
+    };
+  }
+
   /**
    * When returned by {@link #nextDoc()}, {@link #advance(int)} and
    * {@link #docID()} it means there are no more docs in the iterator.
@@ -68,7 +100,7 @@ public abstract class DocIdSetIterator {
   /**
    * Returns the following:
    * <ul>
-   * <li>-1 or {@link #NO_MORE_DOCS} if {@link #nextDoc()} or
+   * <li><code>-1</code> if {@link #nextDoc()} or
    * {@link #advance(int)} were not called yet.
    * <li>{@link #NO_MORE_DOCS} if the iterator has exhausted.
    * <li>Otherwise it should return the doc ID it is currently on.
@@ -127,8 +159,7 @@ public abstract class DocIdSetIterator {
   /** Slow (linear) implementation of {@link #advance} relying on
    *  {@link #nextDoc()} to advance beyond the target position. */
   protected final int slowAdvance(int target) throws IOException {
-    assert docID() == NO_MORE_DOCS // can happen when the enum is not positioned yet
-        || docID() < target;
+    assert docID() < target;
     int doc;
     do {
       doc = nextDoc();
@@ -144,4 +175,5 @@ public abstract class DocIdSetIterator {
    * completely inaccurate.
    */
   public abstract long cost();
+  
 }

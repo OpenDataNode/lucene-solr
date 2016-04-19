@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.util;
+
 
 import java.io.IOException;
 import java.io.Reader;
@@ -61,15 +61,15 @@ public abstract class SegmentingTokenizerBase extends Tokenizer {
    * TokenStreams, instead a newly created or cloned one should always
    * be provided to this constructor.
    */
-  public SegmentingTokenizerBase(Reader reader, BreakIterator iterator) {
-    this(DEFAULT_TOKEN_ATTRIBUTE_FACTORY, reader, iterator);
+  public SegmentingTokenizerBase(BreakIterator iterator) {
+    this(DEFAULT_TOKEN_ATTRIBUTE_FACTORY, iterator);
   }
   
   /**
    * Construct a new SegmenterBase, also supplying the AttributeFactory
    */
-  public SegmentingTokenizerBase(AttributeFactory factory, Reader reader, BreakIterator iterator) {
-    super(factory, reader);
+  public SegmentingTokenizerBase(AttributeFactory factory, BreakIterator iterator) {
+    super(factory);
     this.iterator = iterator;
   }
 

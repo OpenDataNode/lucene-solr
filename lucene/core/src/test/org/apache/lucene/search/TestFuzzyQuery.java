@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,12 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
-import java.util.List;
-import java.util.Arrays;
+
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
@@ -29,6 +29,8 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.MultiReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.BooleanClause.Occur;
+import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.automaton.LevenshteinAutomata;
@@ -48,7 +50,7 @@ public class TestFuzzyQuery extends LuceneTestCase {
     writer.close();
 
     FuzzyQuery query = new FuzzyQuery(new Term("field", "abc"), FuzzyQuery.defaultMaxEdits, 1);
-    ScoreDoc[] hits = searcher.search(query, null, 1000).scoreDocs;
+    ScoreDoc[] hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(1, hits.length);
     reader.close();
     directory.close();
@@ -70,32 +72,32 @@ public class TestFuzzyQuery extends LuceneTestCase {
     writer.close();
 
     FuzzyQuery query = new FuzzyQuery(new Term("field", "aaaaa"), FuzzyQuery.defaultMaxEdits, 0);   
-    ScoreDoc[] hits = searcher.search(query, null, 1000).scoreDocs;
+    ScoreDoc[] hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(3, hits.length);
     
     // same with prefix
     query = new FuzzyQuery(new Term("field", "aaaaa"), FuzzyQuery.defaultMaxEdits, 1);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(3, hits.length);
     query = new FuzzyQuery(new Term("field", "aaaaa"), FuzzyQuery.defaultMaxEdits, 2);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(3, hits.length);
     query = new FuzzyQuery(new Term("field", "aaaaa"), FuzzyQuery.defaultMaxEdits, 3);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(3, hits.length);
     query = new FuzzyQuery(new Term("field", "aaaaa"), FuzzyQuery.defaultMaxEdits, 4);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(2, hits.length);
     query = new FuzzyQuery(new Term("field", "aaaaa"), FuzzyQuery.defaultMaxEdits, 5);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(1, hits.length);
     query = new FuzzyQuery(new Term("field", "aaaaa"), FuzzyQuery.defaultMaxEdits, 6);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(1, hits.length);
     
     // test scoring
     query = new FuzzyQuery(new Term("field", "bbbbb"), FuzzyQuery.defaultMaxEdits, 0);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals("3 documents should match", 3, hits.length);
     List<String> order = Arrays.asList("bbbbb","abbbb","aabbb");
     for (int i = 0; i < hits.length; i++) {
@@ -107,7 +109,7 @@ public class TestFuzzyQuery extends LuceneTestCase {
     // test pq size by supplying maxExpansions=2
     // This query would normally return 3 documents, because 3 terms match (see above):
     query = new FuzzyQuery(new Term("field", "bbbbb"), FuzzyQuery.defaultMaxEdits, 0, 2, false); 
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals("only 2 documents should match", 2, hits.length);
     order = Arrays.asList("bbbbb","abbbb");
     for (int i = 0; i < hits.length; i++) {
@@ -118,15 +120,15 @@ public class TestFuzzyQuery extends LuceneTestCase {
 
     // not similar enough:
     query = new FuzzyQuery(new Term("field", "xxxxx"), FuzzyQuery.defaultMaxEdits, 0);
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(0, hits.length);
     query = new FuzzyQuery(new Term("field", "aaccc"), FuzzyQuery.defaultMaxEdits, 0);   // edit distance to "aaaaa" = 3
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(0, hits.length);
 
     // query identical to a word in the index:
     query = new FuzzyQuery(new Term("field", "aaaaa"), FuzzyQuery.defaultMaxEdits, 0);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(3, hits.length);
     assertEquals(searcher.doc(hits[0].doc).get("field"), ("aaaaa"));
     // default allows for up to two edits:
@@ -135,7 +137,7 @@ public class TestFuzzyQuery extends LuceneTestCase {
 
     // query similar to a word in the index:
     query = new FuzzyQuery(new Term("field", "aaaac"), FuzzyQuery.defaultMaxEdits, 0);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(3, hits.length);
     assertEquals(searcher.doc(hits[0].doc).get("field"), ("aaaaa"));
     assertEquals(searcher.doc(hits[1].doc).get("field"), ("aaaab"));
@@ -143,63 +145,63 @@ public class TestFuzzyQuery extends LuceneTestCase {
     
     // now with prefix
     query = new FuzzyQuery(new Term("field", "aaaac"), FuzzyQuery.defaultMaxEdits, 1);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(3, hits.length);
     assertEquals(searcher.doc(hits[0].doc).get("field"), ("aaaaa"));
     assertEquals(searcher.doc(hits[1].doc).get("field"), ("aaaab"));
     assertEquals(searcher.doc(hits[2].doc).get("field"), ("aaabb"));
     query = new FuzzyQuery(new Term("field", "aaaac"), FuzzyQuery.defaultMaxEdits, 2);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(3, hits.length);
     assertEquals(searcher.doc(hits[0].doc).get("field"), ("aaaaa"));
     assertEquals(searcher.doc(hits[1].doc).get("field"), ("aaaab"));
     assertEquals(searcher.doc(hits[2].doc).get("field"), ("aaabb"));
     query = new FuzzyQuery(new Term("field", "aaaac"), FuzzyQuery.defaultMaxEdits, 3);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(3, hits.length);
     assertEquals(searcher.doc(hits[0].doc).get("field"), ("aaaaa"));
     assertEquals(searcher.doc(hits[1].doc).get("field"), ("aaaab"));
     assertEquals(searcher.doc(hits[2].doc).get("field"), ("aaabb"));
     query = new FuzzyQuery(new Term("field", "aaaac"), FuzzyQuery.defaultMaxEdits, 4);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(2, hits.length);
     assertEquals(searcher.doc(hits[0].doc).get("field"), ("aaaaa"));
     assertEquals(searcher.doc(hits[1].doc).get("field"), ("aaaab"));
     query = new FuzzyQuery(new Term("field", "aaaac"), FuzzyQuery.defaultMaxEdits, 5);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(0, hits.length);
     
 
     query = new FuzzyQuery(new Term("field", "ddddX"), FuzzyQuery.defaultMaxEdits, 0);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(1, hits.length);
     assertEquals(searcher.doc(hits[0].doc).get("field"), ("ddddd"));
     
     // now with prefix
     query = new FuzzyQuery(new Term("field", "ddddX"), FuzzyQuery.defaultMaxEdits, 1);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(1, hits.length);
     assertEquals(searcher.doc(hits[0].doc).get("field"), ("ddddd"));
     query = new FuzzyQuery(new Term("field", "ddddX"), FuzzyQuery.defaultMaxEdits, 2);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(1, hits.length);
     assertEquals(searcher.doc(hits[0].doc).get("field"), ("ddddd"));
     query = new FuzzyQuery(new Term("field", "ddddX"), FuzzyQuery.defaultMaxEdits, 3);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(1, hits.length);
     assertEquals(searcher.doc(hits[0].doc).get("field"), ("ddddd"));
     query = new FuzzyQuery(new Term("field", "ddddX"), FuzzyQuery.defaultMaxEdits, 4);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(1, hits.length);
     assertEquals(searcher.doc(hits[0].doc).get("field"), ("ddddd"));
     query = new FuzzyQuery(new Term("field", "ddddX"), FuzzyQuery.defaultMaxEdits, 5);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(0, hits.length);
     
 
     // different field = no match:
     query = new FuzzyQuery(new Term("anotherfield", "ddddX"), FuzzyQuery.defaultMaxEdits, 0);   
-    hits = searcher.search(query, null, 1000).scoreDocs;
+    hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(0, hits.length);
 
     reader.close();
@@ -234,13 +236,97 @@ public class TestFuzzyQuery extends LuceneTestCase {
 
     FuzzyQuery query = new FuzzyQuery(new Term("field", "WEBER"), 2, 1);
     //query.setRewriteMethod(FuzzyQuery.SCORING_BOOLEAN_QUERY_REWRITE);
-    ScoreDoc[] hits = searcher.search(query, null, 1000).scoreDocs;
+    ScoreDoc[] hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(8, hits.length);
 
     reader.close();
     directory.close();
   }
   
+  public void testSingleQueryExactMatchScoresHighest() throws Exception {
+    //See issue LUCENE-329 - IDF shouldn't wreck similarity ranking 
+    Directory directory = newDirectory();
+    RandomIndexWriter writer = new RandomIndexWriter(random(), directory);
+    addDoc("smith", writer);
+    addDoc("smith", writer);
+    addDoc("smith", writer);
+    addDoc("smith", writer);
+    addDoc("smith", writer);
+    addDoc("smith", writer);
+    addDoc("smythe", writer);
+    addDoc("smdssasd", writer);
+
+    IndexReader reader = writer.getReader();
+    IndexSearcher searcher = newSearcher(reader);
+    searcher.setSimilarity(new DefaultSimilarity()); //avoid randomisation of similarity algo by test framework
+    writer.close();
+    String searchTerms[] = { "smith", "smythe", "smdssasd" };
+    for (String searchTerm : searchTerms) {
+      FuzzyQuery query = new FuzzyQuery(new Term("field", searchTerm), 2, 1);
+      ScoreDoc[] hits = searcher.search(query, 1000).scoreDocs;
+      Document bestDoc = searcher.doc(hits[0].doc);
+      assertTrue(hits.length > 0);
+      String topMatch = bestDoc.get("field");
+      assertEquals(searchTerm, topMatch);
+      if (hits.length > 1) {
+        Document worstDoc = searcher.doc(hits[hits.length - 1].doc);
+        String worstMatch = worstDoc.get("field");
+        assertNotSame(searchTerm, worstMatch);
+      }
+    }
+    reader.close();
+    directory.close();
+  }
+  
+  public void testMultipleQueriesIdfWorks() throws Exception {
+    // With issue LUCENE-329 - it could be argued a MultiTermQuery.TopTermsBoostOnlyBooleanQueryRewrite
+    // is the solution as it disables IDF.
+    // However - IDF is still useful as in this case where there are multiple FuzzyQueries.
+    Directory directory = newDirectory();
+    RandomIndexWriter writer = new RandomIndexWriter(random(), directory);
+
+    addDoc("michael smith", writer);
+    addDoc("michael lucero", writer);
+    addDoc("doug cutting", writer);
+    addDoc("doug cuttin", writer);
+    addDoc("michael wardle", writer);
+    addDoc("micheal vegas", writer);
+    addDoc("michael lydon", writer);
+
+    IndexReader reader = writer.getReader();
+    IndexSearcher searcher = newSearcher(reader);
+    searcher.setSimilarity(new DefaultSimilarity()); //avoid randomisation of similarity algo by test framework
+
+    writer.close();
+
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
+    String commonSearchTerm = "michael";
+    FuzzyQuery commonQuery = new FuzzyQuery(new Term("field", commonSearchTerm), 2, 1);
+    query.add(commonQuery, Occur.SHOULD);
+
+    String rareSearchTerm = "cutting";
+    FuzzyQuery rareQuery = new FuzzyQuery(new Term("field", rareSearchTerm), 2, 1);
+    query.add(rareQuery, Occur.SHOULD);
+    ScoreDoc[] hits = searcher.search(query.build(), 1000).scoreDocs;
+
+    // Matches on the rare surname should be worth more than matches on the common forename
+    assertEquals(7, hits.length);
+    Document bestDoc = searcher.doc(hits[0].doc);
+    String topMatch = bestDoc.get("field");
+    assertTrue(topMatch.contains(rareSearchTerm));
+
+    Document runnerUpDoc = searcher.doc(hits[1].doc);
+    String runnerUpMatch = runnerUpDoc.get("field");
+    assertTrue(runnerUpMatch.contains("cuttin"));
+
+    Document worstDoc = searcher.doc(hits[hits.length - 1].doc);
+    String worstMatch = worstDoc.get("field");
+    assertTrue(worstMatch.contains("micheal")); //misspelling of common name
+
+    reader.close();
+    directory.close();
+  }
+
   /** 
    * MultiTermQuery provides (via attribute) information about which values
    * must be competitive to enter the priority queue. 
@@ -296,7 +382,7 @@ public class TestFuzzyQuery extends LuceneTestCase {
     
     FuzzyQuery query = new FuzzyQuery(new Term("field", "lucene"));
     query.setRewriteMethod(new MultiTermQuery.TopTermsBoostOnlyBooleanQueryRewrite(50));
-    ScoreDoc[] hits = searcher.search(query, null, 1000).scoreDocs;
+    ScoreDoc[] hits = searcher.search(query, 1000).scoreDocs;
     assertEquals(3, hits.length);
     // normally, 'Lucenne' would be the first result as IDF will skew the score.
     assertEquals("Lucene", reader.document(hits[0].doc).get("field"));

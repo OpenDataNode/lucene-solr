@@ -14,23 +14,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.analysis.miscellaneous;
 
 import org.apache.lucene.analysis.*;
-import org.apache.lucene.analysis.Analyzer.TokenStreamComponents;
 import org.apache.lucene.analysis.core.KeywordTokenizer;
 import org.apache.lucene.analysis.core.StopFilter;
-import org.apache.lucene.analysis.cz.CzechStemFilter;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.util.CharArraySet;
+import org.apache.lucene.util.IOUtils;
 import org.junit.Test;
 
 import java.io.IOException;
-import java.io.Reader;
-import java.io.StringReader;
 import java.util.*;
 
 import static org.apache.lucene.analysis.miscellaneous.WordDelimiterFilter.*;
@@ -43,7 +39,7 @@ import static org.apache.lucene.analysis.miscellaneous.WordDelimiterIterator.DEF
  */
 public class TestWordDelimiterFilter extends BaseTokenStreamTestCase {
 
-  /***
+  /*
   public void testPerformance() throws IOException {
     String s = "now is the time-for all good men to come to-the aid of their country.";
     Token tok = new Token();
@@ -216,8 +212,8 @@ public class TestWordDelimiterFilter extends BaseTokenStreamTestCase {
     /* analyzer that uses whitespace + wdf */
     Analyzer a = new Analyzer() {
       @Override
-      public TokenStreamComponents createComponents(String field, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+      public TokenStreamComponents createComponents(String field) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
         return new TokenStreamComponents(tokenizer, new WordDelimiterFilter(
             tokenizer,
             flags, protWords));
@@ -244,8 +240,8 @@ public class TestWordDelimiterFilter extends BaseTokenStreamTestCase {
     /* analyzer that will consume tokens with large position increments */
     Analyzer a2 = new Analyzer() {
       @Override
-      public TokenStreamComponents createComponents(String field, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+      public TokenStreamComponents createComponents(String field) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
         return new TokenStreamComponents(tokenizer, new WordDelimiterFilter(
             new LargePosIncTokenFilter(tokenizer),
             flags, protWords));
@@ -277,8 +273,8 @@ public class TestWordDelimiterFilter extends BaseTokenStreamTestCase {
 
     Analyzer a3 = new Analyzer() {
       @Override
-      public TokenStreamComponents createComponents(String field, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+      public TokenStreamComponents createComponents(String field) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
         StopFilter filter = new StopFilter(tokenizer, StandardAnalyzer.STOP_WORDS_SET);
         return new TokenStreamComponents(tokenizer, new WordDelimiterFilter(filter, flags, protWords));
       }
@@ -296,6 +292,7 @@ public class TestWordDelimiterFilter extends BaseTokenStreamTestCase {
         new int[] { 4, 4, 11 }, 
         new int[] { 10, 15, 15 },
         new int[] { 2, 0, 1 });
+    IOUtils.close(a, a2, a3);
   }
   
   /** concat numbers + words + all */
@@ -305,8 +302,8 @@ public class TestWordDelimiterFilter extends BaseTokenStreamTestCase {
     /* analyzer that uses whitespace + wdf */
     Analyzer a = new Analyzer() {
       @Override
-      public TokenStreamComponents createComponents(String field, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+      public TokenStreamComponents createComponents(String field) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
         return new TokenStreamComponents(tokenizer, new WordDelimiterFilter(tokenizer, flags, null));
       }
     };
@@ -316,6 +313,7 @@ public class TestWordDelimiterFilter extends BaseTokenStreamTestCase {
         new int[] { 0, 0, 0, 4, 8, 8, 12 }, 
         new int[] { 3, 7, 15, 7, 11, 15, 15 },
         new int[] { 1, 0, 0, 1, 1, 0, 1 });
+    a.close();
   }
   
   /** concat numbers + words + all + preserve original */
@@ -325,8 +323,8 @@ public class TestWordDelimiterFilter extends BaseTokenStreamTestCase {
     /* analyzer that uses whitespace + wdf */
     Analyzer a = new Analyzer() {
       @Override
-      public TokenStreamComponents createComponents(String field, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+      public TokenStreamComponents createComponents(String field) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
         return new TokenStreamComponents(tokenizer, new WordDelimiterFilter(tokenizer, flags, null));
       }
     };
@@ -336,6 +334,7 @@ public class TestWordDelimiterFilter extends BaseTokenStreamTestCase {
         new int[] { 0, 0, 0, 0, 4, 8, 8, 12 }, 
         new int[] { 15, 3, 7, 15, 7, 11, 15, 15 },
         new int[] { 1, 0, 0, 0, 1, 1, 0, 1 });
+    a.close();
   }
   
   /** blast some random strings through the analyzer */
@@ -353,13 +352,14 @@ public class TestWordDelimiterFilter extends BaseTokenStreamTestCase {
       Analyzer a = new Analyzer() {
         
         @Override
-        protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-          Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+        protected TokenStreamComponents createComponents(String fieldName) {
+          Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
           return new TokenStreamComponents(tokenizer, new WordDelimiterFilter(tokenizer, flags, protectedWords));
         }
       };
       // TODO: properly support positionLengthAttribute
-      checkRandomData(random(), a, 1000*RANDOM_MULTIPLIER, 20, false, false);
+      checkRandomData(random(), a, 200*RANDOM_MULTIPLIER, 20, false, false);
+      a.close();
     }
   }
   
@@ -378,13 +378,14 @@ public class TestWordDelimiterFilter extends BaseTokenStreamTestCase {
       Analyzer a = new Analyzer() {
         
         @Override
-        protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-          Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+        protected TokenStreamComponents createComponents(String fieldName) {
+          Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
           return new TokenStreamComponents(tokenizer, new WordDelimiterFilter(tokenizer, flags, protectedWords));
         }
       };
       // TODO: properly support positionLengthAttribute
-      checkRandomData(random(), a, 100*RANDOM_MULTIPLIER, 8192, false, false);
+      checkRandomData(random(), a, 20*RANDOM_MULTIPLIER, 8192, false, false);
+      a.close();
     }
   }
   
@@ -401,13 +402,14 @@ public class TestWordDelimiterFilter extends BaseTokenStreamTestCase {
     
       Analyzer a = new Analyzer() { 
         @Override
-        protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-          Tokenizer tokenizer = new KeywordTokenizer(reader);
+        protected TokenStreamComponents createComponents(String fieldName) {
+          Tokenizer tokenizer = new KeywordTokenizer();
           return new TokenStreamComponents(tokenizer, new WordDelimiterFilter(tokenizer, flags, protectedWords));
         }
       };
       // depending upon options, this thing may or may not preserve the empty term
       checkAnalysisConsistency(random, a, random.nextBoolean(), "");
+      a.close();
     }
   }
 }

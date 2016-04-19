@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,13 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.DocumentStoredFieldVisitor;
 import org.apache.lucene.store.AlreadyClosedException;
-import org.apache.lucene.store.Directory;
-import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.Bits;  // javadocs
 import org.apache.lucene.util.IOUtils;
 
 import java.io.Closeable;
@@ -32,14 +31,13 @@ import java.util.List;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-// javadocs
 
 /**
  IndexReader is an abstract class, providing an interface for accessing a
  point-in-time view of an index.  Any changes made to the index
  via {@link IndexWriter} will not be visible until a new
  {@code IndexReader} is opened.  It's best to use {@link
- DirectoryReader#open(IndexWriter,boolean)} to obtain an
+ DirectoryReader#open(IndexWriter)} to obtain an
  {@code IndexReader}, if your {@link IndexWriter} is
  in-process.  When you need to re-open to see changes to the
  index, it's best to use {@link DirectoryReader#openIfChanged(DirectoryReader)}
@@ -50,15 +48,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 
  <p>There are two different types of IndexReaders:
  <ul>
-  <li>{@link AtomicReader}: These indexes do not consist of several sub-readers,
+  <li>{@link LeafReader}: These indexes do not consist of several sub-readers,
   they are atomic. They support retrieval of stored fields, doc values, terms,
   and postings.
   <li>{@link CompositeReader}: Instances (like {@link DirectoryReader})
   of this reader can only
-  be used to get stored fields from the underlying AtomicReaders,
+  be used to get stored fields from the underlying LeafReaders,
   but it is not possible to directly retrieve postings. To do that, get
   the sub-readers via {@link CompositeReader#getSequentialSubReaders}.
-  Alternatively, you can mimic an {@link AtomicReader} (with a serious slowdown),
+  Alternatively, you can mimic an {@link LeafReader} (with a serious slowdown),
   by wrapping composite readers with {@link SlowCompositeReaderWrapper}.
  </ul>
  
@@ -89,8 +87,8 @@ public abstract class IndexReader implements Closeable {
   private final AtomicInteger refCount = new AtomicInteger(1);
 
   IndexReader() {
-    if (!(this instanceof CompositeReader || this instanceof AtomicReader))
-      throw new Error("IndexReader should never be directly extended, subclass AtomicReader or CompositeReader instead.");
+    if (!(this instanceof CompositeReader || this instanceof LeafReader))
+      throw new Error("IndexReader should never be directly extended, subclass LeafReader or CompositeReader instead.");
   }
   
   /**
@@ -101,7 +99,7 @@ public abstract class IndexReader implements Closeable {
    */
   public static interface ReaderClosedListener {
     /** Invoked when the {@link IndexReader} is closed. */
-    public void onClose(IndexReader reader);
+    public void onClose(IndexReader reader) throws IOException;
   }
 
   private final Set<ReaderClosedListener> readerClosedListeners = 
@@ -130,7 +128,7 @@ public abstract class IndexReader implements Closeable {
   }
   
   /** Expert: This method is called by {@code IndexReader}s which wrap other readers
-   * (e.g. {@link CompositeReader} or {@link FilterAtomicReader}) to register the parent
+   * (e.g. {@link CompositeReader} or {@link FilterLeafReader}) to register the parent
    * at the child (this reader) on construction of the parent. When this reader is closed,
    * it will mark all registered parents as closed, too. The references to parent readers
    * are weak only, so they can be GCed once they are no longer in use.
@@ -193,7 +191,7 @@ public abstract class IndexReader implements Closeable {
    */
   public final void incRef() {
     if (!tryIncRef()) {
-       ensureOpen();
+      ensureOpen();
     }
   }
   
@@ -303,95 +301,6 @@ public abstract class IndexReader implements Closeable {
   public final int hashCode() {
     return System.identityHashCode(this);
   }
-  
-  /** Returns a IndexReader reading the index in the given
-   *  Directory
-   * @param directory the index directory
-   * @throws IOException if there is a low-level IO error
-   * @deprecated Use {@link DirectoryReader#open(Directory)}
-   */
-  @Deprecated
-  public static DirectoryReader open(final Directory directory) throws IOException {
-    return DirectoryReader.open(directory);
-  }
-  
-  /** Expert: Returns a IndexReader reading the index in the given
-   *  Directory with the given termInfosIndexDivisor.
-   * @param directory the index directory
-   * @param termInfosIndexDivisor Subsamples which indexed
-   *  terms are loaded into RAM. This has the same effect as {@link
-   *  IndexWriterConfig#setTermIndexInterval} except that setting
-   *  must be done at indexing time while this setting can be
-   *  set per reader.  When set to N, then one in every
-   *  N*termIndexInterval terms in the index is loaded into
-   *  memory.  By setting this to a value > 1 you can reduce
-   *  memory usage, at the expense of higher latency when
-   *  loading a TermInfo.  The default value is 1.  Set this
-   *  to -1 to skip loading the terms index entirely.
-   * @throws IOException if there is a low-level IO error
-   * @deprecated Use {@link DirectoryReader#open(Directory,int)}
-   */
-  @Deprecated
-  public static DirectoryReader open(final Directory directory, int termInfosIndexDivisor) throws IOException {
-    return DirectoryReader.open(directory, termInfosIndexDivisor);
-  }
-  
-  /**
-   * Open a near real time IndexReader from the {@link org.apache.lucene.index.IndexWriter}.
-   *
-   * @param writer The IndexWriter to open from
-   * @param applyAllDeletes If true, all buffered deletes will
-   * be applied (made visible) in the returned reader.  If
-   * false, the deletes are not applied but remain buffered
-   * (in IndexWriter) so that they will be applied in the
-   * future.  Applying deletes can be costly, so if your app
-   * can tolerate deleted documents being returned you might
-   * gain some performance by passing false.
-   * @return The new IndexReader
-   * @throws IOException if there is a low-level IO error
-   *
-   * @see DirectoryReader#openIfChanged(DirectoryReader,IndexWriter,boolean)
-   *
-   * @lucene.experimental
-   * @deprecated Use {@link DirectoryReader#open(IndexWriter,boolean)}
-   */
-  @Deprecated
-  public static DirectoryReader open(final IndexWriter writer, boolean applyAllDeletes) throws IOException {
-    return DirectoryReader.open(writer, applyAllDeletes);
-  }
-
-  /** Expert: returns an IndexReader reading the index in the given
-   *  {@link IndexCommit}.
-   * @param commit the commit point to open
-   * @throws IOException if there is a low-level IO error
-   * @deprecated Use {@link DirectoryReader#open(IndexCommit)}
-   */
-  @Deprecated
-  public static DirectoryReader open(final IndexCommit commit) throws IOException {
-    return DirectoryReader.open(commit);
-  }
-
-
-  /** Expert: returns an IndexReader reading the index in the given
-   *  {@link IndexCommit} and termInfosIndexDivisor.
-   * @param commit the commit point to open
-   * @param termInfosIndexDivisor Subsamples which indexed
-   *  terms are loaded into RAM. This has the same effect as {@link
-   *  IndexWriterConfig#setTermIndexInterval} except that setting
-   *  must be done at indexing time while this setting can be
-   *  set per reader.  When set to N, then one in every
-   *  N*termIndexInterval terms in the index is loaded into
-   *  memory.  By setting this to a value > 1 you can reduce
-   *  memory usage, at the expense of higher latency when
-   *  loading a TermInfo.  The default value is 1.  Set this
-   *  to -1 to skip loading the terms index entirely.
-   * @throws IOException if there is a low-level IO error
-   * @deprecated Use {@link DirectoryReader#open(IndexCommit,int)}
-   */
-  @Deprecated
-  public static DirectoryReader open(final IndexCommit commit, int termInfosIndexDivisor) throws IOException {
-    return DirectoryReader.open(commit, termInfosIndexDivisor);
-  }
 
   /** Retrieve term vectors for this document, or null if
    *  term vectors were not indexed.  The returned Fields
@@ -450,6 +359,7 @@ public abstract class IndexReader implements Closeable {
    * like boost, omitNorm, IndexOptions, tokenized, etc.,
    * are not preserved.
    * 
+   * @throws CorruptIndexException if the index is corrupt
    * @throws IOException if there is a low-level IO error
    */
   // TODO: we need a separate StoredField, so that the
@@ -466,8 +376,10 @@ public abstract class IndexReader implements Closeable {
    * fields.  Note that this is simply sugar for {@link
    * DocumentStoredFieldVisitor#DocumentStoredFieldVisitor(Set)}.
    */
-  public final Document document(int docID, Set<String> fieldsToLoad) throws IOException {
-    final DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor(fieldsToLoad);
+  public final Document document(int docID, Set<String> fieldsToLoad)
+      throws IOException {
+    final DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor(
+        fieldsToLoad);
     document(docID, visitor);
     return visitor.getDocument();
   }
@@ -508,7 +420,7 @@ public abstract class IndexReader implements Closeable {
    * context are private to this reader and are not shared with another context
    * tree. For example, IndexSearcher uses this API to drive searching by one
    * atomic leaf reader at a time. If this reader is not composed of child
-   * readers, this method returns an {@link AtomicReaderContext}.
+   * readers, this method returns an {@link LeafReaderContext}.
    * <p>
    * Note: Any of the sub-{@link CompositeReaderContext} instances referenced
    * from this top-level context do not support {@link CompositeReaderContext#leaves()}.
@@ -522,11 +434,11 @@ public abstract class IndexReader implements Closeable {
    * This is a convenience method calling {@code this.getContext().leaves()}.
    * @see IndexReaderContext#leaves()
    */
-  public final List<AtomicReaderContext> leaves() {
+  public final List<LeafReaderContext> leaves() {
     return getContext().leaves();
   }
 
-  /** Expert: Returns a key for this IndexReader, so FieldCache/CachingWrapperFilter can find
+  /** Expert: Returns a key for this IndexReader, so CachingWrapperFilter can find
    * it again.
    * This key must not have equals()/hashCode() methods, so &quot;equals&quot; means &quot;identical&quot;. */
   public Object getCoreCacheKey() {
@@ -536,7 +448,7 @@ public abstract class IndexReader implements Closeable {
   }
 
   /** Expert: Returns a key for this IndexReader that also includes deletions,
-   * so FieldCache/CachingWrapperFilter can find it again.
+   * so CachingWrapperFilter can find it again.
    * This key must not have equals()/hashCode() methods, so &quot;equals&quot; means &quot;identical&quot;. */
   public Object getCombinedCoreAndDeletesKey() {
     // Don't call ensureOpen since FC calls this (to evict)

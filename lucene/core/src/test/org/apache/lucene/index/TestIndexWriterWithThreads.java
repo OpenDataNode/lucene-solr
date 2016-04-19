@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
@@ -39,7 +39,6 @@ import org.apache.lucene.store.MockDirectoryWrapper;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LineFileDocs;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.ThreadInterruptedException;
@@ -48,7 +47,6 @@ import org.apache.lucene.util.LuceneTestCase.Slow;
 /**
  * MultiThreaded IndexWriter tests
  */
-@SuppressCodecs("Lucene3x")
 @Slow
 public class TestIndexWriterWithThreads extends LuceneTestCase {
 
@@ -112,6 +110,9 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
             }
             break;
           }
+        } catch (AlreadyClosedException ace) {
+          // OK: abort closes the writer
+          break;
         } catch (Throwable t) {
           //t.printStackTrace(System.out);
           if (noErrors) {
@@ -143,6 +144,7 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
             .setMaxBufferedDocs(2)
             .setMergeScheduler(new ConcurrentMergeScheduler())
             .setMergePolicy(newLogMergePolicy(4))
+            .setCommitOnClose(false)
       );
       ((ConcurrentMergeScheduler) writer.getConfig().getMergeScheduler()).setSuppressExceptions();
       dir.setMaxSizeInBytes(4*1024+20*iter);
@@ -165,7 +167,14 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
       // Make sure once disk space is avail again, we can
       // cleanly close:
       dir.setMaxSizeInBytes(0);
-      writer.close(false);
+      try {
+        writer.commit();
+      } catch (AlreadyClosedException ace) {
+        // OK: abort closes the writer
+        assertTrue(writer.deleter.isClosed());
+      } finally {
+        writer.close();
+      }
       dir.close();
     }
   }
@@ -190,6 +199,7 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
             .setMaxBufferedDocs(10)
             .setMergeScheduler(new ConcurrentMergeScheduler())
             .setMergePolicy(newLogMergePolicy(4))
+            .setCommitOnClose(false)
       );
       ((ConcurrentMergeScheduler) writer.getConfig().getMergeScheduler()).setSuppressExceptions();
 
@@ -217,7 +227,11 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
       if (VERBOSE) {
         System.out.println("\nTEST: now close");
       }
-      writer.close(false);
+      try {
+        writer.commit();
+      } finally {
+        writer.close();
+      }
 
       // Make sure threads that are adding docs are not hung:
       for(int i=0;i<NUM_THREADS;i++) {
@@ -230,10 +244,9 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
 
       // Quick test to make sure index is not corrupt:
       IndexReader reader = DirectoryReader.open(dir);
-      DocsEnum tdocs = TestUtil.docs(random(), reader,
+      PostingsEnum tdocs = TestUtil.docs(random(), reader,
           "field",
           new BytesRef("aaa"),
-          MultiFields.getLiveDocs(reader),
           null,
           0);
       int count = 0;
@@ -265,6 +278,7 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
              .setMaxBufferedDocs(2)
              .setMergeScheduler(new ConcurrentMergeScheduler())
              .setMergePolicy(newLogMergePolicy(4))
+             .setCommitOnClose(false)
       );
       ((ConcurrentMergeScheduler) writer.getConfig().getMergeScheduler()).setSuppressExceptions();
 
@@ -288,11 +302,15 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
 
       boolean success = false;
       try {
-        writer.close(false);
+        writer.commit();
+        writer.close();
         success = true;
+      } catch (AlreadyClosedException ace) {
+        // OK: abort closes the writer
+        assertTrue(writer.deleter.isClosed());
       } catch (IOException ioe) {
+        writer.rollback();
         failure.clearDoFail();
-        writer.close(false);
       }
       if (VERBOSE) {
         System.out.println("TEST: success=" + success);
@@ -319,9 +337,22 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
   public void _testSingleThreadFailure(MockDirectoryWrapper.Failure failure) throws IOException {
     MockDirectoryWrapper dir = newMockDirectory();
 
-    IndexWriter writer = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random()))
-                                                .setMaxBufferedDocs(2)
-                                                .setMergeScheduler(new ConcurrentMergeScheduler()));
+    IndexWriterConfig iwc = newIndexWriterConfig(new MockAnalyzer(random()))
+      .setMaxBufferedDocs(2)
+      .setMergeScheduler(new ConcurrentMergeScheduler())
+      .setCommitOnClose(false);
+
+    if (iwc.getMergeScheduler() instanceof ConcurrentMergeScheduler) {
+      iwc.setMergeScheduler(new SuppressingConcurrentMergeScheduler() {
+          @Override
+          protected boolean isOK(Throwable th) {
+            return th instanceof AlreadyClosedException ||
+              (th instanceof IllegalStateException && th.getMessage().contains("this writer hit an unrecoverable error"));
+          }
+        });
+    }
+
+    IndexWriter writer = new IndexWriter(dir, iwc);
     final Document doc = new Document();
     FieldType customType = new FieldType(TextField.TYPE_STORED);
     customType.setStoreTermVectors(true);
@@ -342,8 +373,14 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
     } catch (IOException ioe) {
     }
     failure.clearDoFail();
-    writer.addDocument(doc);
-    writer.close(false);
+    try {
+      writer.addDocument(doc);
+      writer.commit();
+      writer.close();
+    } catch (AlreadyClosedException ace) {
+      // OK: abort closes the writer
+      assertTrue(writer.deleter.isClosed());
+    }
     dir.close();
   }
 
@@ -596,9 +633,7 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
                       writerRef.get().prepareCommit();
                     }
                     writerRef.get().commit();
-                  } catch (AlreadyClosedException ace) {
-                    // ok
-                  } catch (NullPointerException npe) {
+                  } catch (AlreadyClosedException | NullPointerException ace) {
                     // ok
                   } finally {
                     commitLock.unlock();
@@ -610,11 +645,7 @@ public class TestIndexWriterWithThreads extends LuceneTestCase {
                   }
                   try {
                     writerRef.get().addDocument(docs.nextDoc());
-                  } catch (AlreadyClosedException ace) {
-                    // ok
-                  } catch (NullPointerException npe) {
-                    // ok
-                  } catch (AssertionError ae) {
+                  } catch (AlreadyClosedException | NullPointerException | AssertionError ace) {
                     // ok
                   }
                   break;

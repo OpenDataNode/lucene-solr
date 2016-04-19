@@ -17,6 +17,7 @@
 package org.apache.solr.schema;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -31,28 +32,33 @@ import org.apache.lucene.document.FloatField;
 import org.apache.lucene.document.IntField;
 import org.apache.lucene.document.LongField;
 import org.apache.lucene.document.NumericDocValuesField;
-import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.document.SortedSetDocValuesField;
+import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.valuesource.DoubleFieldSource;
 import org.apache.lucene.queries.function.valuesource.FloatFieldSource;
 import org.apache.lucene.queries.function.valuesource.IntFieldSource;
 import org.apache.lucene.queries.function.valuesource.LongFieldSource;
-import org.apache.lucene.search.ConstantScoreQuery;
-import org.apache.lucene.search.FieldCache;
-import org.apache.lucene.search.FieldCacheRangeFilter;
+import org.apache.lucene.search.DocValuesRangeQuery;
 import org.apache.lucene.search.NumericRangeQuery;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.SortedSetSelector;
 import org.apache.lucene.search.SortField;
+import org.apache.lucene.uninverting.UninvertingReader.Type;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.CharsRef;
+import org.apache.lucene.util.CharsRefBuilder;
 import org.apache.lucene.util.NumericUtils;
 import org.apache.lucene.util.mutable.MutableValueDate;
 import org.apache.lucene.util.mutable.MutableValueLong;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.response.TextResponseWriter;
 import org.apache.solr.search.QParser;
+import org.apache.solr.util.DateFormatUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Provides field types to support for Lucene's {@link
@@ -60,13 +66,13 @@ import org.apache.solr.search.QParser;
  * {@link DoubleField}.
  * See {@link org.apache.lucene.search.NumericRangeQuery} for more details.
  * It supports integer, float, long, double and date types.
- * <p/>
+ * <p>
  * For each number being added to this field, multiple terms are generated as per the algorithm described in the above
  * link. The possible number of terms increases dramatically with lower precision steps. For
  * the fast range search to work, trie fields must be indexed.
- * <p/>
+ * <p>
  * Trie fields are sortable in numerical order and can be used in function queries.
- * <p/>
+ * <p>
  * Note that if you use a precisionStep of 32 for int/float and 64 for long/double/date, then multiple terms will not be
  * generated, range search will be no faster than any other number field, but sorting will still be possible.
  *
@@ -80,13 +86,8 @@ public class TrieField extends PrimitiveFieldType {
   protected int precisionStepArg = TrieField.DEFAULT_PRECISION_STEP;  // the one passed in or defaulted
   protected int precisionStep;     // normalized
   protected TrieTypes type;
-  protected Object missingValue;
 
-  
-  /**
-   * Used for handling date types following the same semantics as DateField
-   */
-  static final DateField dateField = new DateField();
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   @Override
   protected void init(IndexSchema schema, Map<String, String> args) {
@@ -154,7 +155,7 @@ public class TrieField extends PrimitiveFieldType {
         else if( sortMissingFirst ) {
           missingValue = top ? Integer.MAX_VALUE : Integer.MIN_VALUE;
         }
-        sf = new SortField( field.getName(), FieldCache.NUMERIC_UTILS_INT_PARSER, top);
+        sf = new SortField( field.getName(), SortField.Type.INT, top);
         sf.setMissingValue(missingValue);
         return sf;
       
@@ -165,7 +166,7 @@ public class TrieField extends PrimitiveFieldType {
         else if( sortMissingFirst ) {
           missingValue = top ? Float.POSITIVE_INFINITY : Float.NEGATIVE_INFINITY;
         }
-        sf = new SortField( field.getName(), FieldCache.NUMERIC_UTILS_FLOAT_PARSER, top);
+        sf = new SortField( field.getName(), SortField.Type.FLOAT, top);
         sf.setMissingValue(missingValue);
         return sf;
       
@@ -177,7 +178,7 @@ public class TrieField extends PrimitiveFieldType {
         else if( sortMissingFirst ) {
           missingValue = top ? Long.MAX_VALUE : Long.MIN_VALUE;
         }
-        sf = new SortField( field.getName(), FieldCache.NUMERIC_UTILS_LONG_PARSER, top);
+        sf = new SortField( field.getName(), SortField.Type.LONG, top);
         sf.setMissingValue(missingValue);
         return sf;
         
@@ -188,7 +189,7 @@ public class TrieField extends PrimitiveFieldType {
         else if( sortMissingFirst ) {
           missingValue = top ? Double.POSITIVE_INFINITY : Double.NEGATIVE_INFINITY;
         }
-        sf = new SortField( field.getName(), FieldCache.NUMERIC_UTILS_DOUBLE_PARSER, top);
+        sf = new SortField( field.getName(), SortField.Type.DOUBLE, top);
         sf.setMissingValue(missingValue);
         return sf;
         
@@ -196,27 +197,103 @@ public class TrieField extends PrimitiveFieldType {
         throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Unknown type for trie field: " + field.name);
     }
   }
+  
+  @Override
+  public Type getUninversionType(SchemaField sf) {
+    if (sf.multiValued()) {
+      switch (type) {
+        case INTEGER:
+          return Type.SORTED_SET_INTEGER;
+        case LONG:
+        case DATE:
+          return Type.SORTED_SET_LONG;
+        case FLOAT:
+          return Type.SORTED_SET_FLOAT;
+        case DOUBLE:
+          return Type.SORTED_SET_DOUBLE;
+        default:
+          throw new AssertionError();
+      }
+    } else {
+      switch (type) {
+        case INTEGER:
+          return Type.INTEGER;
+        case LONG:
+        case DATE:
+          return Type.LONG;
+        case FLOAT:
+          return Type.FLOAT;
+        case DOUBLE:
+          return Type.DOUBLE;
+        default:
+          throw new AssertionError();
+      }
+    }
+  }
 
   @Override
   public ValueSource getValueSource(SchemaField field, QParser qparser) {
-    field.checkFieldCacheSource(qparser);
+    field.checkFieldCacheSource();
     switch (type) {
       case INTEGER:
-        return new IntFieldSource( field.getName(), FieldCache.NUMERIC_UTILS_INT_PARSER );
+        return new IntFieldSource( field.getName());
       case FLOAT:
-        return new FloatFieldSource( field.getName(), FieldCache.NUMERIC_UTILS_FLOAT_PARSER );
+        return new FloatFieldSource( field.getName());
       case DATE:
-        return new TrieDateFieldSource( field.getName(), FieldCache.NUMERIC_UTILS_LONG_PARSER );        
+        return new TrieDateFieldSource( field.getName());        
       case LONG:
-        return new LongFieldSource( field.getName(), FieldCache.NUMERIC_UTILS_LONG_PARSER );
+        return new LongFieldSource( field.getName());
       case DOUBLE:
-        return new DoubleFieldSource( field.getName(), FieldCache.NUMERIC_UTILS_DOUBLE_PARSER );
+        return new DoubleFieldSource( field.getName());
       default:
         throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Unknown type for trie field: " + field.name);
     }
   }
 
+  @Override
+  public final ValueSource getSingleValueSource(MultiValueSelector choice, SchemaField field, QParser parser) {
+    // trivial base case
+    if (!field.multiValued()) {
+      // single value matches any selector
+      return getValueSource(field, parser);
+    }
 
+    // See LUCENE-6709
+    if (! field.hasDocValues()) {
+      throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
+                              "docValues='true' is required to select '" + choice.toString() +
+                              "' value from multivalued field ("+ field.getName() +") at query time");
+    }
+    
+    // multivalued Trie fields all use SortedSetDocValues, so we give a clean error if that's
+    // not supported by the specified choice, else we delegate to a helper
+    SortedSetSelector.Type selectorType = choice.getSortedSetSelectorType();
+    if (null == selectorType) {
+      throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
+                              choice.toString() + " is not a supported option for picking a single value"
+                              + " from the multivalued field: " + field.getName() +
+                              " (type: " + this.getTypeName() + ")");
+    }
+    
+    return getSingleValueSource(selectorType, field);
+  }
+
+  /**
+   * Helper method that will only be called for multivalued Trie fields that have doc values.
+   * Default impl throws an error indicating that selecting a single value from this multivalued 
+   * field is not supported for this field type
+   *
+   * @param choice the selector Type to use, will never be null
+   * @param field the field to use, garunteed to be multivalued.
+   * @see #getSingleValueSource(MultiValueSelector,SchemaField,QParser) 
+   */
+  protected ValueSource getSingleValueSource(SortedSetSelector.Type choice, SchemaField field) {
+    throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
+                            "Can not select a single value for multivalued field: " + field.getName()
+                            + " (single valued field selection not supported for type: " + this.getTypeName()
+                            + ")");
+  }
+  
   @Override
   public void write(TextResponseWriter writer, String name, IndexableField f) throws IOException {
     writer.writeVal(name, toObject(f));
@@ -270,15 +347,15 @@ public class TrieField extends PrimitiveFieldType {
       return super.getRangeQuery(parser, field, min, max, minInclusive, maxInclusive);
     }
     int ps = precisionStep;
-    Query query = null;
+    Query query;
     final boolean matchOnly = field.hasDocValues() && !field.indexed();
     switch (type) {
       case INTEGER:
         if (matchOnly) {
-          query = new ConstantScoreQuery(FieldCacheRangeFilter.newIntRange(field.getName(),
-                min == null ? null : Integer.parseInt(min),
-                max == null ? null : Integer.parseInt(max),
-                minInclusive, maxInclusive));
+          query = DocValuesRangeQuery.newLongRange(field.getName(),
+                min == null ? null : (long) Integer.parseInt(min),
+                max == null ? null : (long) Integer.parseInt(max),
+                minInclusive, maxInclusive);
         } else {
           query = NumericRangeQuery.newIntRange(field.getName(), ps,
                 min == null ? null : Integer.parseInt(min),
@@ -288,10 +365,10 @@ public class TrieField extends PrimitiveFieldType {
         break;
       case FLOAT:
         if (matchOnly) {
-          query = new ConstantScoreQuery(FieldCacheRangeFilter.newFloatRange(field.getName(),
-                min == null ? null : Float.parseFloat(min),
-                max == null ? null : Float.parseFloat(max),
-                minInclusive, maxInclusive));
+          query = DocValuesRangeQuery.newLongRange(field.getName(),
+                min == null ? null : (long) NumericUtils.floatToSortableInt(Float.parseFloat(min)),
+                max == null ? null : (long) NumericUtils.floatToSortableInt(Float.parseFloat(max)),
+                minInclusive, maxInclusive);
         } else {
           query = NumericRangeQuery.newFloatRange(field.getName(), ps,
                 min == null ? null : Float.parseFloat(min),
@@ -301,10 +378,10 @@ public class TrieField extends PrimitiveFieldType {
         break;
       case LONG:
         if (matchOnly) {
-          query = new ConstantScoreQuery(FieldCacheRangeFilter.newLongRange(field.getName(),
+          query = DocValuesRangeQuery.newLongRange(field.getName(),
                 min == null ? null : Long.parseLong(min),
                 max == null ? null : Long.parseLong(max),
-                minInclusive, maxInclusive));
+                minInclusive, maxInclusive);
         } else {
           query = NumericRangeQuery.newLongRange(field.getName(), ps,
                 min == null ? null : Long.parseLong(min),
@@ -314,10 +391,10 @@ public class TrieField extends PrimitiveFieldType {
         break;
       case DOUBLE:
         if (matchOnly) {
-          query = new ConstantScoreQuery(FieldCacheRangeFilter.newDoubleRange(field.getName(),
-                min == null ? null : Double.parseDouble(min),
-                max == null ? null : Double.parseDouble(max),
-                minInclusive, maxInclusive));
+          query = DocValuesRangeQuery.newLongRange(field.getName(),
+                min == null ? null : NumericUtils.doubleToSortableLong(Double.parseDouble(min)),
+                max == null ? null : NumericUtils.doubleToSortableLong(Double.parseDouble(max)),
+                minInclusive, maxInclusive);
         } else {
           query = NumericRangeQuery.newDoubleRange(field.getName(), ps,
                 min == null ? null : Double.parseDouble(min),
@@ -327,14 +404,14 @@ public class TrieField extends PrimitiveFieldType {
         break;
       case DATE:
         if (matchOnly) {
-          query = new ConstantScoreQuery(FieldCacheRangeFilter.newLongRange(field.getName(),
-                min == null ? null : dateField.parseMath(null, min).getTime(),
-                max == null ? null : dateField.parseMath(null, max).getTime(),
-                minInclusive, maxInclusive));
+          query = DocValuesRangeQuery.newLongRange(field.getName(),
+                min == null ? null : DateFormatUtil.parseMath(null, min).getTime(),
+                max == null ? null : DateFormatUtil.parseMath(null, max).getTime(),
+                minInclusive, maxInclusive);
         } else {
           query = NumericRangeQuery.newLongRange(field.getName(), ps,
-                min == null ? null : dateField.parseMath(null, min).getTime(),
-                max == null ? null : dateField.parseMath(null, max).getTime(),
+                min == null ? null : DateFormatUtil.parseMath(null, min).getTime(),
+                max == null ? null : DateFormatUtil.parseMath(null, max).getTime(),
                 minInclusive, maxInclusive);
         }
         break;
@@ -375,36 +452,34 @@ public class TrieField extends PrimitiveFieldType {
   @Override
   public String readableToIndexed(String val) {
     // TODO: Numeric should never be handled as String, that may break in future lucene versions! Change to use BytesRef for term texts!
-    final BytesRef bytes = new BytesRef(NumericUtils.BUF_SIZE_LONG);
+    final BytesRefBuilder bytes = new BytesRefBuilder();
     readableToIndexed(val, bytes);
-    return bytes.utf8ToString();
+    return bytes.get().utf8ToString();
   }
 
   @Override
-  public void readableToIndexed(CharSequence val, BytesRef result) {
+  public void readableToIndexed(CharSequence val, BytesRefBuilder result) {
     String s = val.toString();
-    BytesRefBuilder b = new BytesRefBuilder();
     try {
       switch (type) {
         case INTEGER:
-          NumericUtils.intToPrefixCodedBytes(Integer.parseInt(s), 0, b);
+          NumericUtils.intToPrefixCodedBytes(Integer.parseInt(s), 0, result);
           break;
         case FLOAT:
-          NumericUtils.intToPrefixCodedBytes(NumericUtils.floatToSortableInt(Float.parseFloat(s)), 0, b);
+          NumericUtils.intToPrefixCodedBytes(NumericUtils.floatToSortableInt(Float.parseFloat(s)), 0, result);
           break;
         case LONG:
-          NumericUtils.longToPrefixCodedBytes(Long.parseLong(s), 0, b);
+          NumericUtils.longToPrefixCodedBytes(Long.parseLong(s), 0, result);
           break;
         case DOUBLE:
-          NumericUtils.longToPrefixCodedBytes(NumericUtils.doubleToSortableLong(Double.parseDouble(s)), 0, b);
+          NumericUtils.longToPrefixCodedBytes(NumericUtils.doubleToSortableLong(Double.parseDouble(s)), 0, result);
           break;
         case DATE:
-          NumericUtils.longToPrefixCodedBytes(dateField.parseMath(null, s).getTime(), 0, b);
+          NumericUtils.longToPrefixCodedBytes(DateFormatUtil.parseMath(null, s).getTime(), 0, result);
           break;
         default:
           throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Unknown type for trie field: " + type);
       }
-      result.copyBytes(b.get());
     } catch (NumberFormatException nfe) {
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, 
                               "Invalid Number: " + val);
@@ -424,7 +499,7 @@ public class TrieField extends PrimitiveFieldType {
   @Override
   public String toExternal(IndexableField f) {
     return (type == TrieTypes.DATE)
-      ? dateField.toExternal((Date) toObject(f)) 
+      ? DateFormatUtil.formatExternal((Date) toObject(f))
       : toObject(f).toString();
   }
 
@@ -441,14 +516,14 @@ public class TrieField extends PrimitiveFieldType {
       case DOUBLE:
         return Double.toString( NumericUtils.sortableLongToDouble(NumericUtils.prefixCodedToLong(indexedForm)) );
       case DATE:
-        return dateField.toExternal( new Date(NumericUtils.prefixCodedToLong(indexedForm)) );
+        return DateFormatUtil.formatExternal(new Date(NumericUtils.prefixCodedToLong(indexedForm)));
       default:
         throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Unknown type for trie field: " + type);
     }
   }
 
   @Override
-  public CharsRef indexedToReadable(BytesRef indexedForm, CharsRef charsRef) {
+  public CharsRef indexedToReadable(BytesRef indexedForm, CharsRefBuilder charsRef) {
     final String value;
     switch (type) {
       case INTEGER:
@@ -464,15 +539,15 @@ public class TrieField extends PrimitiveFieldType {
         value = Double.toString( NumericUtils.sortableLongToDouble(NumericUtils.prefixCodedToLong(indexedForm)) );
         break;
       case DATE:
-        value = dateField.toExternal( new Date(NumericUtils.prefixCodedToLong(indexedForm)) );
+        value = DateFormatUtil.formatExternal(new Date(NumericUtils.prefixCodedToLong(indexedForm)));
         break;
       default:
         throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Unknown type for trie field: " + type);
     }
     charsRef.grow(value.length());
-    charsRef.length = value.length();
-    value.getChars(0, charsRef.length, charsRef.chars, 0);
-    return charsRef;
+    charsRef.setLength(value.length());
+    value.getChars(0, charsRef.length(), charsRef.chars(), 0);
+    return charsRef.get();
   }
 
   @Override
@@ -496,6 +571,11 @@ public class TrieField extends PrimitiveFieldType {
   @Override
   public String storedToIndexed(IndexableField f) {
     final BytesRefBuilder bytes = new BytesRefBuilder();
+    storedToIndexed(f, bytes);
+    return bytes.get().utf8ToString();
+  }
+
+  private void storedToIndexed(IndexableField f, final BytesRefBuilder bytes) {
     final Number val = f.numericValue();
     if (val != null) {
       switch (type) {
@@ -550,7 +630,6 @@ public class TrieField extends PrimitiveFieldType {
           throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, "Unknown type for trie field: " + f.name());
       }
     }
-    return bytes.get().utf8ToString();
   }
   
   @Override
@@ -568,9 +647,8 @@ public class TrieField extends PrimitiveFieldType {
     FieldType ft = new FieldType();
     ft.setStored(stored);
     ft.setTokenized(true);
-    ft.setIndexed(indexed);
     ft.setOmitNorms(field.omitNorms());
-    ft.setIndexOptions(getIndexOptions(field, value.toString()));
+    ft.setIndexOptions(indexed ? getIndexOptions(field, value.toString()) : IndexOptions.NONE);
 
     switch (type) {
       case INTEGER:
@@ -623,7 +701,7 @@ public class TrieField extends PrimitiveFieldType {
       case DATE:
         Date date = (value instanceof Date)
           ? ((Date)value)
-          : dateField.parseMath(null, value.toString());
+          : DateFormatUtil.parseMath(null, value.toString());
         f = new org.apache.lucene.document.LongField(field.getName(), date.getTime(), ft);
         break;
       default:
@@ -642,9 +720,9 @@ public class TrieField extends PrimitiveFieldType {
       fields.add(field);
       
       if (sf.multiValued()) {
-        BytesRef bytes = new BytesRef();
-        readableToIndexed(value.toString(), bytes);
-        fields.add(new SortedSetDocValuesField(sf.getName(), bytes));
+        BytesRefBuilder bytes = new BytesRefBuilder();
+        storedToIndexed(field, bytes);
+        fields.add(new SortedSetDocValuesField(sf.getName(), bytes.get()));
       } else {
         final long bits;
         if (field.numericValue() instanceof Integer || field.numericValue() instanceof Long) {
@@ -681,8 +759,6 @@ public class TrieField extends PrimitiveFieldType {
    * that indexes multiple precisions per value.
    */
   public static String getMainValuePrefix(org.apache.solr.schema.FieldType ft) {
-    if (ft instanceof TrieDateField)
-      ft = ((TrieDateField) ft).wrappedField;
     if (ft instanceof TrieField) {
       final TrieField trie = (TrieField)ft;
       if (trie.precisionStep  == Integer.MAX_VALUE)
@@ -709,8 +785,8 @@ public class TrieField extends PrimitiveFieldType {
 
 class TrieDateFieldSource extends LongFieldSource {
 
-  public TrieDateFieldSource(String field, FieldCache.LongParser parser) {
-    super(field, parser);
+  public TrieDateFieldSource(String field) {
+    super(field);
   }
 
   @Override
@@ -730,12 +806,12 @@ class TrieDateFieldSource extends LongFieldSource {
 
   @Override
   public String longToString(long val) {
-    return TrieField.dateField.toExternal(longToObject(val));
+    return DateFormatUtil.formatExternal(longToObject(val));
   }
 
   @Override
   public long externalToLong(String extVal) {
-    return TrieField.dateField.parseMath(null, extVal).getTime();
+    return DateFormatUtil.parseMath(null, extVal).getTime();
   }
 
 }

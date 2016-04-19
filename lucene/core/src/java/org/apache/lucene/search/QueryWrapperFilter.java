@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,12 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
 import java.io.IOException;
 
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.util.Bits;
 
 /** 
@@ -30,7 +30,10 @@ import org.apache.lucene.util.Bits;
  * formatted date field to implement date filtering.  One could re-use a single
  * CachingWrapperFilter(QueryWrapperFilter) that matches, e.g., only documents modified 
  * within the last week.  This would only need to be reconstructed once per day.
+ * @deprecated You can use {@link Query} objects directly for filtering by using
+ * {@link BooleanClause.Occur#FILTER} clauses in a {@link BooleanQuery}.
  */
+@Deprecated
 public class QueryWrapperFilter extends Filter {
   private final Query query;
 
@@ -43,40 +46,52 @@ public class QueryWrapperFilter extends Filter {
     this.query = query;
   }
   
+  @Override
+  public Query rewrite(IndexReader reader) throws IOException {
+    return new BoostQuery(new ConstantScoreQuery(query), 0f);
+  }
+  
   /** returns the inner Query */
   public final Query getQuery() {
     return query;
   }
 
   @Override
-  public DocIdSet getDocIdSet(final AtomicReaderContext context, final Bits acceptDocs) throws IOException {
+  public DocIdSet getDocIdSet(final LeafReaderContext context, final Bits acceptDocs) throws IOException {
     // get a private context that is used to rewrite, createWeight and score eventually
-    final AtomicReaderContext privateContext = context.reader().getContext();
-    final Weight weight = new IndexSearcher(privateContext).createNormalizedWeight(query);
-    return new DocIdSet() {
+    final LeafReaderContext privateContext = context.reader().getContext();
+    final Weight weight = new IndexSearcher(privateContext).createNormalizedWeight(query, false);
+    
+    DocIdSet set = new DocIdSet() {
       @Override
       public DocIdSetIterator iterator() throws IOException {
-        return weight.scorer(privateContext, acceptDocs);
+        Scorer s = weight.scorer(privateContext);
+        return s == null ? null : s.iterator();
       }
+
       @Override
-      public boolean isCacheable() { return false; }
+      public long ramBytesUsed() {
+        return 0L;
+      }
     };
+    return BitsFilteredDocIdSet.wrap(set, acceptDocs);
   }
 
   @Override
-  public String toString() {
-    return "QueryWrapperFilter(" + query + ")";
+  public String toString(String field) {
+    return "QueryWrapperFilter(" + query.toString(field) + ")";
   }
 
   @Override
   public boolean equals(Object o) {
-    if (!(o instanceof QueryWrapperFilter))
+    if (super.equals(o) == false) {
       return false;
+    }
     return this.query.equals(((QueryWrapperFilter)o).query);
   }
 
   @Override
   public int hashCode() {
-    return query.hashCode() ^ 0x923F64B9;
+    return 31 * super.hashCode() + query.hashCode();
   }
 }

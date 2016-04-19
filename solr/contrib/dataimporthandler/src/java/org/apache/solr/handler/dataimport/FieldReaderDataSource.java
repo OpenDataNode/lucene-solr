@@ -23,6 +23,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.lang.invoke.MethodHandles;
 import java.nio.charset.StandardCharsets;
 import java.sql.Blob;
 import java.sql.Clob;
@@ -31,23 +32,23 @@ import java.util.Properties;
 
 /**
  * This can be useful for users who have a DB field containing xml and wish to use a nested {@link XPathEntityProcessor}
- * <p/>
+ * <p>
  * The datasouce may be configured as follows
- * <p/>
+ * <p>
  * &lt;datasource name="f1" type="FieldReaderDataSource" /&gt;
- * <p/>
- * The enity which uses this datasource must keep the url value as the variable name url="field-name"
- * <p/>
+ * <p>
+ * The entity which uses this datasource must keep the url value as the variable name url="field-name"
+ * <p>
  * The fieldname must be resolvable from {@link VariableResolver}
- * <p/>
+ * <p>
  * This may be used with any {@link EntityProcessor} which uses a {@link DataSource}&lt;{@link Reader}&gt; eg: {@link XPathEntityProcessor}
- * <p/>
+ * <p>
  * Supports String, BLOB, CLOB data types and there is an extra field (in the entity) 'encoding' for BLOB types
  *
  * @since 1.4
  */
 public class FieldReaderDataSource extends DataSource<Reader> {
-  private static final Logger LOG = LoggerFactory.getLogger(FieldReaderDataSource.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   protected VariableResolver vr;
   protected String dataField;
   private String encoding;

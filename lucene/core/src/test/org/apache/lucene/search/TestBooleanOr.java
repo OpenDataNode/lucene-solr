@@ -1,4 +1,3 @@
-package org.apache.lucene.search;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,20 +14,29 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import com.carrotsearch.randomizedtesting.generators.RandomInts;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.TextField;
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
+
+import com.carrotsearch.randomizedtesting.generators.RandomInts;
 
 public class TestBooleanOr extends LuceneTestCase {
 
@@ -47,7 +55,7 @@ public class TestBooleanOr extends LuceneTestCase {
 
   private int search(Query q) throws IOException {
     QueryUtils.check(random(), q,searcher);
-    return searcher.search(q, null, 1000).totalHits;
+    return searcher.search(q, 1000).totalHits;
   }
 
   public void testElements() throws IOException {
@@ -62,12 +70,12 @@ public class TestBooleanOr extends LuceneTestCase {
    * it works.
    */
   public void testFlat() throws IOException {
-    BooleanQuery q = new BooleanQuery();
+    BooleanQuery.Builder q = new BooleanQuery.Builder();
     q.add(new BooleanClause(t1, BooleanClause.Occur.SHOULD));
     q.add(new BooleanClause(t2, BooleanClause.Occur.SHOULD));
     q.add(new BooleanClause(c1, BooleanClause.Occur.SHOULD));
     q.add(new BooleanClause(c2, BooleanClause.Occur.SHOULD));
-    assertEquals(1, search(q));
+    assertEquals(1, search(q.build()));
   }
 
   /**
@@ -75,16 +83,16 @@ public class TestBooleanOr extends LuceneTestCase {
    * it works.
    */
   public void testParenthesisMust() throws IOException {
-    BooleanQuery q3 = new BooleanQuery();
+    BooleanQuery.Builder q3 = new BooleanQuery.Builder();
     q3.add(new BooleanClause(t1, BooleanClause.Occur.SHOULD));
     q3.add(new BooleanClause(t2, BooleanClause.Occur.SHOULD));
-    BooleanQuery q4 = new BooleanQuery();
+    BooleanQuery.Builder q4 = new BooleanQuery.Builder();
     q4.add(new BooleanClause(c1, BooleanClause.Occur.MUST));
     q4.add(new BooleanClause(c2, BooleanClause.Occur.MUST));
-    BooleanQuery q2 = new BooleanQuery();
-    q2.add(q3, BooleanClause.Occur.SHOULD);
-    q2.add(q4, BooleanClause.Occur.SHOULD);
-    assertEquals(1, search(q2));
+    BooleanQuery.Builder q2 = new BooleanQuery.Builder();
+    q2.add(q3.build(), BooleanClause.Occur.SHOULD);
+    q2.add(q4.build(), BooleanClause.Occur.SHOULD);
+    assertEquals(1, search(q2.build()));
   }
 
   /**
@@ -92,16 +100,16 @@ public class TestBooleanOr extends LuceneTestCase {
    * not working. results NO HIT.
    */
   public void testParenthesisMust2() throws IOException {
-    BooleanQuery q3 = new BooleanQuery();
+    BooleanQuery.Builder q3 = new BooleanQuery.Builder();
     q3.add(new BooleanClause(t1, BooleanClause.Occur.SHOULD));
     q3.add(new BooleanClause(t2, BooleanClause.Occur.SHOULD));
-    BooleanQuery q4 = new BooleanQuery();
+    BooleanQuery.Builder q4 = new BooleanQuery.Builder();
     q4.add(new BooleanClause(c1, BooleanClause.Occur.SHOULD));
     q4.add(new BooleanClause(c2, BooleanClause.Occur.SHOULD));
-    BooleanQuery q2 = new BooleanQuery();
-    q2.add(q3, BooleanClause.Occur.SHOULD);
-    q2.add(q4, BooleanClause.Occur.MUST);
-    assertEquals(1, search(q2));
+    BooleanQuery.Builder q2 = new BooleanQuery.Builder();
+    q2.add(q3.build(), BooleanClause.Occur.SHOULD);
+    q2.add(q4.build(), BooleanClause.Occur.MUST);
+    assertEquals(1, search(q2.build()));
   }
 
   /**
@@ -109,16 +117,16 @@ public class TestBooleanOr extends LuceneTestCase {
    * not working. results NO HIT.
    */
   public void testParenthesisShould() throws IOException {
-    BooleanQuery q3 = new BooleanQuery();
+    BooleanQuery.Builder q3 = new BooleanQuery.Builder();
     q3.add(new BooleanClause(t1, BooleanClause.Occur.SHOULD));
     q3.add(new BooleanClause(t2, BooleanClause.Occur.SHOULD));
-    BooleanQuery q4 = new BooleanQuery();
+    BooleanQuery.Builder q4 = new BooleanQuery.Builder();
     q4.add(new BooleanClause(c1, BooleanClause.Occur.SHOULD));
     q4.add(new BooleanClause(c2, BooleanClause.Occur.SHOULD));
-    BooleanQuery q2 = new BooleanQuery();
-    q2.add(q3, BooleanClause.Occur.SHOULD);
-    q2.add(q4, BooleanClause.Occur.SHOULD);
-    assertEquals(1, search(q2));
+    BooleanQuery.Builder q2 = new BooleanQuery.Builder();
+    q2.add(q3.build(), BooleanClause.Occur.SHOULD);
+    q2.add(q4.build(), BooleanClause.Occur.SHOULD);
+    assertEquals(1, search(q2.build()));
   }
 
   @Override
@@ -176,46 +184,94 @@ public class TestBooleanOr extends LuceneTestCase {
     riw.close();
 
     IndexSearcher s = newSearcher(r);
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
     bq.add(new TermQuery(new Term("field", "a")), BooleanClause.Occur.SHOULD);
     bq.add(new TermQuery(new Term("field", "a")), BooleanClause.Occur.SHOULD);
 
-    Weight w = s.createNormalizedWeight(bq);
+    Weight w = s.createNormalizedWeight(bq.build(), true);
 
     assertEquals(1, s.getIndexReader().leaves().size());
-    BulkScorer scorer = w.bulkScorer(s.getIndexReader().leaves().get(0), false, null);
+    BulkScorer scorer = w.bulkScorer(s.getIndexReader().leaves().get(0));
 
     final FixedBitSet hits = new FixedBitSet(docCount);
     final AtomicInteger end = new AtomicInteger();
-    Collector c = new Collector() {
-        @Override
-        public void setNextReader(AtomicReaderContext sub) {
-        }
+    LeafCollector c = new SimpleCollector() {
 
         @Override
         public void collect(int doc) {
           assertTrue("collected doc=" + doc + " beyond max=" + end, doc < end.intValue());
           hits.set(doc);
         }
-
+        
         @Override
-        public void setScorer(Scorer scorer) {
-        }
-
-        @Override
-        public boolean acceptsDocsOutOfOrder() {
-          return true;
+        public boolean needsScores() {
+          return false;
         }
       };
 
     while (end.intValue() < docCount) {
+      final int min = end.intValue();
       final int inc = TestUtil.nextInt(random(), 1, 1000);
-      end.getAndAdd(inc);
-      scorer.score(c, end.intValue());
+      final int max = end.addAndGet(inc);
+      scorer.score(c, null, min, max);
     }
 
     assertEquals(docCount, hits.cardinality());
     r.close();
     dir.close();
+  }
+
+  private static BulkScorer scorer(final int... matches) {
+    return new BulkScorer() {
+      final FakeScorer scorer = new FakeScorer();
+      int i = 0;
+      @Override
+      public int score(LeafCollector collector, Bits acceptDocs, int min, int max) throws IOException {
+        collector.setScorer(scorer);
+        while (i < matches.length && matches[i] < min) {
+          i += 1;
+        }
+        while (i < matches.length && matches[i] < max) {
+          scorer.doc = matches[i];
+          if (acceptDocs == null || acceptDocs.get(scorer.doc)) {
+            collector.collect(scorer.doc);
+          }
+          i += 1;
+        }
+        if (i == matches.length) {
+          return DocIdSetIterator.NO_MORE_DOCS;
+        }
+        return RandomInts.randomIntBetween(random(), max, matches[i]);
+      }
+      @Override
+      public long cost() {
+        return matches.length;
+      }
+    };
+  }
+
+  // Make sure that BooleanScorer keeps working even if the sub clauses return
+  // next matching docs which are less than the actual next match
+  public void testSubScorerNextIsNotMatch() throws IOException {
+    final List<BulkScorer> optionalScorers = Arrays.asList(
+        scorer(100000, 1000001, 9999999),
+        scorer(4000, 1000051),
+        scorer(5000, 100000, 9999998, 9999999)
+    );
+    Collections.shuffle(optionalScorers, random());
+    BooleanScorer scorer = new BooleanScorer(null, true, 0, optionalScorers, 1, random().nextBoolean());
+    final List<Integer> matches = new ArrayList<>();
+    scorer.score(new LeafCollector() {
+
+      @Override
+      public void setScorer(Scorer scorer) throws IOException {}
+
+      @Override
+      public void collect(int doc) throws IOException {
+        matches.add(doc);
+      }
+      
+    }, null);
+    assertEquals(Arrays.asList(4000, 5000, 100000, 1000001, 1000051, 9999998, 9999999), matches);
   }
 }

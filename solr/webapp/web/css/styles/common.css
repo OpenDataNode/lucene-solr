@@ -195,9 +195,15 @@ ul
   z-index: 42;
 }
 
+.scroll #header
+{
+  position: absolute;
+}
+
 #header #solr
 {
-  background-image: url( ../../img/solr.png );
+  background-image: url( ../../img/solr.svg );
+  background-size: 128px;
   display: block;
   height: 78px;
   width: 150px;
@@ -692,4 +698,22 @@ pre.syntax .tex .formula
   -moz-box-shadow: 1px 1px 0 #d8d8d8;
   -webkit-box-shadow: 1px 1px 0 #d8d8d8;
   color: #333;
+}
+
+.other-ui-link {
+  margin: 0px;
+  position: absolute;
+  right: 0px;
+  top: -20px;
+}
+
+.other-ui-link span.help {
+  background-image: url( ../../img/ico/information-white.png );
+  right: 0px;
+  padding-left: 16px;
+}i
+
+.other-ul-link a{}
+.other-ui-link a.ul {
+  text-decoration: underline;
 }

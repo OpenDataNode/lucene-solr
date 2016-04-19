@@ -1,4 +1,3 @@
-package org.apache.lucene.queryparser.surround.query;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.lucene.queryparser.surround.query;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.lucene.queryparser.surround.query;
 import java.io.IOException;
 
 import org.apache.lucene.index.IndexReader;
@@ -54,7 +53,7 @@ public class SrndTermQuery extends SimpleTerm {
     /* check term presence in index here for symmetry with other SimpleTerm's */
     Terms terms = MultiFields.getTerms(reader, fieldName);
     if (terms != null) {
-      TermsEnum termsEnum = terms.iterator(null);
+      TermsEnum termsEnum = terms.iterator();
 
       TermsEnum.SeekStatus status = termsEnum.seekCeil(new BytesRef(getTermText()));
       if (status == TermsEnum.SeekStatus.FOUND) {

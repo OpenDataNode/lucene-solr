@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.ja.dict;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.ja.dict;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.ja.dict;
+
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -56,18 +56,18 @@ public final class UserDictionary implements Dictionary {
   public static final int LEFT_ID = 5;
   
   public static final int RIGHT_ID = 5;
-  
-  public UserDictionary(Reader reader) throws IOException {
+
+  public static UserDictionary open(Reader reader) throws IOException {
+
     BufferedReader br = new BufferedReader(reader);
     String line = null;
-    int wordId = CUSTOM_DICTIONARY_WORD_ID_OFFSET;
     List<String[]> featureEntries = new ArrayList<>();
- 
+
     // text, segmentation, readings, POS
     while ((line = br.readLine()) != null) {
       // Remove comments
       line = line.replaceAll("#.*$", "");
-      
+
       // Skip empty lines or comment lines
       if (line.trim().length() == 0) {
         continue;
@@ -75,9 +75,19 @@ public final class UserDictionary implements Dictionary {
       String[] values = CSVUtil.parse(line);
       featureEntries.add(values);
     }
-    
+
+    if (featureEntries.isEmpty()) {
+      return null;
+    } else {
+      return new UserDictionary(featureEntries);
+    }
+  }
+
+  private UserDictionary(List<String[]> featureEntries) throws IOException {
+
+    int wordId = CUSTOM_DICTIONARY_WORD_ID_OFFSET;
     // TODO: should we allow multiple segmentations per input 'phrase'?
-    // the old treemap didn't support this either, and i'm not sure if its needed/useful?
+    // the old treemap didn't support this either, and i'm not sure if it's needed/useful?
 
     Collections.sort(featureEntries, new Comparator<String[]>() {
       @Override

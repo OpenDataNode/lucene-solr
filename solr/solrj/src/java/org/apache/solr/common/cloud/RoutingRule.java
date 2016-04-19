@@ -1,5 +1,3 @@
-package org.apache.solr.common.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,13 @@ package org.apache.solr.common.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.common.cloud;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.solr.common.util.SuppressForbidden;
 import org.noggit.JSONUtil;
 
 /**
@@ -56,8 +56,14 @@ public class RoutingRule extends ZkNodeProps {
     return targetCollectionName;
   }
 
-  public Long getExpireAt() {
-    return expireAt;
+  @SuppressForbidden(reason = "For currentTimeMillis, expiry time depends on external data (should it?)")
+  public static String makeExpiryAt(long timeMsFromNow) {
+    return String.valueOf(System.currentTimeMillis() + timeMsFromNow);
+  }
+
+  @SuppressForbidden(reason = "For currentTimeMillis, expiry time depends on external data (should it?)")
+  public boolean isExpired() {
+    return (expireAt < System.currentTimeMillis());
   }
 
   public String getRouteRangesStr() {

@@ -1,5 +1,3 @@
-package org.apache.lucene.benchmark;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,13 +14,14 @@ package org.apache.lucene.benchmark;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.benchmark;
 
-import java.io.File;
-import java.io.FileOutputStream;
+
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.io.StringReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import org.apache.lucene.benchmark.byTask.Benchmark;
 import org.apache.lucene.util.LuceneTestCase;
@@ -31,14 +30,13 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 
 /** Base class for all Benchmark unit tests. */
+@SuppressSysoutChecks(bugUrl = "very noisy")
 public abstract class BenchmarkTestCase extends LuceneTestCase {
-  private static File WORKDIR;
+  private static Path WORKDIR;
   
   @BeforeClass
   public static void beforeClassBenchmarkTestCase() {
     WORKDIR = createTempDir("benchmark");
-    WORKDIR.delete();
-    WORKDIR.mkdirs();
   }
   
   @AfterClass
@@ -46,33 +44,27 @@ public abstract class BenchmarkTestCase extends LuceneTestCase {
     WORKDIR = null;
   }
   
-  public File getWorkDir() {
+  public Path getWorkDir() {
     return WORKDIR;
   }
   
   /** Copy a resource into the workdir */
   public void copyToWorkDir(String resourceName) throws IOException {
-    InputStream resource = getClass().getResourceAsStream(resourceName);
-    OutputStream dest = new FileOutputStream(new File(getWorkDir(), resourceName));
-    byte[] buffer = new byte[8192];
-    int len;
-    
-    while ((len = resource.read(buffer)) > 0) {
-        dest.write(buffer, 0, len);
+    Path target = getWorkDir().resolve(resourceName);
+    Files.deleteIfExists(target);
+    try (InputStream resource = getClass().getResourceAsStream(resourceName)) {
+      Files.copy(resource, target);
     }
-
-    resource.close();
-    dest.close();
   }
   
   /** Return a path, suitable for a .alg config file, for a resource in the workdir */
   public String getWorkDirResourcePath(String resourceName) {
-    return new File(getWorkDir(), resourceName).getAbsolutePath().replace("\\", "/");
+    return getWorkDir().resolve(resourceName).toAbsolutePath().toString().replace("\\", "/");
   }
   
   /** Return a path, suitable for a .alg config file, for the workdir */
   public String getWorkDirPath() {
-    return getWorkDir().getAbsolutePath().replace("\\", "/");
+    return getWorkDir().toAbsolutePath().toString().replace("\\", "/");
   }
   
   // create the benchmark and execute it. 

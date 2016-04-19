@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.parser;
 
 import java.io.StringReader;
@@ -29,6 +28,8 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.search.AutomatonQuery;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.BoostQuery;
+import org.apache.lucene.search.ConstantScoreQuery;
 import org.apache.lucene.search.FuzzyQuery;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.MultiPhraseQuery;
@@ -38,21 +39,22 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.RegexpQuery;
 import org.apache.lucene.search.WildcardQuery;
 import org.apache.lucene.util.QueryBuilder;
-import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.ToStringUtils;
 import org.apache.lucene.util.Version;
 import org.apache.lucene.util.automaton.Automata;
-import org.apache.lucene.util.automaton.Operations;
 import org.apache.lucene.util.automaton.Automaton;
+import org.apache.lucene.util.automaton.Operations;
 import org.apache.solr.analysis.ReversedWildcardFilterFactory;
 import org.apache.solr.analysis.TokenizerChain;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.parser.QueryParser.Operator;
+import org.apache.solr.query.FilterQuery;
 import org.apache.solr.schema.FieldType;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.schema.TextField;
 import org.apache.solr.search.QParser;
+import org.apache.solr.search.SolrConstantScoreQuery;
 import org.apache.solr.search.SyntaxError;
 
 /** This class is overridden by QueryParser in QueryParser.jj
@@ -79,7 +81,7 @@ public abstract class SolrQueryParserBase extends QueryBuilder {
   /** The default operator that parser uses to combine query terms */
   Operator operator = OR_OPERATOR;
 
-  MultiTermQuery.RewriteMethod multiTermRewriteMethod = MultiTermQuery.CONSTANT_SCORE_AUTO_REWRITE_DEFAULT;
+  MultiTermQuery.RewriteMethod multiTermRewriteMethod = MultiTermQuery.CONSTANT_SCORE_REWRITE;
   boolean allowLeadingWildcard = true;
 
   String defaultField;
@@ -149,15 +151,11 @@ public abstract class SolrQueryParserBase extends QueryBuilder {
     try {
       // TopLevelQuery is a Query followed by the end-of-input (EOF)
       Query res = TopLevelQuery(null);  // pass null so we can tell later if an explicit field was provided or not
-      return res!=null ? res : newBooleanQuery(false);
+      return res!=null ? res : newBooleanQuery(false).build();
     }
-    catch (ParseException tme) {
+    catch (ParseException | TokenMgrError tme) {
       throw new SyntaxError("Cannot parse '" +query+ "': " + tme.getMessage(), tme);
-    }
-    catch (TokenMgrError tme) {
-      throw new SyntaxError("Cannot parse '" +query+ "': " + tme.getMessage(), tme);
-    }
-    catch (BooleanQuery.TooManyClauses tmc) {
+    } catch (BooleanQuery.TooManyClauses tmc) {
       throw new SyntaxError("Cannot parse '" +query+ "': too many boolean clauses", tmc);
     }
   }
@@ -276,7 +274,7 @@ public abstract class SolrQueryParserBase extends QueryBuilder {
    * Sets the boolean operator of the QueryParser.
    * In default mode (<code>OR_OPERATOR</code>) terms without any modifiers
    * are considered optional: for example <code>capital of Hungary</code> is equal to
-   * <code>capital OR of OR Hungary</code>.<br/>
+   * <code>capital OR of OR Hungary</code>.<br>
    * In <code>AND_OPERATOR</code> mode terms are considered to be in conjunction: the
    * above mentioned query is parsed as <code>capital AND of AND Hungary</code>
    */
@@ -295,7 +293,7 @@ public abstract class SolrQueryParserBase extends QueryBuilder {
 
 
   /**
-   * By default QueryParser uses {@link org.apache.lucene.search.MultiTermQuery#CONSTANT_SCORE_AUTO_REWRITE_DEFAULT}
+   * By default QueryParser uses {@link org.apache.lucene.search.MultiTermQuery#CONSTANT_SCORE_REWRITE}
    * when creating a PrefixQuery, WildcardQuery or RangeQuery. This implementation is generally preferable because it
    * a) Runs faster b) Does not have the scarcity of terms unduly influence score
    * c) avoids any "TooManyBooleanClauses" exception.
@@ -325,7 +323,7 @@ public abstract class SolrQueryParserBase extends QueryBuilder {
     if (clauses.size() > 0 && conj == CONJ_AND) {
       BooleanClause c = clauses.get(clauses.size()-1);
       if (!c.isProhibited())
-        c.setOccur(BooleanClause.Occur.MUST);
+        clauses.set(clauses.size() - 1, new BooleanClause(c.getQuery(), BooleanClause.Occur.MUST));
     }
 
     if (clauses.size() > 0 && operator == AND_OPERATOR && conj == CONJ_OR) {
@@ -335,7 +333,7 @@ public abstract class SolrQueryParserBase extends QueryBuilder {
       // this modification a OR b would parsed as +a OR b
       BooleanClause c = clauses.get(clauses.size()-1);
       if (!c.isProhibited())
-        c.setOccur(BooleanClause.Occur.SHOULD);
+        clauses.set(clauses.size() - 1, new BooleanClause(c.getQuery(), BooleanClause.Occur.SHOULD));
     }
 
     // We might have been passed a null query; the term might have been
@@ -391,7 +389,15 @@ public abstract class SolrQueryParserBase extends QueryBuilder {
     if (subQParser == null) {
 
       if (query instanceof PhraseQuery) {
-        ((PhraseQuery) query).setSlop(slop);
+        PhraseQuery pq = (PhraseQuery) query;
+        Term[] terms = pq.getTerms();
+        int[] positions = pq.getPositions();
+        PhraseQuery.Builder builder = new PhraseQuery.Builder();
+        for (int i = 0; i < terms.length; ++i) {
+          builder.add(terms[i], positions[i]);
+        }
+        builder.setSlop(slop);
+        query = builder.build();
       }
       if (query instanceof MultiPhraseQuery) {
         ((MultiPhraseQuery) query).setSlop(slop);
@@ -504,11 +510,11 @@ public abstract class SolrQueryParserBase extends QueryBuilder {
     if (clauses.size()==0) {
       return null; // all clause words were filtered away by the analyzer.
     }
-    BooleanQuery query = newBooleanQuery(disableCoord);
+    BooleanQuery.Builder query = newBooleanQuery(disableCoord);
     for(final BooleanClause clause: clauses) {
       query.add(clause);
     }
-    return query;
+    return query.build();
   }
 
 
@@ -557,14 +563,25 @@ public abstract class SolrQueryParserBase extends QueryBuilder {
 
   // called from parser
   Query handleBoost(Query q, Token boost) {
-    if (boost != null) {
-      float boostVal = Float.parseFloat(boost.image);
-      // avoid boosting null queries, such as those caused by stop words
-      if (q != null) {
-        q.setBoost(q.getBoost() * boostVal);
-      }
+    // q==null check is to avoid boosting null queries, such as those caused by stop words
+    if (boost == null || boost.image.length()==0 || q == null) {
+      return q;
     }
-    return q;
+    if (boost.image.charAt(0) == '=') {
+      // syntax looks like foo:x^=3
+      float val = Float.parseFloat(boost.image.substring(1));
+      Query newQ = q;
+      if (q instanceof ConstantScoreQuery || q instanceof SolrConstantScoreQuery) {
+        // skip
+      } else {
+        newQ = new ConstantScoreQuery(q);
+      }
+      return new BoostQuery(newQ, val);
+    }
+
+    float boostVal = Float.parseFloat(boost.image);
+
+    return new BoostQuery(q, boostVal);
   }
 
 
@@ -789,10 +806,10 @@ public abstract class SolrQueryParserBase extends QueryBuilder {
             Automata.makeChar(factory.getMarkerChar()),
             Automata.makeAnyString());
         // subtract these away
-        automaton = Operations.minus(automaton, falsePositives);
+        automaton = Operations.minus(automaton, falsePositives, Operations.DEFAULT_MAX_DETERMINIZED_STATES);
       }
       return new AutomatonQuery(term, automaton) {
-        // override toString so its completely transparent
+        // override toString so it's completely transparent
         @Override
         public String toString(String field) {
           StringBuilder buffer = new StringBuilder();
@@ -829,6 +846,11 @@ public abstract class SolrQueryParserBase extends QueryBuilder {
   protected Query getLocalParams(String qfield, String lparams) throws SyntaxError {
     QParser nested = parser.subQuery(lparams, null);
     return nested.getQuery();
+  }
+
+  // called from parser for filter(query)
+  Query getFilter(Query q) {
+    return new FilterQuery(q);
   }
 
 }

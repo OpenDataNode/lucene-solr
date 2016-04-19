@@ -17,7 +17,7 @@
 -->
 
 <config>
-  <luceneMatchVersion>${tests.luceneMatchVersion:LUCENE_CURRENT}</luceneMatchVersion>
+  <luceneMatchVersion>${tests.luceneMatchVersion:LATEST}</luceneMatchVersion>
   <indexConfig>
     <useCompoundFile>${useCompoundFile:false}</useCompoundFile>
   </indexConfig>
@@ -287,23 +287,6 @@
       <str>last</str>
     </arr>
     
-    -->
-  </requestHandler>
-  
-  <!-- Update request handler.  
-  
-       Note: Since solr1.1 requestHandlers requires a valid content type header if posted in 
-       the body. For example, curl now requires: -H 'Content-type:text/xml; charset=utf-8'
-       The response format differs from solr1.1 formatting and returns a standard error code.
-       
-       To enable solr1.1 behavior, remove the /update handler or change its path
-       
-       "update.processor.class" is the class name for the UpdateRequestProcessor.  It is initalized
-       only once.  This can not be changed for each request.
-    -->
-  <requestHandler name="/update" class="solr.UpdateRequestHandler">
-    <!--
-    <str name="update.processor.class">org.apache.solr.handler.UpdateRequestProcessor</str>
     -->
   </requestHandler>
 

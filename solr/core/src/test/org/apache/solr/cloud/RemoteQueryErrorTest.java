@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,18 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
+
+import org.apache.lucene.util.LuceneTestCase.Slow;
+import org.apache.solr.client.solrj.SolrClient;
+import org.apache.solr.common.SolrException;
+import org.apache.solr.common.SolrInputDocument;
+import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.lucene.util.LuceneTestCase.Slow;
-import org.apache.solr.client.solrj.SolrServer;
-import org.apache.solr.common.SolrException;
-import org.apache.solr.common.SolrInputDocument;
+import static org.junit.internal.matchers.StringContains.containsString;
 
 /**
  * Verify that remote (proxied) queries return proper error messages
@@ -34,11 +36,11 @@ public class RemoteQueryErrorTest extends AbstractFullDistribZkTestBase {
   public RemoteQueryErrorTest() {
     super();
     sliceCount = 1;
-    shardCount = random().nextBoolean() ? 3 : 4;
+    fixShardCount(random().nextBoolean() ? 3 : 4);
   }
 
-  @Override
-  public void doTest() throws Exception {
+  @Test
+  public void test() throws Exception {
     handle.clear();
     handle.put("timestamp", SKIPVAL);
     
@@ -54,17 +56,17 @@ public class RemoteQueryErrorTest extends AbstractFullDistribZkTestBase {
     checkForCollection("collection2", numShardsNumReplicaList, null);
     waitForRecoveriesToFinish("collection2", true);
 
-    for (SolrServer solrServer : clients) {
+    for (SolrClient solrClient : clients) {
       try {
         SolrInputDocument emptyDoc = new SolrInputDocument();
-        solrServer.add(emptyDoc);
+        solrClient.add(emptyDoc);
         fail("Expected unique key exceptoin");
       } catch (SolrException ex) {
-        assertEquals("Document is missing mandatory uniqueKey field: id", ex.getMessage());
+        assertThat(ex.getMessage(), containsString("Document is missing mandatory uniqueKey field: id"));
       } catch(Exception ex) {
         fail("Expected a SolrException to occur, instead received: " + ex.getClass());
       } finally {
-        solrServer.shutdown();
+        solrClient.close();
       }
     }
   }

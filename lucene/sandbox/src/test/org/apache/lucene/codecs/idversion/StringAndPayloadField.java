@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.idversion;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,7 @@ package org.apache.lucene.codecs.idversion;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import java.io.IOException;
+package org.apache.lucene.codecs.idversion;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
@@ -25,7 +22,7 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.PayloadAttribute;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.util.BytesRef;
 
 // TODO: can we take a BytesRef token instead?
@@ -36,7 +33,6 @@ class StringAndPayloadField extends Field {
   public static final FieldType TYPE = new FieldType();
 
   static {
-    TYPE.setIndexed(true);
     TYPE.setOmitNorms(true);
     TYPE.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
     TYPE.setTokenized(true);
@@ -51,7 +47,7 @@ class StringAndPayloadField extends Field {
   }
 
   @Override
-  public TokenStream tokenStream(Analyzer analyzer, TokenStream reuse) throws IOException {
+  public TokenStream tokenStream(Analyzer analyzer, TokenStream reuse) {
     SingleTokenWithPayloadTokenStream ts;
     if (reuse instanceof SingleTokenWithPayloadTokenStream) {
       ts = (SingleTokenWithPayloadTokenStream) reuse;

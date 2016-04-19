@@ -1,9 +1,3 @@
-package org.apache.lucene.analysis.de;
-
-import java.util.Locale;
-
-// This file is encoded in UTF-8
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -20,6 +14,12 @@ import java.util.Locale;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.de;
+
+import java.util.Locale;
+
+// This file is encoded in UTF-8
+
 
 /**
  * A stemmer for German words. 
@@ -137,7 +137,7 @@ public class GermanStemmer
         strip( buffer );
       }
       // Additional step for irregular plural nouns like "Matrizen -> Matrix".
-      // NOTE: this length constraint is probably not a great value, its just to prevent AIOOBE on empty terms
+      // NOTE: this length constraint is probably not a great value, it's just to prevent AIOOBE on empty terms
       if ( buffer.length() > 0 && buffer.charAt( buffer.length() - 1 ) == ( 'z' ) ) {
         buffer.setCharAt( buffer.length() - 1, 'x' );
       }
@@ -161,12 +161,12 @@ public class GermanStemmer
     /**
      * Do some substitutions for the term to reduce overstemming:
      *
-     * - Substitute Umlauts with their corresponding vowel: äöü -> aou,
+     * - Substitute Umlauts with their corresponding vowel:{@code äöü -> aou},
      *   "ß" is substituted by "ss"
      * - Substitute a second char of a pair of equal characters with
-     *   an asterisk: ?? -> ?*
+     *   an asterisk: {@code ?? -> ?*}
      * - Substitute some common character combinations with a token:
-     *   sch/ch/ei/ie/ig/st -> $/§/%/&/#/!
+     *   {@code sch/ch/ei/ie/ig/st -> $/§/%/&/#/!}
      */
     private void substitute( StringBuilder buffer )
     {
@@ -200,7 +200,7 @@ public class GermanStemmer
           {
             buffer.setCharAt( c, '$' );
             buffer.delete( c + 1, c + 3 );
-            substCount =+ 2;
+            substCount += 2;
           }
           else if ( buffer.charAt( c ) == 'c' && buffer.charAt( c + 1 ) == 'h' ) {
             buffer.setCharAt( c, '§' );

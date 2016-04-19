@@ -14,183 +14,189 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.schema;
 
-import java.io.IOException;
+import java.text.ParseException;
 import java.util.Date;
-import java.util.List;
-import java.util.Map;
+import java.util.Locale;
+import java.util.TimeZone;
 
-import org.apache.lucene.document.FieldType.NumericType;
 import org.apache.lucene.index.IndexableField;
-import org.apache.lucene.queries.function.ValueSource;
-import org.apache.lucene.search.NumericRangeQuery;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.SortField;
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.CharsRef;
-import org.apache.solr.response.TextResponseWriter;
-import org.apache.solr.search.QParser;
+import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.update.processor.TimestampUpdateProcessorFactory; //jdoc
+import org.apache.solr.util.DateFormatUtil;
+import org.apache.solr.util.DateMathParser;
 
 /**
+ * FieldType that can represent any Date/Time with millisecond precision.
  * <p>
- * An extension of {@link DateField} that supports the same values and 
- * syntax, but indexes the value more efficiently using a numeric 
- * {@link TrieField} under the covers.  See the description of 
- * {@link DateField} for more details of the supported usage.
+ * Date Format for the XML, incoming and outgoing:
+ * </p>
+ * <blockquote>
+ * A date field shall be of the form 1995-12-31T23:59:59Z
+ * The trailing "Z" designates UTC time and is mandatory
+ * (See below for an explanation of UTC).
+ * Optional fractional seconds are allowed, as long as they do not end
+ * in a trailing 0 (but any precision beyond milliseconds will be ignored).
+ * All other parts are mandatory.
+ * </blockquote>
+ * <p>
+ * This format was derived to be standards compliant (ISO 8601) and is a more
+ * restricted form of the
+ * <a href="http://www.w3.org/TR/xmlschema-2/#dateTime-canonical-representation">canonical
+ * representation of dateTime</a> from XML schema part 2.  Examples...
+ * </p>
+ * <ul>
+ *   <li>1995-12-31T23:59:59Z</li>
+ *   <li>1995-12-31T23:59:59.9Z</li>
+ *   <li>1995-12-31T23:59:59.99Z</li>
+ *   <li>1995-12-31T23:59:59.999Z</li>
+ * </ul>
+ * <p>
+ * Note that TrieDateField is lenient with regards to parsing fractional
+ * seconds that end in trailing zeros and will ensure that those values
+ * are indexed in the correct canonical format.
  * </p>
  * <p>
- * <b>NOTE:</b> Allthough it is possible to configure a <code>TrieDateField</code> 
- * instance with a default value of "<code>NOW</code>" to compute a timestamp 
- * of when the document was indexed, this is not advisable when using SolrCloud 
- * since each replica of the document may compute a slightly different value. 
- * {@link TimestampUpdateProcessorFactory} is recomended instead.
+ * This FieldType also supports incoming "Date Math" strings for computing
+ * values by adding/rounding internals of time relative either an explicit
+ * datetime (in the format specified above) or the literal string "NOW",
+ * ie: "NOW+1YEAR", "NOW/DAY", "1995-12-31T23:59:59.999Z+5MINUTES", etc...
+ * -- see {@link DateMathParser} for more examples.
+ * </p>
+ * <p>
+ * <b>NOTE:</b> Although it is possible to configure a <code>TrieDateField</code>
+ * instance with a default value of "<code>NOW</code>" to compute a timestamp
+ * of when the document was indexed, this is not advisable when using SolrCloud
+ * since each replica of the document may compute a slightly different value.
+ * {@link TimestampUpdateProcessorFactory} is recommended instead.
  * </p>
  *
- * @see DateField
+ * <p>
+ * Explanation of "UTC"...
+ * </p>
+ * <blockquote>
+ * "In 1970 the Coordinated Universal Time system was devised by an
+ * international advisory group of technical experts within the International
+ * Telecommunication Union (ITU).  The ITU felt it was best to designate a
+ * single abbreviation for use in all languages in order to minimize
+ * confusion.  Since unanimous agreement could not be achieved on using
+ * either the English word order, CUT, or the French word order, TUC, the
+ * acronym UTC was chosen as a compromise."
+ * </blockquote>
+ *
  * @see TrieField
  */
-public class TrieDateField extends DateField implements DateValueFieldType {
-
-  final TrieField wrappedField = new TrieField() {{
-    type = TrieTypes.DATE;
-  }};
-
-  @Override
-  protected void init(IndexSchema schema, Map<String, String> args) {
-    wrappedField.init(schema, args);
+public class TrieDateField extends TrieField implements DateValueFieldType {
+  {
+    this.type = TrieTypes.DATE;
   }
+  
+  // BEGIN: backwards
+  
+  /**
+   * @deprecated Use {@link DateFormatUtil#UTC}
+   */
+  @Deprecated
+  public static final TimeZone UTC = DateFormatUtil.UTC;
 
-  @Override
-  public Date toObject(IndexableField f) {
-    return (Date) wrappedField.toObject(f);
-  }
+  /**
+   * Fixed TimeZone (UTC) needed for parsing/formatting Dates in the
+   * canonical representation.
+   * @deprecated Use {@link DateFormatUtil#CANONICAL_TZ}
+   */
+  @Deprecated
+  protected static final TimeZone CANONICAL_TZ = DateFormatUtil.CANONICAL_TZ;
+  
+  /**
+   * Fixed Locale needed for parsing/formatting Milliseconds in the
+   * canonical representation.
+   * @deprecated Use {@link DateFormatUtil#CANONICAL_LOCALE}
+   */
+  @Deprecated
+  protected static final Locale CANONICAL_LOCALE = DateFormatUtil.CANONICAL_LOCALE;
 
-  @Override
-  public Object toObject(SchemaField sf, BytesRef term) {
-    return wrappedField.toObject(sf, term);
-  }
+  /**
+   * @deprecated Use {@link DateFormatUtil#NOW}
+   */
+  @Deprecated
+  protected static final String NOW = DateFormatUtil.NOW;
+  
+  /**
+   * @deprecated Use {@link DateFormatUtil#Z}
+   */
+  @Deprecated
+  protected static final char Z = DateFormatUtil.Z;
 
-  @Override
-  public SortField getSortField(SchemaField field, boolean top) {
-    return wrappedField.getSortField(field, top);
-  }
 
-  @Override
-  public Object marshalSortValue(Object value) {
-    return value;
-  }
-
-  @Override
-  public Object unmarshalSortValue(Object value) {
-    return value;
-  }
-
-  @Override
-  public ValueSource getValueSource(SchemaField field, QParser parser) {
-    return wrappedField.getValueSource(field, parser);
+  /**
+   * @deprecated Use {@link DateFormatUtil#parseMath(Date,String)}
+   */
+  @Deprecated
+  public final Date parseMath(Date now, String val) {
+    return DateFormatUtil.parseMath(now, val);
   }
 
   /**
-   * @return the precisionStep used to index values into the field
+   * @deprecated Use {@link DateFormatUtil#formatDate(Date)}
    */
-  public int getPrecisionStep() {
-    return wrappedField.getPrecisionStep();
+  @Deprecated
+  protected final String formatDate(Date d) {
+    return DateFormatUtil.formatDate(d);
   }
 
-  @Override
-  public NumericType getNumericType() {
-    return wrappedField.getNumericType();
+  /**
+   * @deprecated Use {@link DateFormatUtil#formatExternal(Date)}
+   */
+  @Deprecated
+  public static final String formatExternal(Date d) {
+    return DateFormatUtil.formatExternal(d);
   }
 
-  @Override
-  public void write(TextResponseWriter writer, String name, IndexableField f) throws IOException {
-    wrappedField.write(writer, name, f);
+  /**
+   * @deprecated Use {@link DateFormatUtil#formatExternal(Date)}
+   */
+  @Deprecated
+  public final String toExternal(Date d) {
+    return DateFormatUtil.formatExternal(d);
   }
 
-  @Override
-  public boolean isTokenized() {
-    return wrappedField.isTokenized();
+  /**
+   * @deprecated Use {@link DateFormatUtil#parseDate(String)}
+   */
+  @Deprecated
+  public static final Date parseDate(String s) throws ParseException {
+    return DateFormatUtil.parseDate(s);
+  }
+
+  /**
+   * @deprecated Use {@link DateFormatUtil#parseDateLenient(String,SolrQueryRequest)}
+   */
+  @Deprecated
+  public final Date parseDateLenient(String s, SolrQueryRequest req) throws ParseException {
+    return DateFormatUtil.parseDateLenient(s, req);
+  }
+
+  /**
+   * @deprecated Use {@link DateFormatUtil#parseMathLenient(Date, String, SolrQueryRequest)}
+   */
+  @Deprecated
+  public final Date parseMathLenient(Date now, String val, SolrQueryRequest req) {
+    return DateFormatUtil.parseMathLenient(now, val, req);
   }
   
+  // END: backwards
+
   @Override
-  protected boolean hasProperty(int p) {
-    return wrappedField.hasProperty(p);
-  }
-  
-  @Override
-  public boolean isMultiValued() {
-    return wrappedField.isMultiValued();
+  public Date toObject(IndexableField f) {
+    return (Date)super.toObject(f);
   }
 
   @Override
-  public boolean multiValuedFieldCache() {
-    return wrappedField.multiValuedFieldCache();
+  public Object toNativeType(Object val) {
+    if (val instanceof String) {
+      return DateFormatUtil.parseMath(null, (String)val);
+    }
+    return super.toNativeType(val);
   }
-
-  @Override
-  public String storedToReadable(IndexableField f) {
-    return wrappedField.storedToReadable(f);
-  }
-
-  @Override
-  public String readableToIndexed(String val) {  
-    return wrappedField.readableToIndexed(val);
-  }
-
-  @Override
-  public String toInternal(String val) {
-    return wrappedField.toInternal(val);
-  }
-
-  @Override
-  public String toExternal(IndexableField f) {
-    return wrappedField.toExternal(f);
-  }
-
-  @Override
-  public String indexedToReadable(String _indexedForm) {
-    return wrappedField.indexedToReadable(_indexedForm);
-  }
-  @Override
-  public CharsRef indexedToReadable(BytesRef input, CharsRef charsRef) {
-    // TODO: this could be more efficient, but the sortable types should be deprecated instead
-    return wrappedField.indexedToReadable(input, charsRef);
-  }
-
-  @Override
-  public String storedToIndexed(IndexableField f) {
-    return wrappedField.storedToIndexed(f);
-  }
-
-  @Override
-  public IndexableField createField(SchemaField field, Object value, float boost) {
-    return wrappedField.createField(field, value, boost);
-  }
-
-  @Override
-  public List<IndexableField> createFields(SchemaField field, Object value, float boost) {
-    return wrappedField.createFields(field, value, boost);
-  }
-
-  @Override
-  public Query getRangeQuery(QParser parser, SchemaField field, String min, String max, boolean minInclusive, boolean maxInclusive) {
-    return wrappedField.getRangeQuery(parser, field, min, max, minInclusive, maxInclusive);
-  }
-  
-  @Override
-  public Query getRangeQuery(QParser parser, SchemaField sf, Date min, Date max, boolean minInclusive, boolean maxInclusive) {
-    return NumericRangeQuery.newLongRange(sf.getName(), wrappedField.precisionStep,
-              min == null ? null : min.getTime(),
-              max == null ? null : max.getTime(),
-              minInclusive, maxInclusive);
-  }
-
-  @Override
-  public void checkSchemaField(SchemaField field) {
-    wrappedField.checkSchemaField(field);
-  }
-
 }

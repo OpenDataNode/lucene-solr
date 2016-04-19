@@ -23,8 +23,8 @@
 
 <schema name="test" version="1.0">
   <types>
-    <fieldtype name="sint" class="solr.SortableIntField" />
-    <fieldtype name="text" class="solr.TextField">
+    <fieldType name="int" class="solr.TrieIntField" precisionStep="0"/>
+    <fieldType name="text" class="solr.TextField">
       <analyzer>
         <tokenizer class="solr.StandardTokenizerFactory"/>
         <filter class="solr.StandardFilterFactory"/>
@@ -32,12 +32,12 @@
         <filter class="solr.StopFilterFactory"/>
         <filter class="solr.PorterStemFilterFactory"/>
       </analyzer>
-    </fieldtype>
+    </fieldType>
  </types>
 
 
  <fields>
-   <field name="id" type="sint" indexed="true" stored="true" multiValued="false"/>
+   <field name="id" type="int" indexed="true" stored="true" multiValued="false"/>
    <field name="subject" type="text" indexed="true" stored="true"/>
  </fields>
 

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.charfilter;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.charfilter;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.charfilter;
+
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -25,7 +25,6 @@ import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 import org.apache.lucene.analysis.Analyzer;
@@ -39,8 +38,8 @@ public class HTMLStripCharFilterTest extends BaseTokenStreamTestCase {
   static private Analyzer newTestAnalyzer() {
     return new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
         return new TokenStreamComponents(tokenizer, tokenizer);
       }
 
@@ -403,16 +402,22 @@ public class HTMLStripCharFilterTest extends BaseTokenStreamTestCase {
 
   public void testRandom() throws Exception {
     int numRounds = RANDOM_MULTIPLIER * 1000;
-    checkRandomData(random(), newTestAnalyzer(), numRounds);
+    Analyzer a = newTestAnalyzer();
+    checkRandomData(random(), a, numRounds);
+    a.close();
   }
   
   public void testRandomHugeStrings() throws Exception {
     int numRounds = RANDOM_MULTIPLIER * 100;
-    checkRandomData(random(), newTestAnalyzer(), numRounds, 8192);
+    Analyzer a = newTestAnalyzer();
+    checkRandomData(random(), a, numRounds, 8192);
+    a.close();
   }
 
   public void testCloseBR() throws Exception {
-    checkAnalysisConsistency(random(), newTestAnalyzer(), random().nextBoolean(), " Secretary)</br> [[M");
+    Analyzer a = newTestAnalyzer();
+    checkAnalysisConsistency(random(), a, random().nextBoolean(), " Secretary)</br> [[M");
+    a.close();
   }
   
   public void testServerSideIncludes() throws Exception {
@@ -549,7 +554,9 @@ public class HTMLStripCharFilterTest extends BaseTokenStreamTestCase {
   public void testRandomBrokenHTML() throws Exception {
     int maxNumElements = 10000;
     String text = TestUtil.randomHtmlishString(random(), maxNumElements);
-    checkAnalysisConsistency(random(), newTestAnalyzer(), random().nextBoolean(), text);
+    Analyzer a = newTestAnalyzer();
+    checkAnalysisConsistency(random(), a, random().nextBoolean(), text);
+    a.close();
   }
 
   public void testRandomText() throws Exception {
@@ -617,6 +624,7 @@ public class HTMLStripCharFilterTest extends BaseTokenStreamTestCase {
     assertAnalyzesTo(analyzer, " &#57209;", new String[] { "\uFFFD" } );
     assertAnalyzesTo(analyzer, " &#57209", new String[] { "\uFFFD" } );
     assertAnalyzesTo(analyzer, " &#57209<br>", new String[] { "&#57209" } );
+    analyzer.close();
   }
 
 

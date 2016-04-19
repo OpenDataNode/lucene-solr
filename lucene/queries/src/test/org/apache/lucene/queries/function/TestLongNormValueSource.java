@@ -1,5 +1,3 @@
-package org.apache.lucene.queries.function;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,7 +14,9 @@ package org.apache.lucene.queries.function;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queries.function;
 
+import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -38,22 +38,23 @@ import org.apache.lucene.search.similarities.TFIDFSimilarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 
-@SuppressCodecs("Lucene3x")
 public class TestLongNormValueSource extends LuceneTestCase {
 
   static Directory dir;
   static IndexReader reader;
   static IndexSearcher searcher;
+  static Analyzer analyzer;
+  
   private static Similarity sim = new PreciseDefaultSimilarity();
 
   @BeforeClass
   public static void beforeClass() throws Exception {
     dir = newDirectory();
-    IndexWriterConfig iwConfig = newIndexWriterConfig(new MockAnalyzer(random()));
+    analyzer = new MockAnalyzer(random());
+    IndexWriterConfig iwConfig = newIndexWriterConfig(analyzer);
     iwConfig.setMergePolicy(newLogMergePolicy());
     iwConfig.setSimilarity(sim);
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir, iwConfig);
@@ -78,10 +79,12 @@ public class TestLongNormValueSource extends LuceneTestCase {
     reader = null;
     dir.close();
     dir = null;
+    analyzer.close();
+    analyzer = null;
   }
 
   public void testNorm() throws Exception {
-    Similarity saved = searcher.getSimilarity();
+    Similarity saved = searcher.getSimilarity(true);
     try {
       // no norm field (so agnostic to indexed similarity)
       searcher.setSimilarity(sim);

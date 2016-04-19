@@ -14,23 +14,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.servlet;
 
-import java.io.InputStream;
-import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
-import java.nio.charset.StandardCharsets;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.StringEscapeUtils;
+import org.apache.commons.lang.StringUtils;
+import org.apache.solr.common.params.CommonParams;
+import org.apache.solr.core.CoreContainer;
+import org.apache.solr.core.SolrCore;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-
-import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.StringEscapeUtils;
-import org.apache.solr.core.CoreContainer;
-import org.apache.solr.core.SolrCore;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 
 /**
  * A simple servlet to load the Solr Admin UI
@@ -43,10 +42,13 @@ public final class LoadAdminUiServlet extends BaseSolrServlet {
   public void doGet(HttpServletRequest request,
                     HttpServletResponse response)
       throws IOException {
-    // This attribute is set by the SolrDispatchFilter
-    CoreContainer cores = (CoreContainer) request.getAttribute("org.apache.solr.CoreContainer");
 
-    InputStream in = getServletContext().getResourceAsStream("/admin.html");
+    response.addHeader("X-Frame-Options", "DENY"); // security: SOLR-7966 - avoid clickjacking for admin interface
+
+    // This attribute is set by the SolrDispatchFilter
+    String admin = request.getRequestURI().substring(request.getContextPath().length());
+    CoreContainer cores = (CoreContainer) request.getAttribute("org.apache.solr.CoreContainer");
+    InputStream in = getServletContext().getResourceAsStream(admin);
     if(in != null && cores != null) {
       try {
         response.setCharacterEncoding("UTF-8");
@@ -63,7 +65,7 @@ public final class LoadAdminUiServlet extends BaseSolrServlet {
         };
         String[] replace = new String[] {
             StringEscapeUtils.escapeJavaScript(request.getContextPath()),
-            StringEscapeUtils.escapeJavaScript(cores.getAdminPath()),
+            StringEscapeUtils.escapeJavaScript(CommonParams.CORES_HANDLER_PATH),
             StringEscapeUtils.escapeJavaScript(pack.getSpecificationVersion())
         };
         

@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update;
 
 import java.util.ArrayList;
@@ -49,6 +48,10 @@ public class AddUpdateCommand extends UpdateCommand implements Iterable<Document
    public Term updateTerm;
 
    public int commitWithin = -1;
+
+   public boolean isLastDocInBatch = false;
+
+   public int pollQueueTime = 0;
    
    public AddUpdateCommand(SolrQueryRequest req) {
      super(req);
@@ -64,6 +67,7 @@ public class AddUpdateCommand extends UpdateCommand implements Iterable<Document
      solrDoc = null;
      indexedId = null;
      updateTerm = null;
+     isLastDocInBatch = false;
      version = 0;
    }
 
@@ -95,9 +99,9 @@ public class AddUpdateCommand extends UpdateCommand implements Iterable<Document
            } else if (count  > 1) {
              throw new SolrException( SolrException.ErrorCode.BAD_REQUEST,"Document contains multiple values for uniqueKey field: " + field);
            } else {
-             BytesRef b = new BytesRef();
+             BytesRefBuilder b = new BytesRefBuilder();
              sf.getType().readableToIndexed(field.getFirstValue().toString(), b);
-             indexedId = b;
+             indexedId = b.get();
            }
          }
        }

@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
@@ -31,6 +30,7 @@ import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.invoke.MethodHandles;
 import java.util.List;
 
 /**
@@ -39,19 +39,17 @@ import java.util.List;
  * don't have to be ordered i.e. DistributedQueue.
  */
 public class DistributedMap {
-  private static final Logger LOG = LoggerFactory
-      .getLogger(DistributedMap.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-  private static long DEFAULT_TIMEOUT = 5*60*1000;
+  protected static long DEFAULT_TIMEOUT = 5*60*1000;
 
-  private final String dir;
+  protected final String dir;
 
-  private SolrZkClient zookeeper;
-  private List<ACL> acl = ZooDefs.Ids.OPEN_ACL_UNSAFE;
+  protected SolrZkClient zookeeper;
 
-  private final String prefix = "mn-";
+  protected final String prefix = "mn-";
 
-  private final String response_prefix = "mnr-" ;
+  protected final String response_prefix = "mnr-" ;
 
   public DistributedMap(SolrZkClient zookeeper, String dir, List<ACL> acl) {
     this.dir = dir;
@@ -66,13 +64,10 @@ public class DistributedMap {
       throw new SolrException(ErrorCode.SERVER_ERROR, e);
     }
 
-    if (acl != null) {
-      this.acl = acl;
-    }
     this.zookeeper = zookeeper;
   }
 
-  private class LatchChildWatcher implements Watcher {
+  protected class LatchChildWatcher implements Watcher {
 
     Object lock = new Object();
     private WatchedEvent event = null;
@@ -109,14 +104,14 @@ public class DistributedMap {
    *
    * @return true if data was successfully added
    */
-  private String createData(String path, byte[] data, CreateMode mode)
+  protected String createData(String path, byte[] data, CreateMode mode)
       throws KeeperException, InterruptedException {
       for (;;) {
       try {
-        return zookeeper.create(path, data, acl, mode, true);
+        return zookeeper.create(path, data, mode, true);
       } catch (KeeperException.NoNodeException e) {
         try {
-          zookeeper.create(dir, new byte[0], acl, CreateMode.PERSISTENT, true);
+          zookeeper.create(dir, new byte[0], CreateMode.PERSISTENT, true);
         } catch (KeeperException.NodeExistsException ne) {
           // someone created it
         }
@@ -167,8 +162,18 @@ public class DistributedMap {
     return stat.getNumChildren();
   }
 
-  public void remove(String trackingId) throws KeeperException, InterruptedException {
-    zookeeper.delete(dir + "/" + prefix + trackingId, -1, true);
+  /**
+   * return true if the znode was successfully deleted
+   *        false if the node didn't exist and therefore not deleted
+   *        exception an exception occurred while deleting
+   */
+  public boolean remove(String trackingId) throws KeeperException, InterruptedException {
+    try {
+      zookeeper.delete(dir + "/" + prefix + trackingId, -1, true);
+    } catch (KeeperException.NoNodeException e) {
+      return false;
+    }
+    return true;
   }
 
   /**

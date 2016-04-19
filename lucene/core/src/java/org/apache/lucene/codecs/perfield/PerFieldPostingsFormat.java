@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.perfield;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,24 +14,36 @@ package org.apache.lucene.codecs.perfield;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.perfield;
+
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader; // javadocs
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.FieldsProducer;
 import org.apache.lucene.codecs.PostingsFormat;
-import org.apache.lucene.codecs.TermsConsumer;
 import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.Fields;
+import org.apache.lucene.index.FilterLeafReader.FilterFields;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.Terms;
+import org.apache.lucene.util.Accountable;
+import org.apache.lucene.util.Accountables;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.RamUsageEstimator;
 
@@ -65,96 +75,22 @@ public abstract class PerFieldPostingsFormat extends PostingsFormat {
    *  segment suffix name for each field. */
   public static final String PER_FIELD_SUFFIX_KEY = PerFieldPostingsFormat.class.getSimpleName() + ".suffix";
 
-  
   /** Sole constructor. */
   public PerFieldPostingsFormat() {
     super(PER_FIELD_NAME);
   }
 
-  @Override
-  public final FieldsConsumer fieldsConsumer(SegmentWriteState state)
-      throws IOException {
-    return new FieldsWriter(state);
-  }
-  
-  static class FieldsConsumerAndSuffix implements Closeable {
-    FieldsConsumer consumer;
+  /** Group of fields written by one PostingsFormat */
+  static class FieldsGroup {
+    final Set<String> fields = new TreeSet<>();
     int suffix;
-    
-    @Override
-    public void close() throws IOException {
-      consumer.close();
-    }
-  }
-    
-  private class FieldsWriter extends FieldsConsumer {
 
-    private final Map<PostingsFormat,FieldsConsumerAndSuffix> formats = new HashMap<>();
-    private final Map<String,Integer> suffixes = new HashMap<>();
-    
-    private final SegmentWriteState segmentWriteState;
+    /** Custom SegmentWriteState for this group of fields,
+     *  with the segmentSuffix uniqueified for this
+     *  PostingsFormat */
+    SegmentWriteState state;
+  };
 
-    public FieldsWriter(SegmentWriteState state) {
-      segmentWriteState = state;
-    }
-
-    @Override
-    public TermsConsumer addField(FieldInfo field) throws IOException {
-      final PostingsFormat format = getPostingsFormatForField(field.name);
-      if (format == null) {
-        throw new IllegalStateException("invalid null PostingsFormat for field=\"" + field.name + "\"");
-      }
-      final String formatName = format.getName();
-      
-      String previousValue = field.putAttribute(PER_FIELD_FORMAT_KEY, formatName);
-      assert previousValue == null;
-      
-      Integer suffix;
-      
-      FieldsConsumerAndSuffix consumer = formats.get(format);
-      if (consumer == null) {
-        // First time we are seeing this format; create a new instance
-        
-        // bump the suffix
-        suffix = suffixes.get(formatName);
-        if (suffix == null) {
-          suffix = 0;
-        } else {
-          suffix = suffix + 1;
-        }
-        suffixes.put(formatName, suffix);
-        
-        final String segmentSuffix = getFullSegmentSuffix(field.name,
-                                                          segmentWriteState.segmentSuffix,
-                                                          getSuffix(formatName, Integer.toString(suffix)));
-        consumer = new FieldsConsumerAndSuffix();
-        consumer.consumer = format.fieldsConsumer(new SegmentWriteState(segmentWriteState, segmentSuffix));
-        consumer.suffix = suffix;
-        formats.put(format, consumer);
-      } else {
-        // we've already seen this format, so just grab its suffix
-        assert suffixes.containsKey(formatName);
-        suffix = consumer.suffix;
-      }
-      
-      previousValue = field.putAttribute(PER_FIELD_SUFFIX_KEY, Integer.toString(suffix));
-      assert previousValue == null;
-
-      // TODO: we should only provide the "slice" of FIS
-      // that this PF actually sees ... then stuff like
-      // .hasProx could work correctly?
-      // NOTE: .hasProx is already broken in the same way for the non-perfield case,
-      // if there is a fieldinfo with prox that has no postings, you get a 0 byte file.
-      return consumer.consumer.addField(field);
-    }
-
-    @Override
-    public void close() throws IOException {
-      // Close all subs
-      IOUtils.close(formats.values());
-    }
-  }
-  
   static String getSuffix(String formatName, String suffix) {
     return formatName + "_" + suffix;
   }
@@ -169,6 +105,111 @@ public abstract class PerFieldPostingsFormat extends PostingsFormat {
       throw new IllegalStateException("cannot embed PerFieldPostingsFormat inside itself (field \"" + fieldName + "\" returned PerFieldPostingsFormat)");
     }
   }
+  
+  private class FieldsWriter extends FieldsConsumer {
+    final SegmentWriteState writeState;
+    final List<Closeable> toClose = new ArrayList<Closeable>();
+
+    public FieldsWriter(SegmentWriteState writeState) {
+      this.writeState = writeState;
+    }
+
+    @Override
+    public void write(Fields fields) throws IOException {
+
+      // Maps a PostingsFormat instance to the suffix it
+      // should use
+      Map<PostingsFormat,FieldsGroup> formatToGroups = new HashMap<>();
+
+      // Holds last suffix of each PostingFormat name
+      Map<String,Integer> suffixes = new HashMap<>();
+
+      // First pass: assign field -> PostingsFormat
+      for(String field : fields) {
+        FieldInfo fieldInfo = writeState.fieldInfos.fieldInfo(field);
+
+        final PostingsFormat format = getPostingsFormatForField(field);
+  
+        if (format == null) {
+          throw new IllegalStateException("invalid null PostingsFormat for field=\"" + field + "\"");
+        }
+        String formatName = format.getName();
+      
+        FieldsGroup group = formatToGroups.get(format);
+        if (group == null) {
+          // First time we are seeing this format; create a
+          // new instance
+
+          // bump the suffix
+          Integer suffix = suffixes.get(formatName);
+          if (suffix == null) {
+            suffix = 0;
+          } else {
+            suffix = suffix + 1;
+          }
+          suffixes.put(formatName, suffix);
+
+          String segmentSuffix = getFullSegmentSuffix(field,
+                                                      writeState.segmentSuffix,
+                                                      getSuffix(formatName, Integer.toString(suffix)));
+          group = new FieldsGroup();
+          group.state = new SegmentWriteState(writeState, segmentSuffix);
+          group.suffix = suffix;
+          formatToGroups.put(format, group);
+        } else {
+          // we've already seen this format, so just grab its suffix
+          if (!suffixes.containsKey(formatName)) {
+            throw new IllegalStateException("no suffix for format name: " + formatName + ", expected: " + group.suffix);
+          }
+        }
+
+        group.fields.add(field);
+
+        String previousValue = fieldInfo.putAttribute(PER_FIELD_FORMAT_KEY, formatName);
+        if (previousValue != null) {
+          throw new IllegalStateException("found existing value for " + PER_FIELD_FORMAT_KEY + 
+                                          ", field=" + fieldInfo.name + ", old=" + previousValue + ", new=" + formatName);
+        }
+
+        previousValue = fieldInfo.putAttribute(PER_FIELD_SUFFIX_KEY, Integer.toString(group.suffix));
+        if (previousValue != null) {
+          throw new IllegalStateException("found existing value for " + PER_FIELD_SUFFIX_KEY + 
+                                          ", field=" + fieldInfo.name + ", old=" + previousValue + ", new=" + group.suffix);
+        }
+      }
+
+      // Second pass: write postings
+      boolean success = false;
+      try {
+        for(Map.Entry<PostingsFormat,FieldsGroup> ent : formatToGroups.entrySet()) {
+          PostingsFormat format = ent.getKey();
+          final FieldsGroup group = ent.getValue();
+
+          // Exposes only the fields from this group:
+          Fields maskedFields = new FilterFields(fields) {
+              @Override
+              public Iterator<String> iterator() {
+                return group.fields.iterator();
+              }
+            };
+
+          FieldsConsumer consumer = format.fieldsConsumer(group.state);
+          toClose.add(consumer);
+          consumer.write(maskedFields);
+        }
+        success = true;
+      } finally {
+        if (success == false) {
+          IOUtils.closeWhileHandlingException(toClose);
+        }
+      }
+    }
+
+    @Override
+    public void close() throws IOException {
+      IOUtils.close(toClose);
+    }
+  }
 
   private static class FieldsReader extends FieldsProducer {
 
@@ -176,6 +217,27 @@ public abstract class PerFieldPostingsFormat extends PostingsFormat {
 
     private final Map<String,FieldsProducer> fields = new TreeMap<>();
     private final Map<String,FieldsProducer> formats = new HashMap<>();
+    private final String segment;
+    
+    // clone for merge
+    FieldsReader(FieldsReader other) throws IOException {
+      Map<FieldsProducer,FieldsProducer> oldToNew = new IdentityHashMap<>();
+      // First clone all formats
+      for(Map.Entry<String,FieldsProducer> ent : other.formats.entrySet()) {
+        FieldsProducer values = ent.getValue().getMergeInstance();
+        formats.put(ent.getKey(), values);
+        oldToNew.put(ent.getValue(), values);
+      }
+
+      // Then rebuild fields:
+      for(Map.Entry<String,FieldsProducer> ent : other.fields.entrySet()) {
+        FieldsProducer producer = oldToNew.get(ent.getValue());
+        assert producer != null;
+        fields.put(ent.getKey(), producer);
+      }
+
+      segment = other.segment;
+    }
 
     public FieldsReader(final SegmentReadState readState) throws IOException {
 
@@ -184,13 +246,15 @@ public abstract class PerFieldPostingsFormat extends PostingsFormat {
       try {
         // Read field name -> format name
         for (FieldInfo fi : readState.fieldInfos) {
-          if (fi.isIndexed()) {
+          if (fi.getIndexOptions() != IndexOptions.NONE) {
             final String fieldName = fi.name;
             final String formatName = fi.getAttribute(PER_FIELD_FORMAT_KEY);
             if (formatName != null) {
               // null formatName means the field is in fieldInfos, but has no postings!
               final String suffix = fi.getAttribute(PER_FIELD_SUFFIX_KEY);
-              assert suffix != null;
+              if (suffix == null) {
+                throw new IllegalStateException("missing attribute: " + PER_FIELD_SUFFIX_KEY + " for field: " + fieldName);
+              }
               PostingsFormat format = PostingsFormat.forName(formatName);
               String segmentSuffix = getSuffix(formatName, suffix);
               if (!formats.containsKey(segmentSuffix)) {
@@ -206,6 +270,8 @@ public abstract class PerFieldPostingsFormat extends PostingsFormat {
           IOUtils.closeWhileHandlingException(formats.values());
         }
       }
+
+      this.segment = readState.segmentInfo.name;
     }
 
     @Override
@@ -239,6 +305,11 @@ public abstract class PerFieldPostingsFormat extends PostingsFormat {
       }
       return ramBytesUsed;
     }
+    
+    @Override
+    public Collection<Accountable> getChildResources() {
+      return Accountables.namedAccountables("format", formats);
+    }
 
     @Override
     public void checkIntegrity() throws IOException {
@@ -246,6 +317,22 @@ public abstract class PerFieldPostingsFormat extends PostingsFormat {
         producer.checkIntegrity();
       }
     }
+
+    @Override
+    public FieldsProducer getMergeInstance() throws IOException {
+      return new FieldsReader(this);
+    }
+
+    @Override
+    public String toString() {
+      return "PerFieldPostings(segment=" + segment + " formats=" + formats.size() + ")";
+    }
+  }
+
+  @Override
+  public final FieldsConsumer fieldsConsumer(SegmentWriteState state)
+      throws IOException {
+    return new FieldsWriter(state);
   }
 
   @Override

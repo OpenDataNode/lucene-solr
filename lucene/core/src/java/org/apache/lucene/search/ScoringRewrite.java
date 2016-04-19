@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,28 +14,30 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
+
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.index.TermContext;
 import org.apache.lucene.index.TermState;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.MultiTermQuery.RewriteMethod;
-
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.ByteBlockPool;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BytesRefHash.DirectBytesStartArray;
 import org.apache.lucene.util.BytesRefHash;
 import org.apache.lucene.util.RamUsageEstimator;
-import org.apache.lucene.util.BytesRefHash.DirectBytesStartArray;
 
 /** 
  * Base rewrite method that translates each term into a query, and keeps
  * the scores as computed by the query.
  * <p>
  * @lucene.internal Only public to be accessible by spans package. */
-public abstract class ScoringRewrite<Q extends Query> extends TermCollectingRewrite<Q> {
+public abstract class ScoringRewrite<B> extends TermCollectingRewrite<B> {
 
   /** A rewrite method that first translates each term into
    *  {@link BooleanClause.Occur#SHOULD} clause in a
@@ -45,25 +45,30 @@ public abstract class ScoringRewrite<Q extends Query> extends TermCollectingRewr
    *  query.  Note that typically such scores are
    *  meaningless to the user, and require non-trivial CPU
    *  to compute, so it's almost always better to use {@link
-   *  MultiTermQuery#CONSTANT_SCORE_AUTO_REWRITE_DEFAULT} instead.
+   *  MultiTermQuery#CONSTANT_SCORE_REWRITE} instead.
    *
    *  <p><b>NOTE</b>: This rewrite method will hit {@link
    *  BooleanQuery.TooManyClauses} if the number of terms
    *  exceeds {@link BooleanQuery#getMaxClauseCount}.
    *
    *  @see MultiTermQuery#setRewriteMethod */
-  public final static ScoringRewrite<BooleanQuery> SCORING_BOOLEAN_QUERY_REWRITE = new ScoringRewrite<BooleanQuery>() {
+  public final static ScoringRewrite<BooleanQuery.Builder> SCORING_BOOLEAN_REWRITE = new ScoringRewrite<BooleanQuery.Builder>() {
     @Override
-    protected BooleanQuery getTopLevelQuery() {
-      return new BooleanQuery(true);
+    protected BooleanQuery.Builder getTopLevelBuilder() {
+      BooleanQuery.Builder builder = new BooleanQuery.Builder();
+      builder.setDisableCoord(true);
+      return builder;
+    }
+    
+    protected Query build(BooleanQuery.Builder builder) {
+      return builder.build();
     }
     
     @Override
-    protected void addClause(BooleanQuery topLevel, Term term, int docCount,
+    protected void addClause(BooleanQuery.Builder topLevel, Term term, int docCount,
         float boost, TermContext states) {
       final TermQuery tq = new TermQuery(term, states);
-      tq.setBoost(boost);
-      topLevel.add(tq, BooleanClause.Occur.SHOULD);
+      topLevel.add(new BoostQuery(tq, boost), BooleanClause.Occur.SHOULD);
     }
     
     @Override
@@ -73,7 +78,7 @@ public abstract class ScoringRewrite<Q extends Query> extends TermCollectingRewr
     }
   };
   
-  /** Like {@link #SCORING_BOOLEAN_QUERY_REWRITE} except
+  /** Like {@link #SCORING_BOOLEAN_REWRITE} except
    *  scores are not computed.  Instead, each matching
    *  document receives a constant score equal to the
    *  query's boost.
@@ -83,14 +88,12 @@ public abstract class ScoringRewrite<Q extends Query> extends TermCollectingRewr
    *  exceeds {@link BooleanQuery#getMaxClauseCount}.
    *
    *  @see MultiTermQuery#setRewriteMethod */
-  public final static RewriteMethod CONSTANT_SCORE_BOOLEAN_QUERY_REWRITE = new RewriteMethod() {
+  public final static RewriteMethod CONSTANT_SCORE_BOOLEAN_REWRITE = new RewriteMethod() {
     @Override
     public Query rewrite(IndexReader reader, MultiTermQuery query) throws IOException {
-      final BooleanQuery bq = SCORING_BOOLEAN_QUERY_REWRITE.rewrite(reader, query);
+      final Query bq = SCORING_BOOLEAN_REWRITE.rewrite(reader, query);
       // strip the scores off
-      final Query result = new ConstantScoreQuery(bq);
-      result.setBoost(query.getBoost());
-      return result;
+      return new ConstantScoreQuery(bq);
     }
   };
 
@@ -99,24 +102,24 @@ public abstract class ScoringRewrite<Q extends Query> extends TermCollectingRewr
   protected abstract void checkMaxClauseCount(int count) throws IOException;
   
   @Override
-  public final Q rewrite(final IndexReader reader, final MultiTermQuery query) throws IOException {
-    final Q result = getTopLevelQuery();
+  public final Query rewrite(final IndexReader reader, final MultiTermQuery query) throws IOException {
+    final B builder = getTopLevelBuilder();
     final ParallelArraysTermCollector col = new ParallelArraysTermCollector();
     collectTerms(reader, query, col);
     
     final int size = col.terms.size();
     if (size > 0) {
-      final int sort[] = col.terms.sort(col.termsEnum.getComparator());
+      final int sort[] = col.terms.sort(BytesRef.getUTF8SortedAsUnicodeComparator());
       final float[] boost = col.array.boost;
       final TermContext[] termStates = col.array.termState;
       for (int i = 0; i < size; i++) {
         final int pos = sort[i];
         final Term term = new Term(query.getField(), col.terms.get(pos, new BytesRef()));
-        assert reader.docFreq(term) == termStates[pos].docFreq();
-        addClause(result, term, termStates[pos].docFreq(), query.getBoost() * boost[pos], termStates[pos]);
+        assert termStates[pos].hasOnlyRealTerms() == false || reader.docFreq(term) == termStates[pos].docFreq();
+        addClause(builder, term, termStates[pos].docFreq(), boost[pos], termStates[pos]);
       }
     }
-    return result;
+    return build(builder);
   }
 
   final class ParallelArraysTermCollector extends TermCollector {
@@ -137,7 +140,7 @@ public abstract class ScoringRewrite<Q extends Query> extends TermCollectingRewr
       final int e = terms.add(bytes);
       final TermState state = termsEnum.termState();
       assert state != null; 
-      if (e < 0 ) {
+      if (e < 0) {
         // duplicate term: update docFreq
         final int pos = (-e)-1;
         array.termState[pos].register(state, readerContext.ord, termsEnum.docFreq(), termsEnum.totalTermFreq());

@@ -6,7 +6,7 @@
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,33 +16,57 @@
  */
 package org.apache.solr.handler.dataimport;
 
-import java.util.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Unit test of SolrEntityProcessor. A very basic test outside of the DIH.
  */
 public class TestSolrEntityProcessorUnit extends AbstractDataImportHandlerTestCase {
 
-  private static final Logger LOG = LoggerFactory.getLogger(TestSolrEntityProcessorUnit.class);
   private static final String ID = "id";
 
   public void testQuery() {
     List<Doc> docs = generateUniqueDocs(2);
 
-    MockSolrEntityProcessor processor = new MockSolrEntityProcessor(docs);
+    MockSolrEntityProcessor processor = createAndInit(docs);
+    try {
+      assertExpectedDocs(docs, processor);
+      assertEquals(1, processor.getQueryCount());
+    } finally {
+      processor.destroy();
+    }
+  }
 
-    assertExpectedDocs(docs, processor);
-    assertEquals(1, processor.getQueryCount());
+  private MockSolrEntityProcessor createAndInit(List<Doc> docs) {
+    return createAndInit(docs, SolrEntityProcessor.ROWS_DEFAULT);
   }
 
   public void testNumDocsGreaterThanRows() {
     List<Doc> docs = generateUniqueDocs(44);
 
-    MockSolrEntityProcessor processor = new MockSolrEntityProcessor(docs, 10);
-    assertExpectedDocs(docs, processor);
-    assertEquals(5, processor.getQueryCount());
+    int rowsNum = 10;
+    MockSolrEntityProcessor processor = createAndInit(docs, rowsNum);
+    try {
+      assertExpectedDocs(docs, processor);
+      assertEquals(5, processor.getQueryCount());
+    } finally {
+      processor.destroy();
+    }
+  }
+
+  private MockSolrEntityProcessor createAndInit(List<Doc> docs, int rowsNum) {
+    MockSolrEntityProcessor processor = new MockSolrEntityProcessor(docs, rowsNum);
+    HashMap<String,String> entityAttrs = new HashMap<String,String>(){{put(SolrEntityProcessor.SOLR_SERVER,"http://route:66/no");}};
+    processor.init(getContext(null, null, null, null, Collections.<Map<String,String>>emptyList(),
+        entityAttrs));
+    return processor;
   }
 
   public void testMultiValuedFields() {
@@ -53,16 +77,20 @@ public class TestSolrEntityProcessorUnit extends AbstractDataImportHandlerTestCa
     Doc testDoc = createDoc(types);
     docs.add(testDoc);
 
-    MockSolrEntityProcessor processor = new MockSolrEntityProcessor(docs);
-    Map<String, Object> next = processor.nextRow();
-    assertNotNull(next);
-
-    @SuppressWarnings("unchecked")
-    List<Comparable> multiField = (List<Comparable>) next.get("description");
-    assertEquals(testDoc.getValues("description").size(), multiField.size());
-    assertEquals(testDoc.getValues("description"), multiField);
-    assertEquals(1, processor.getQueryCount());
-    assertNull(processor.nextRow());
+    MockSolrEntityProcessor processor = createAndInit(docs);
+    try {
+      Map<String, Object> next = processor.nextRow();
+      assertNotNull(next);
+  
+      @SuppressWarnings("unchecked")
+      List<Comparable> multiField = (List<Comparable>) next.get("description");
+      assertEquals(testDoc.getValues("description").size(), multiField.size());
+      assertEquals(testDoc.getValues("description"), multiField);
+      assertEquals(1, processor.getQueryCount());
+      assertNull(processor.nextRow());
+    } finally {
+      processor.destroy();
+    }
   }
 
   private List<Doc> generateUniqueDocs(int numDocs) {

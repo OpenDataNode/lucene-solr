@@ -14,12 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update;
+
+import java.util.List;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexableField;
-import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SlowCompositeReaderWrapper;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
@@ -33,6 +34,7 @@ import org.apache.solr.common.SolrInputField;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.search.DocList;
+import org.apache.solr.schema.CopyField;
 import org.apache.solr.schema.FieldType;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.request.SolrQueryRequest;
@@ -210,7 +212,7 @@ public class DocumentBuilderTest extends SolrTestCaseJ4 {
   }
   
   /**
-   * Its ok to boost a field if it has norms
+   * It's ok to boost a field if it has norms
    */
   public void testBoost() throws Exception {
     XmlDoc xml = new XmlDoc();
@@ -221,12 +223,11 @@ public class DocumentBuilderTest extends SolrTestCaseJ4 {
     assertNull(h.validateUpdate(add(xml, new String[0])));
   }
   
-  public void testMultiValuedFieldAndDocBoosts() throws Exception {
+  private void assertMultiValuedFieldAndDocBoosts(SolrInputField field) throws Exception {
     SolrCore core = h.getCore();
     IndexSchema schema = core.getLatestSchema();
     SolrInputDocument doc = new SolrInputDocument();
     doc.setDocumentBoost(3.0f);
-    SolrInputField field = new SolrInputField( "foo_t" );
     field.addValue( "summer time" , 1.0f );
     field.addValue( "in the city" , 5.0f ); // using boost
     field.addValue( "living is easy" , 1.0f );
@@ -245,6 +246,27 @@ public class DocumentBuilderTest extends SolrTestCaseJ4 {
     assertEquals(1.0f, outF[1].boost(), 0.0f);
     assertEquals(1.0f, outF[2].boost(), 0.0f);
     
+  }
+
+  public void testMultiValuedFieldAndDocBoostsWithCopy() throws Exception {
+    SolrCore core = h.getCore();
+    IndexSchema schema = core.getLatestSchema();
+    SolrInputField field = new SolrInputField( "foo_t" );
+    List<CopyField> copyFields = schema.getCopyFieldsList(field.getName());
+    
+    assertNotNull( copyFields );
+    assertFalse( copyFields.isEmpty() );
+    assertMultiValuedFieldAndDocBoosts( field );
+  }
+  
+  public void testMultiValuedFieldAndDocBoostsNoCopy() throws Exception {
+    SolrCore core = h.getCore();
+    IndexSchema schema = core.getLatestSchema();
+    SolrInputField field = new SolrInputField( "t_foo" );
+    List<CopyField> copyFields = schema.getCopyFieldsList(field.getName());
+
+    assertTrue( copyFields == null || copyFields.isEmpty() );
+    assertMultiValuedFieldAndDocBoosts( field );
   }
 
   public void testCopyFieldsAndFieldBoostsAndDocBoosts() throws Exception {
@@ -306,7 +328,7 @@ public class DocumentBuilderTest extends SolrTestCaseJ4 {
     assertEquals(1.0F,                    outText[3].boost(), 0.0F);
     assertEquals(1.0F,                    outText[4].boost(), 0.0F);
     
-    // copyField dest with no norms should not have recieved any boost
+    // copyField dest with no norms should not have received any boost
     assertEquals(1.0F, outNoNorms[0].boost(), 0.0F);
     assertEquals(1.0F, outNoNorms[1].boost(), 0.0F);
     
@@ -322,18 +344,18 @@ public class DocumentBuilderTest extends SolrTestCaseJ4 {
       SolrQueryResponse rsp = new SolrQueryResponse();
       core.execute(core.getRequestHandler(req.getParams().get(CommonParams.QT)), req, rsp);
 
-      DocList dl = ((ResultContext) rsp.getValues().get("response")).docs;
+      DocList dl = ((ResultContext) rsp.getResponse()).docs;
       assertTrue("can't find the doc we just added", 1 == dl.size());
       int docid = dl.iterator().nextDoc();
 
       SolrIndexSearcher searcher = req.getSearcher();
-      AtomicReader reader = SlowCompositeReaderWrapper.wrap(searcher.getTopReaderContext().reader());
+      LeafReader reader = SlowCompositeReaderWrapper.wrap(searcher.getTopReaderContext().reader());
 
       assertTrue("similarity doesn't extend DefaultSimilarity, " + 
                  "config or defaults have changed since test was written",
-                 searcher.getSimilarity() instanceof DefaultSimilarity);
+                 searcher.getSimilarity(true) instanceof DefaultSimilarity);
 
-      DefaultSimilarity sim = (DefaultSimilarity) searcher.getSimilarity();
+      DefaultSimilarity sim = (DefaultSimilarity) searcher.getSimilarity(true);
       
       NumericDocValues titleNorms = reader.getNormValues("title");
       NumericDocValues fooNorms = reader.getNormValues("foo_t");
@@ -385,7 +407,7 @@ public class DocumentBuilderTest extends SolrTestCaseJ4 {
   }
   
   /**
-   * Its ok to supply a document boost even if a field omits norms
+   * It's ok to supply a document boost even if a field omits norms
    */
   public void testDocumentBoostOmitNorms() throws Exception {
     XmlDoc xml = new XmlDoc();

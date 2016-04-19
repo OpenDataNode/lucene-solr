@@ -1,5 +1,3 @@
-package org.apache.solr.handler.component;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.handler.component;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.component;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -26,12 +25,13 @@ import junit.framework.Assert;
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.lucene.util.LuceneTestCase.SuppressTempFileChecks;
 import org.apache.solr.BaseDistributedSearchTestCase;
-import org.apache.solr.client.solrj.SolrServer;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.params.SpellingParams;
 import org.apache.solr.common.util.NamedList;
 import org.junit.BeforeClass;
+import org.junit.Test;
 
 /**
  * Test for SpellCheckComponent's distributed querying
@@ -57,16 +57,6 @@ public class DistributedSpellCheckComponentTest extends BaseDistributedSearchTes
     useFactory(null); // need an FS factory
   }
 
-  @Override
-  public void setUp() throws Exception {
-    super.setUp();
-  }
-  
-  @Override
-  public void tearDown() throws Exception {
-    super.tearDown();
-  }
-  
   private void q(Object... q) throws Exception {
     final ModifiableSolrParams params = new ModifiableSolrParams();
 
@@ -79,7 +69,7 @@ public class DistributedSpellCheckComponentTest extends BaseDistributedSearchTes
     // query a random server
     params.set("shards", shards);
     int which = r.nextInt(clients.size());
-    SolrServer client = clients.get(which);
+    SolrClient client = clients.get(which);
     client.query(params);
   }
   
@@ -95,9 +85,9 @@ public class DistributedSpellCheckComponentTest extends BaseDistributedSearchTes
       Assert.fail("Control data did not return any suggestions.");
     }
   }
-  
-  @Override
-  public void doTest() throws Exception {
+
+  @Test
+  public void test() throws Exception {
     del("*:*");
     index(id, "1", "lowerfilt", "toyota");
     index(id, "2", "lowerfilt", "chevrolet");
@@ -122,7 +112,8 @@ public class DistributedSpellCheckComponentTest extends BaseDistributedSearchTes
     index(id, "22", "lowerfilt", "The quote red fox jumped over the lazy brown dogs.");
     index(id, "23", "lowerfilt", "The quote red fox jumped over the lazy brown dogs.");
     index(id, "24", "lowerfilt", "The quote red fox jumped over the lazy brown dogs.");
-    index(id, "25", "lowerfilt", "rod fix");
+    index(id, "25", "lowerfilt", "The quicker red fox jumped over the lazy brown dogs.");
+    index(id, "26", "lowerfilt", "rod fix");
     commit();
 
     handle.clear();
@@ -173,7 +164,7 @@ public class DistributedSpellCheckComponentTest extends BaseDistributedSearchTes
         collate, "true", maxCollationTries, "0", maxCollations, "1", collateExtended, "false"));
     
     //Test context-sensitive collate
-    query(buildRequest("lowerfilt:(\"quote red fox\")", 
+    query(buildRequest("lowerfilt:(\"quick red fox\")", 
         false, requestHandlerName, random().nextBoolean(), extended, "true", count, "10", 
         collate, "true", maxCollationTries, "10", maxCollations, "1", collateExtended, "false",
         altTermCount, "5", maxResults, "10"));
@@ -181,9 +172,19 @@ public class DistributedSpellCheckComponentTest extends BaseDistributedSearchTes
         false, requestHandlerName, random().nextBoolean(), extended, "true", count, "10", 
         collate, "true", maxCollationTries, "10", maxCollations, "1", collateExtended, "false",
         altTermCount, "5", maxResults, "10"));
+    query(buildRequest("lowerfilt:(\"rod fix\")", 
+        false, requestHandlerName, random().nextBoolean(), extended, "true", count, "10", 
+        collate, "true", maxCollationTries, "10", maxCollations, "1", collateExtended, "false",
+        altTermCount, "5", maxResults, ".10", "fq", "id:[13 TO 22]"));
     
     //Test word-break spellchecker
     query(buildRequest("lowerfilt:(+quock +redfox +jum +ped)", 
+        false, reqHandlerWithWordbreak, random().nextBoolean(), extended, "true", count, "10", 
+        collate, "true", maxCollationTries, "0", maxCollations, "1", collateExtended, "true"));
+    query(buildRequest("lowerfilt:(+rodfix)", 
+        false, reqHandlerWithWordbreak, random().nextBoolean(), extended, "true", count, "10", 
+        collate, "true", maxCollationTries, "0", maxCollations, "1", collateExtended, "true"));
+    query(buildRequest("lowerfilt:(+son +ata)", 
         false, reqHandlerWithWordbreak, random().nextBoolean(), extended, "true", count, "10", 
         collate, "true", maxCollationTries, "0", maxCollations, "1", collateExtended, "true"));
   }

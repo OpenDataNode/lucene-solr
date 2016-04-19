@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,63 +14,47 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
+
+import org.apache.http.NoHttpResponseException;
+import org.apache.solr.client.solrj.embedded.JettySolrRunner;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
+import org.apache.solr.client.solrj.request.CollectionAdminRequest;
+import org.apache.solr.common.SolrException;
+import org.apache.solr.common.cloud.Replica;
+import org.apache.solr.util.RTimer;
+import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.lang.invoke.MethodHandles;
 import java.util.List;
 
-import org.apache.solr.client.solrj.embedded.JettySolrRunner;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
-import org.apache.solr.client.solrj.request.CollectionAdminRequest;
-import org.apache.solr.common.cloud.Replica;
-import org.apache.solr.common.cloud.ZkCoreNodeProps;
-import org.junit.After;
-import org.junit.Before;
-
 public class LeaderInitiatedRecoveryOnCommitTest extends BasicDistributedZkTest {
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private static final long sleepMsBeforeHealPartition = 2000L;
 
   public LeaderInitiatedRecoveryOnCommitTest() {
     super();
     sliceCount = 1;
-    shardCount = 4;
-  }
-
-  @Before
-  @Override
-  public void setUp() throws Exception {
-    super.setUp();
-    System.setProperty("numShards", Integer.toString(sliceCount));
+    fixShardCount(4);
   }
 
   @Override
-  @After
-  public void tearDown() throws Exception {
-    System.clearProperty("numShards");
-
-    try {
-      super.tearDown();
-    } catch (Exception exc) {
-    }
-
-    resetExceptionIgnores();
-
-    // close socket proxies after super.tearDown
-    if (!proxies.isEmpty()) {
-      for (SocketProxy proxy : proxies.values()) {
-        proxy.close();
-      }
-    }
-  }
-
-  @Override
-  public void doTest() throws Exception {
+  @Test
+  public void test() throws Exception {
     oneShardTest();
     multiShardTest();
   }
 
   private void multiShardTest() throws Exception {
-    // create a collection that has 1 shard and 3 replicas
+
+    log.info("Running multiShardTest");
+
+    // create a collection that has 2 shard and 2 replicas
     String testCollectionName = "c8n_2x2_commits";
     createCollection(testCollectionName, 2, 2, 1);
     cloudClient.setDefaultCollection(testCollectionName);
@@ -84,37 +66,44 @@ public class LeaderInitiatedRecoveryOnCommitTest extends BasicDistributedZkTest 
             + printClusterStateInfo(),
         notLeaders.size() == 1);
 
-    // let's put the leader in it's own partition, no replicas can contact it now
+    log.info("All replicas active for "+testCollectionName);
+
+    // let's put the leader in its own partition, no replicas can contact it now
     Replica leader = cloudClient.getZkStateReader().getLeaderRetry(testCollectionName, "shard1");
+    log.info("Creating partition to leader at "+leader.getCoreUrl());
     SocketProxy leaderProxy = getProxyForReplica(leader);
     leaderProxy.close();
 
     // let's find the leader of shard2 and ask him to commit
     Replica shard2Leader = cloudClient.getZkStateReader().getLeaderRetry(testCollectionName, "shard2");
-    HttpSolrServer server = new HttpSolrServer(ZkCoreNodeProps.getCoreUrl(shard2Leader.getStr("base_url"), shard2Leader.getStr("core")));
-    server.commit();
+    sendCommitWithRetry(shard2Leader);
 
     Thread.sleep(sleepMsBeforeHealPartition);
 
-    cloudClient.getZkStateReader().updateClusterState(true); // get the latest state
+    cloudClient.getZkStateReader().updateClusterState(); // get the latest state
     leader = cloudClient.getZkStateReader().getLeaderRetry(testCollectionName, "shard1");
-    assertEquals("Leader was not active", "active", leader.getStr("state"));
+    assertSame("Leader was not active", Replica.State.ACTIVE, leader.getState());
 
+    log.info("Healing partitioned replica at "+leader.getCoreUrl());
     leaderProxy.reopen();
     Thread.sleep(sleepMsBeforeHealPartition);
 
     // try to clean up
     try {
-      CollectionAdminRequest req = new CollectionAdminRequest.Delete();
+      CollectionAdminRequest.Delete req = new CollectionAdminRequest.Delete();
       req.setCollectionName(testCollectionName);
       req.process(cloudClient);
     } catch (Exception e) {
       // don't fail the test
       log.warn("Could not delete collection {} after test completed", testCollectionName);
     }
+
+    log.info("multiShardTest completed OK");
   }
 
   private void oneShardTest() throws Exception {
+    log.info("Running oneShardTest");
+
     // create a collection that has 1 shard and 3 replicas
     String testCollectionName = "c8n_1x3_commits";
     createCollection(testCollectionName, 1, 3, 1);
@@ -127,33 +116,37 @@ public class LeaderInitiatedRecoveryOnCommitTest extends BasicDistributedZkTest 
             + printClusterStateInfo(),
         notLeaders.size() == 2);
 
-    // let's put the leader in it's own partition, no replicas can contact it now
+    log.info("All replicas active for "+testCollectionName);
+
+    // let's put the leader in its own partition, no replicas can contact it now
     Replica leader = cloudClient.getZkStateReader().getLeaderRetry(testCollectionName, "shard1");
+    log.info("Creating partition to leader at "+leader.getCoreUrl());
     SocketProxy leaderProxy = getProxyForReplica(leader);
     leaderProxy.close();
 
     Replica replica = notLeaders.get(0);
-    HttpSolrServer server = new HttpSolrServer(ZkCoreNodeProps.getCoreUrl(replica.getStr("base_url"), replica.getStr("core")));
-    server.commit();
-
+    sendCommitWithRetry(replica);
     Thread.sleep(sleepMsBeforeHealPartition);
 
-    cloudClient.getZkStateReader().updateClusterState(true); // get the latest state
+    cloudClient.getZkStateReader().updateClusterState(); // get the latest state
     leader = cloudClient.getZkStateReader().getLeaderRetry(testCollectionName, "shard1");
-    assertEquals("Leader was not active", "active", leader.getStr("state"));
+    assertSame("Leader was not active", Replica.State.ACTIVE, leader.getState());
 
+    log.info("Healing partitioned replica at "+leader.getCoreUrl());
     leaderProxy.reopen();
     Thread.sleep(sleepMsBeforeHealPartition);
 
     // try to clean up
     try {
-      CollectionAdminRequest req = new CollectionAdminRequest.Delete();
+      CollectionAdminRequest.Delete req = new CollectionAdminRequest.Delete();
       req.setCollectionName(testCollectionName);
       req.process(cloudClient);
     } catch (Exception e) {
       // don't fail the test
       log.warn("Could not delete collection {} after test completed", testCollectionName);
     }
+
+    log.info("oneShardTest completed OK");
   }
 
   /**
@@ -164,6 +157,30 @@ public class LeaderInitiatedRecoveryOnCommitTest extends BasicDistributedZkTest 
                                      String shardList, String solrConfigOverride, String schemaOverride)
       throws Exception {
     return createProxiedJetty(solrHome, dataDir, shardList, solrConfigOverride, schemaOverride);
+  }
+
+  protected void sendCommitWithRetry(Replica replica) throws Exception {
+    String replicaCoreUrl = replica.getCoreUrl();
+    log.info("Sending commit request to: "+replicaCoreUrl);
+    final RTimer timer = new RTimer();
+    try (HttpSolrClient client = new HttpSolrClient(replicaCoreUrl)) {
+      try {
+        client.commit();
+
+        log.info("Sent commit request to {} OK, took {}ms", replicaCoreUrl, timer.getTime());
+      } catch (Exception exc) {
+        Throwable rootCause = SolrException.getRootCause(exc);
+        if (rootCause instanceof NoHttpResponseException) {
+          log.warn("No HTTP response from sending commit request to "+replicaCoreUrl+
+              "; will re-try after waiting 3 seconds");
+          Thread.sleep(3000);
+          client.commit();
+          log.info("Second attempt at sending commit to "+replicaCoreUrl+" succeeded.");
+        } else {
+          throw exc;
+        }
+      }
+    }
   }
 
 }

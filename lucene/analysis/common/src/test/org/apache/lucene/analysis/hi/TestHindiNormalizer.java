@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.hi;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.hi;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.hi;
+
 
 import java.io.IOException;
 import java.io.Reader;
@@ -62,7 +62,7 @@ public class TestHindiNormalizer extends BaseTokenStreamTestCase {
     check("आईऊॠॡऐऔीूॄॣैौ", "अइउऋऌएओिुृॢेो");
   }
   private void check(String input, String output) throws IOException {
-    Tokenizer tokenizer = new MockTokenizer(new StringReader(input), MockTokenizer.WHITESPACE, false);
+    Tokenizer tokenizer = whitespaceMockTokenizer(input);
     TokenFilter tf = new HindiNormalizationFilter(tokenizer);
     assertTokenStreamContents(tf, new String[] { output });
   }
@@ -70,11 +70,12 @@ public class TestHindiNormalizer extends BaseTokenStreamTestCase {
   public void testEmptyTerm() throws IOException {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new KeywordTokenizer(reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new KeywordTokenizer();
         return new TokenStreamComponents(tokenizer, new HindiNormalizationFilter(tokenizer));
       }
     };
     checkOneTerm(a, "", "");
+    a.close();
   }
 }

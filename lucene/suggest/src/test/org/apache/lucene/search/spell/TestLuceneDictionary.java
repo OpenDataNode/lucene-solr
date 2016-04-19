@@ -1,5 +1,3 @@
-package org.apache.lucene.search.spell;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,11 @@ package org.apache.lucene.search.spell;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.spell;
 
 import java.io.IOException;
 
+import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
@@ -39,7 +39,7 @@ import org.apache.lucene.util.LuceneTestCase;
 public class TestLuceneDictionary extends LuceneTestCase {
 
   private Directory store;
-
+  private Analyzer analyzer;
   private IndexReader indexReader = null;
   private LuceneDictionary ld;
   private BytesRefIterator it;
@@ -49,7 +49,8 @@ public class TestLuceneDictionary extends LuceneTestCase {
   public void setUp() throws Exception {
     super.setUp();
     store = newDirectory();
-    IndexWriter writer = new IndexWriter(store, newIndexWriterConfig(new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false)));
+    analyzer = new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false);
+    IndexWriter writer = new IndexWriter(store, newIndexWriterConfig(analyzer));
 
     Document doc;
 
@@ -82,6 +83,7 @@ public class TestLuceneDictionary extends LuceneTestCase {
     if (indexReader != null)
       indexReader.close();
     store.close();
+    analyzer.close();
     super.tearDown();
   }
   

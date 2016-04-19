@@ -1,5 +1,3 @@
-package org.apache.solr.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,19 +14,20 @@ package org.apache.solr.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search;
 
 import java.io.IOException;
 
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.search.Collector;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.SimpleCollector;
 import org.apache.lucene.util.FixedBitSet;
 
 /**
  *
  */
 
-public class DocSetCollector extends Collector {
+public class DocSetCollector extends SimpleCollector {
   int pos=0;
   FixedBitSet bits;
   final int maxDoc;
@@ -39,6 +38,10 @@ public class DocSetCollector extends Collector {
   // bit array.  Optimistically collect the first few docs in an array
   // in case there are only a few.
   final int[] scratch;
+
+  public DocSetCollector(int maxDoc) {
+    this(DocSetUtil.smallSetSize(maxDoc), maxDoc);
+  }
 
   public DocSetCollector(int smallSetSize, int maxDoc) {
     this.smallSetSize = smallSetSize;
@@ -84,12 +87,12 @@ public class DocSetCollector extends Collector {
   }
 
   @Override
-  public void setNextReader(AtomicReaderContext context) throws IOException {
-    this.base = context.docBase;
+  public boolean needsScores() {
+    return false;
   }
 
   @Override
-  public boolean acceptsDocsOutOfOrder() {
-    return false;
+  protected void doSetNextReader(LeafReaderContext context) throws IOException {
+    this.base = context.docBase;
   }
 }

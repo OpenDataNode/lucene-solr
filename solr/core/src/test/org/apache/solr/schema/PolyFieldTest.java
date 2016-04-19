@@ -1,4 +1,3 @@
-package org.apache.solr.schema;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.schema;
 import java.util.List;
 
 import org.apache.lucene.index.IndexableField;
@@ -24,8 +23,8 @@ import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.Query;
 import org.apache.solr.SolrTestCaseJ4;
-import org.apache.solr.common.SolrException;
 import org.apache.solr.core.SolrCore;
+import org.apache.solr.common.SolrException;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -176,8 +175,7 @@ public class PolyFieldTest extends SolrTestCaseJ4 {
     assertTrue(q instanceof BooleanQuery);
     //should have two clauses, one for 35.0 and the other for -79.34
     BooleanQuery bq = (BooleanQuery) q;
-    BooleanClause[] clauses = bq.getClauses();
-    assertEquals(clauses.length, 2);
+    assertEquals(2, bq.clauses().size());
     clearIndex();
   }
 

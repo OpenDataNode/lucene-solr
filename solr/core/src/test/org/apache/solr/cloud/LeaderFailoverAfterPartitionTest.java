@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,19 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.SolrTestCaseJ4.SuppressSSL;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.request.CollectionAdminRequest;
 import org.apache.solr.common.cloud.Replica;
+import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.lang.invoke.MethodHandles;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -35,13 +40,15 @@ import java.util.concurrent.TimeUnit;
 @SuppressSSL(bugUrl = "https://issues.apache.org/jira/browse/SOLR-5776")
 public class LeaderFailoverAfterPartitionTest extends HttpPartitionTest {
 
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
   public LeaderFailoverAfterPartitionTest() {
     super();
   }
 
 
-  @Override
-  public void doTest() throws Exception {
+  @Test
+  public void test() throws Exception {
     waitForThingsToLevelOut(30000);
 
     // kill a leader and make sure recovery occurs as expected
@@ -109,10 +116,15 @@ public class LeaderFailoverAfterPartitionTest extends HttpPartitionTest {
     // indexing during a partition
     // doc should be on leader and 1 replica
     sendDoc(5);
+    
+    try (HttpSolrClient server = getHttpSolrClient(leader, testCollectionName)) {
+      assertDocExists(server, testCollectionName, "5");
+    }
 
-    assertDocExists(getHttpSolrServer(leader, testCollectionName), testCollectionName, "5");
-    assertDocExists(getHttpSolrServer(notLeaders.get(1), testCollectionName), testCollectionName, "5");
-
+    try (HttpSolrClient server = getHttpSolrClient(notLeaders.get(1), testCollectionName)) {
+      assertDocExists(server, testCollectionName, "5");
+    }
+  
     Thread.sleep(sleepMsBeforeHealPartition);
     
     String shouldNotBeNewLeaderNode = notLeaders.get(0).getNodeName();
@@ -147,7 +159,7 @@ public class LeaderFailoverAfterPartitionTest extends HttpPartitionTest {
     
     long timeout = System.nanoTime() + TimeUnit.NANOSECONDS.convert(60, TimeUnit.SECONDS);
     while (System.nanoTime() < timeout) {
-      cloudClient.getZkStateReader().updateClusterState(true);
+      cloudClient.getZkStateReader().updateClusterState();
 
       List<Replica> activeReps = getActiveOrRecoveringReplicas(testCollectionName, "shard1");
       if (activeReps.size() >= 2) break;
@@ -160,17 +172,19 @@ public class LeaderFailoverAfterPartitionTest extends HttpPartitionTest {
             printClusterStateInfo(testCollectionName),
         participatingReplicas.size() >= 2);
 
+    
     sendDoc(6);
+
 
     Set<String> replicasToCheck = new HashSet<>();
     for (Replica stillUp : participatingReplicas)
       replicasToCheck.add(stillUp.getName());
-    waitToSeeReplicasActive(testCollectionName, "shard1", replicasToCheck, 20);
+    waitToSeeReplicasActive(testCollectionName, "shard1", replicasToCheck, 90);
     assertDocsExistInAllReplicas(participatingReplicas, testCollectionName, 1, 6);
 
     // try to clean up
     try {
-      CollectionAdminRequest req = new CollectionAdminRequest.Delete();
+      CollectionAdminRequest.Delete req = new CollectionAdminRequest.Delete();
       req.setCollectionName(testCollectionName);
       req.process(cloudClient);
     } catch (Exception e) {
@@ -179,4 +193,3 @@ public class LeaderFailoverAfterPartitionTest extends HttpPartitionTest {
     }
   }
 }
-

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.uima;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.uima;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.uima;
+
 
 import org.apache.lucene.analysis.Analyzer;
 
@@ -38,8 +38,8 @@ public final class UIMABaseAnalyzer extends Analyzer {
   }
 
   @Override
-  protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-    return new TokenStreamComponents(new UIMAAnnotationsTokenizer(descriptorPath, tokenType, configurationParameters, reader));
+  protected TokenStreamComponents createComponents(String fieldName) {
+    return new TokenStreamComponents(new UIMAAnnotationsTokenizer(descriptorPath, tokenType, configurationParameters));
   }
 
 }

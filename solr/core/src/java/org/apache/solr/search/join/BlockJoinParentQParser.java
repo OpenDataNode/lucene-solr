@@ -14,17 +14,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.search.join;
 
-import org.apache.lucene.search.CachingWrapperFilter;
-import org.apache.lucene.search.ConstantScoreQuery;
+import java.io.IOException;
+
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.search.BitsFilteredDocIdSet;
+import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.QueryWrapperFilter;
-import org.apache.lucene.search.join.FixedBitSetCachingWrapperFilter;
+import org.apache.lucene.search.join.BitSetProducer;
+import org.apache.lucene.search.join.QueryBitSetProducer;
 import org.apache.lucene.search.join.ScoreMode;
 import org.apache.lucene.search.join.ToParentBlockJoinQuery;
+import org.apache.lucene.util.BitDocIdSet;
+import org.apache.lucene.util.BitSet;
+import org.apache.lucene.util.Bits;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.search.QParser;
@@ -33,7 +38,7 @@ import org.apache.solr.search.SolrCache;
 import org.apache.solr.search.SolrConstantScoreQuery;
 import org.apache.solr.search.SyntaxError;
 
-class BlockJoinParentQParser extends QParser {
+public class BlockJoinParentQParser extends QParser {
   /** implementation detail subject to change */
   public String CACHE_NAME="perSegFilter";
 
@@ -48,6 +53,7 @@ class BlockJoinParentQParser extends QParser {
   @Override
   public Query parse() throws SyntaxError {
     String filter = localParams.get(getParentFilterLocalParamName());
+    String scoreMode = localParams.get("score", ScoreMode.None.name());
     QParser parentParser = subQuery(filter, null);
     Query parentQ = parentParser.getQuery();
 
@@ -60,35 +66,88 @@ class BlockJoinParentQParser extends QParser {
     }
     QParser childrenParser = subQuery(queryText, null);
     Query childrenQuery = childrenParser.getQuery();
-    return createQuery(parentQ, childrenQuery);
+    return createQuery(parentQ, childrenQuery, scoreMode);
   }
 
-  protected Query createQuery(Query parentList, Query query) {
-    return new ToParentBlockJoinQuery(query, getFilter(parentList), ScoreMode.None);
+  protected Query createQuery(final Query parentList, Query query, String scoreMode) throws SyntaxError {
+    return new AllParentsAware(query, getFilter(parentList).filter, ScoreModeParser.parse(scoreMode), parentList);
   }
 
-  protected Filter getFilter(Query parentList) {
+  BitDocIdSetFilterWrapper getFilter(Query parentList) {
     SolrCache parentCache = req.getSearcher().getCache(CACHE_NAME);
     // lazily retrieve from solr cache
     Filter filter = null;
     if (parentCache != null) {
       filter = (Filter) parentCache.get(parentList);
     }
-    Filter result;
-    if (filter == null) {
-      result = createParentFilter(parentList);
+    BitDocIdSetFilterWrapper result;
+    if (filter instanceof BitDocIdSetFilterWrapper) {
+      result = (BitDocIdSetFilterWrapper) filter;
+    } else {
+      result = new BitDocIdSetFilterWrapper(createParentFilter(parentList));
       if (parentCache != null) {
         parentCache.put(parentList, result);
       }
-    } else {
-      result = filter;
     }
     return result;
   }
 
-  protected Filter createParentFilter(Query parentQ) {
-    return new FixedBitSetCachingWrapperFilter(new QueryWrapperFilter(parentQ));
+  private BitSetProducer createParentFilter(Query parentQ) {
+    return new QueryBitSetProducer(parentQ);
   }
+
+  static final class AllParentsAware extends ToParentBlockJoinQuery {
+    private final Query parentQuery;
+    
+    private AllParentsAware(Query childQuery, BitSetProducer parentsFilter, ScoreMode scoreMode,
+        Query parentList) {
+      super(childQuery, parentsFilter, scoreMode);
+      parentQuery = parentList;
+    }
+    
+    public Query getParentQuery(){
+      return parentQuery;
+    }
+  }
+
+  // We need this wrapper since BitDocIdSetFilter does not extend Filter
+  static class BitDocIdSetFilterWrapper extends Filter {
+
+    final BitSetProducer filter;
+
+    BitDocIdSetFilterWrapper(BitSetProducer filter) {
+      this.filter = filter;
+    }
+
+    @Override
+    public DocIdSet getDocIdSet(LeafReaderContext context, Bits acceptDocs) throws IOException {
+      BitSet set = filter.getBitSet(context);
+      if (set == null) {
+        return null;
+      }
+      return BitsFilteredDocIdSet.wrap(new BitDocIdSet(set), acceptDocs);
+    }
+
+    @Override
+    public String toString(String field) {
+      return getClass().getSimpleName() + "(" + filter + ")";
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (super.equals(obj) == false) {
+        return false;
+      }
+      return filter.equals(((BitDocIdSetFilterWrapper) obj).filter);
+    }
+
+    @Override
+    public int hashCode() {
+      return 31 * super.hashCode() + filter.hashCode();
+    }
+
+  }
+
 }
 
 

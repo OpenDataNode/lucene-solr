@@ -61,7 +61,7 @@ def main():
   print '    upperCaseVariantsAccepted.put("amp", "AMP");'
   print '  }'
   print '  private static final CharArrayMap<Character> entityValues'
-  print '      = new CharArrayMap<>(Version.LUCENE_CURRENT, %i, false);' % len(keys)
+  print '      = new CharArrayMap<>(%i, false);' % len(keys)
   print '  static {'
   print '    String[] entities = {'
   output_line = '     '
@@ -516,7 +516,7 @@ You can download this version of this file from http://www.w3.org/TR/2010/REC-xh
   return text
 
 def get_apache_license():
-  license = r"""/**
+  license = r"""/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.

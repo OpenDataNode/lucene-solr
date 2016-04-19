@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +13,8 @@ package org.apache.lucene.index;
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
-*/
+ */
+package org.apache.lucene.index;
 
 import java.util.Collection;
 import java.util.Map;
@@ -41,6 +40,8 @@ import org.apache.lucene.store.Directory;
  * @lucene.experimental
 */
 
+// TODO: this is now a poor name, because this class also represents a
+// point-in-time view from an NRT reader
 public abstract class IndexCommit implements Comparable<IndexCommit> {
 
   /**
@@ -108,7 +109,7 @@ public abstract class IndexCommit implements Comparable<IndexCommit> {
 
   /** Returns userData, previously passed to {@link
    *  IndexWriter#setCommitData(Map)} for this commit.  Map is
-   *  String -> String. */
+   *  {@code String -> String}. */
   public abstract Map<String,String> getUserData() throws IOException;
   
   @Override
@@ -120,5 +121,10 @@ public abstract class IndexCommit implements Comparable<IndexCommit> {
     long gen = getGeneration();
     long comgen = commit.getGeneration();
     return Long.compare(gen, comgen);
+  }
+
+  /** Package-private API for IndexWriter to init from a commit-point pulled from an NRT or non-NRT reader. */
+  StandardDirectoryReader getReader() {
+    return null;
   }
 }

@@ -1,5 +1,3 @@
-package org.apache.solr.handler.dataimport;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,11 @@ package org.apache.solr.handler.dataimport;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.dataimport;
 
 import static org.apache.solr.handler.dataimport.DataImportHandlerException.wrapAndThrow;
 
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -32,8 +32,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class DIHCacheSupport {
-  private static final Logger log = LoggerFactory
-      .getLogger(DIHCacheSupport.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   private String cacheForeignKey;
   private String cacheImplName;
   private Map<String,DIHCache> queryVsCache = new HashMap<>();
@@ -44,28 +43,11 @@ public class DIHCacheSupport {
   public DIHCacheSupport(Context context, String cacheImplName) {
     this.cacheImplName = cacheImplName;
     
-    String where = context.getEntityAttribute("where");
-    String cacheKey = context.getEntityAttribute(DIHCacheSupport.CACHE_PRIMARY_KEY);
-    String lookupKey = context.getEntityAttribute(DIHCacheSupport.CACHE_FOREIGN_KEY);
-    if (cacheKey != null && lookupKey == null) {
-      throw new DataImportHandlerException(DataImportHandlerException.SEVERE,
-          "'cacheKey' is specified for the entity "
-              + context.getEntityAttribute("name")
-              + " but 'cacheLookup' is missing");
-      
-    }
-    if (where == null && cacheKey == null) {
-      cacheDoKeyLookup = false;
-    } else {
-      if (where != null) {
-        String[] splits = where.split("=");
-        cacheKey = splits[0];
-        cacheForeignKey = splits[1].trim();
-      } else {
-        cacheForeignKey = lookupKey;
-      }
-      cacheDoKeyLookup = true;
-    }
+    Relation r = new Relation(context);
+    cacheDoKeyLookup = r.doKeyLookup;
+    String cacheKey = r.primaryKey;
+    cacheForeignKey = r.foreignKey;
+    
     context.setSessionAttribute(DIHCacheSupport.CACHE_PRIMARY_KEY, cacheKey,
         Context.SCOPE_ENTITY);
     context.setSessionAttribute(DIHCacheSupport.CACHE_FOREIGN_KEY, cacheForeignKey,
@@ -74,6 +56,48 @@ public class DIHCacheSupport {
         "true", Context.SCOPE_ENTITY);
     context.setSessionAttribute(DIHCacheSupport.CACHE_READ_ONLY, "false",
         Context.SCOPE_ENTITY);
+  }
+  
+  static class Relation{
+    protected final boolean doKeyLookup;
+    protected final String foreignKey;
+    protected final String primaryKey;
+    
+    public Relation(Context context) {
+      String where = context.getEntityAttribute("where");
+      String cacheKey = context.getEntityAttribute(DIHCacheSupport.CACHE_PRIMARY_KEY);
+      String lookupKey = context.getEntityAttribute(DIHCacheSupport.CACHE_FOREIGN_KEY);
+      if (cacheKey != null && lookupKey == null) {
+        throw new DataImportHandlerException(DataImportHandlerException.SEVERE,
+            "'cacheKey' is specified for the entity "
+                + context.getEntityAttribute("name")
+                + " but 'cacheLookup' is missing");
+        
+      }
+      if (where == null && cacheKey == null) {
+        doKeyLookup = false;
+        primaryKey = null;
+        foreignKey = null;
+      } else {
+        if (where != null) {
+          String[] splits = where.split("=");
+          primaryKey = splits[0];
+          foreignKey = splits[1].trim();
+        } else {
+          primaryKey = cacheKey;
+          foreignKey = lookupKey;
+        }
+        doKeyLookup = true;
+      }
+    }
+
+    @Override
+    public String toString() {
+      return "Relation "
+          + primaryKey + "="+foreignKey  ;
+    }
+    
+    
   }
   
   private DIHCache instantiateCache(Context context) {

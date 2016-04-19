@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.simpletext;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,43 @@ package org.apache.lucene.codecs.simpletext;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.simpletext;
+
+
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
+import java.text.ParseException;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+
+import org.apache.lucene.codecs.DocValuesProducer;
+import org.apache.lucene.index.BinaryDocValues;
+import org.apache.lucene.index.CorruptIndexException;
+import org.apache.lucene.index.DocValues;
+import org.apache.lucene.index.DocValuesType;
+import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.IndexFileNames;
+import org.apache.lucene.index.NumericDocValues;
+import org.apache.lucene.index.SegmentReadState;
+import org.apache.lucene.index.SortedDocValues;
+import org.apache.lucene.index.SortedNumericDocValues;
+import org.apache.lucene.index.SortedSetDocValues;
+import org.apache.lucene.store.BufferedChecksumIndexInput;
+import org.apache.lucene.store.ChecksumIndexInput;
+import org.apache.lucene.store.IndexInput;
+import org.apache.lucene.util.Accountable;
+import org.apache.lucene.util.Bits;
+import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BytesRefBuilder;
+import org.apache.lucene.util.RamUsageEstimator;
+import org.apache.lucene.util.StringHelper;
 
 import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.END;
 import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.FIELD;
@@ -26,38 +61,6 @@ import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.NUMV
 import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.ORDPATTERN;
 import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.PATTERN;
 import static org.apache.lucene.codecs.simpletext.SimpleTextDocValuesWriter.TYPE;
-
-import java.io.IOException;
-import java.math.BigDecimal;
-import java.math.BigInteger;
-import java.nio.charset.StandardCharsets;
-import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
-import java.text.ParseException;
-import java.util.HashMap;
-import java.util.Locale;
-import java.util.Map;
-
-import org.apache.lucene.codecs.DocValuesProducer;
-import org.apache.lucene.index.BinaryDocValues;
-import org.apache.lucene.index.CorruptIndexException;
-import org.apache.lucene.index.DocValues;
-import org.apache.lucene.index.FieldInfo;
-import org.apache.lucene.index.FieldInfo.DocValuesType;
-import org.apache.lucene.index.IndexFileNames;
-import org.apache.lucene.index.NumericDocValues;
-import org.apache.lucene.index.SegmentReadState;
-import org.apache.lucene.index.SortedDocValues;
-import org.apache.lucene.index.SortedNumericDocValues;
-import org.apache.lucene.index.SortedSetDocValues;
-import org.apache.lucene.store.BufferedChecksumIndexInput;
-import org.apache.lucene.store.ChecksumIndexInput;
-import org.apache.lucene.store.IndexInput;
-import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.BytesRefBuilder;
-import org.apache.lucene.util.RamUsageEstimator;
-import org.apache.lucene.util.StringHelper;
 
 class SimpleTextDocValuesReader extends DocValuesProducer {
 
@@ -84,7 +87,7 @@ class SimpleTextDocValuesReader extends DocValuesProducer {
   public SimpleTextDocValuesReader(SegmentReadState state, String ext) throws IOException {
     // System.out.println("dir=" + state.directory + " seg=" + state.segmentInfo.name + " file=" + IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, ext));
     data = state.directory.openInput(IndexFileNames.segmentFileName(state.segmentInfo.name, state.segmentSuffix, ext), state.context);
-    maxDoc = state.segmentInfo.getDocCount();
+    maxDoc = state.segmentInfo.maxDoc();
     while(true) {
       readLine();
       //System.out.println("READ field=" + scratch.utf8ToString());
@@ -102,7 +105,7 @@ class SimpleTextDocValuesReader extends DocValuesProducer {
       assert startsWith(TYPE) : scratch.get().utf8ToString();
 
       DocValuesType dvType = DocValuesType.valueOf(stripPrefix(TYPE));
-      assert dvType != null;
+      assert dvType != DocValuesType.NONE;
       if (dvType == DocValuesType.NUMERIC) {
         readLine();
         assert startsWith(MINVALUE): "got " + scratch.get().utf8ToString() + " field=" + fieldName + " ext=" + ext;
@@ -176,9 +179,9 @@ class SimpleTextDocValuesReader extends DocValuesProducer {
           try {
             bd = (BigDecimal) decoder.parse(scratch.get().utf8ToString());
           } catch (ParseException pe) {
-            throw new CorruptIndexException("failed to parse BigDecimal value (resource=" + in + ")", pe);
+            throw new CorruptIndexException("failed to parse BigDecimal value", in, pe);
           }
-          SimpleTextUtil.readLine(in, scratch); // read the line telling us if its real or not
+          SimpleTextUtil.readLine(in, scratch); // read the line telling us if it's real or not
           return BigInteger.valueOf(field.minValue).add(bd.toBigIntegerExact()).longValue();
         } catch (IOException ioe) {
           throw new RuntimeException(ioe);
@@ -239,7 +242,7 @@ class SimpleTextDocValuesReader extends DocValuesProducer {
           try {
             len = decoder.parse(new String(scratch.bytes(), LENGTH.length, scratch.length() - LENGTH.length, StandardCharsets.UTF_8)).intValue();
           } catch (ParseException pe) {
-            throw new CorruptIndexException("failed to parse int length (resource=" + in + ")", pe);
+            throw new CorruptIndexException("failed to parse int length", in, pe);
           }
           term.grow(len);
           term.setLength(len);
@@ -269,7 +272,7 @@ class SimpleTextDocValuesReader extends DocValuesProducer {
           try {
             len = decoder.parse(new String(scratch.bytes(), LENGTH.length, scratch.length() - LENGTH.length, StandardCharsets.UTF_8)).intValue();
           } catch (ParseException pe) {
-            throw new CorruptIndexException("failed to parse int length (resource=" + in + ")", pe);
+            throw new CorruptIndexException("failed to parse int length", in, pe);
           }
           // skip past bytes
           byte bytes[] = new byte[len];
@@ -316,7 +319,7 @@ class SimpleTextDocValuesReader extends DocValuesProducer {
           try {
             return (int) ordDecoder.parse(scratch.get().utf8ToString()).longValue()-1;
           } catch (ParseException pe) {
-            throw new CorruptIndexException("failed to parse ord (resource=" + in + ")", pe);
+            throw new CorruptIndexException("failed to parse ord", in, pe);
           }
         } catch (IOException ioe) {
           throw new RuntimeException(ioe);
@@ -336,7 +339,7 @@ class SimpleTextDocValuesReader extends DocValuesProducer {
           try {
             len = decoder.parse(new String(scratch.bytes(), LENGTH.length, scratch.length() - LENGTH.length, StandardCharsets.UTF_8)).intValue();
           } catch (ParseException pe) {
-            throw new CorruptIndexException("failed to parse int length (resource=" + in + ")", pe);
+            throw new CorruptIndexException("failed to parse int length", in, pe);
           }
           term.grow(len);
           term.setLength(len);
@@ -445,7 +448,7 @@ class SimpleTextDocValuesReader extends DocValuesProducer {
           try {
             len = decoder.parse(new String(scratch.bytes(), LENGTH.length, scratch.length() - LENGTH.length, StandardCharsets.UTF_8)).intValue();
           } catch (ParseException pe) {
-            throw new CorruptIndexException("failed to parse int length (resource=" + in + ")", pe);
+            throw new CorruptIndexException("failed to parse int length", in, pe);
           }
           term.grow(len);
           term.setLength(len);
@@ -509,14 +512,30 @@ class SimpleTextDocValuesReader extends DocValuesProducer {
   }
 
   @Override
+  public Collection<Accountable> getChildResources() {
+    return Collections.emptyList();
+  }
+
+  @Override
+  public String toString() {
+    return getClass().getSimpleName() + "(fields=" + fields.size() + ")";
+  }
+
+  @Override
   public void checkIntegrity() throws IOException {
     BytesRefBuilder scratch = new BytesRefBuilder();
     IndexInput clone = data.clone();
     clone.seek(0);
+    // checksum is fixed-width encoded with 20 bytes, plus 1 byte for newline (the space is included in SimpleTextUtil.CHECKSUM):
+    long footerStartPos = data.length() - (SimpleTextUtil.CHECKSUM.length + 21);
     ChecksumIndexInput input = new BufferedChecksumIndexInput(clone);
-    while(true) {
+    while (true) {
       SimpleTextUtil.readLine(input, scratch);
-      if (scratch.get().equals(END)) {
+      if (input.getFilePointer() >= footerStartPos) {
+        // Make sure we landed at precisely the right location:
+        if (input.getFilePointer() != footerStartPos) {
+          throw new CorruptIndexException("SimpleText failure: footer does not start at expected position current=" + input.getFilePointer() + " vs expected=" + footerStartPos, input);
+        }
         SimpleTextUtil.checkFooter(input);
         break;
       }

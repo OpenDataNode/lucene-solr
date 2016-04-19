@@ -1,5 +1,3 @@
-package org.apache.lucene.search.vectorhighlight;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.vectorhighlight;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.vectorhighlight;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -67,11 +66,11 @@ public class SimpleFragmentsBuilderTest extends AbstractTestCase {
   }
   
   public void test3Frags() throws Exception {
-    BooleanQuery booleanQuery = new BooleanQuery();
+    BooleanQuery.Builder booleanQuery = new BooleanQuery.Builder();
     booleanQuery.add(new TermQuery(new Term(F, "a")), BooleanClause.Occur.SHOULD);
     booleanQuery.add(new TermQuery(new Term(F, "c")), BooleanClause.Occur.SHOULD);
     
-    FieldFragList ffl = ffl(booleanQuery, "a b b b b b b b b b b b a b a b b b b b c a a b b" );
+    FieldFragList ffl = ffl(booleanQuery.build(), "a b b b b b b b b b b b a b a b b b b b c a a b b" );
     SimpleFragmentsBuilder sfb = new SimpleFragmentsBuilder();
     String[] f = sfb.createFragments( reader, 0, F, ffl, 3 );
     assertEquals( 3, f.length );
@@ -148,8 +147,7 @@ public class SimpleFragmentsBuilderTest extends AbstractTestCase {
   }
   
   protected void makeUnstoredIndex() throws Exception {
-    IndexWriter writer = new IndexWriter(dir, new IndexWriterConfig(
-        TEST_VERSION_CURRENT, analyzerW).setOpenMode(OpenMode.CREATE));
+    IndexWriter writer = new IndexWriter(dir, new IndexWriterConfig(analyzerW).setOpenMode(OpenMode.CREATE));
     Document doc = new Document();
     FieldType customType = new FieldType(TextField.TYPE_NOT_STORED);
     customType.setStoreTermVectors(true);

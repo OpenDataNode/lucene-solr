@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,11 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
@@ -50,22 +49,29 @@ public class TestScoreCachingWrappingScorer extends LuceneTestCase {
 
     @Override public int docID() { return doc; }
 
-    @Override public int nextDoc() {
-      return ++doc < scores.length ? doc : NO_MORE_DOCS;
-    }
-    
-    @Override public int advance(int target) {
-      doc = target;
-      return doc < scores.length ? doc : NO_MORE_DOCS;
-    }
-    
     @Override
-    public long cost() {
-      return scores.length;
+    public DocIdSetIterator iterator() {
+      return new DocIdSetIterator() {
+        @Override public int docID() { return doc; }
+
+        @Override public int nextDoc() {
+          return ++doc < scores.length ? doc : NO_MORE_DOCS;
+        }
+        
+        @Override public int advance(int target) {
+          doc = target;
+          return doc < scores.length ? doc : NO_MORE_DOCS;
+        }
+
+        @Override
+        public long cost() {
+          return scores.length;
+        }
+      };
     }
   }
   
-  private static final class ScoreCachingCollector extends Collector {
+  private static final class ScoreCachingCollector extends SimpleCollector {
 
     private int idx = 0;
     private Scorer scorer;
@@ -88,14 +94,12 @@ public class TestScoreCachingWrappingScorer extends LuceneTestCase {
       ++idx;
     }
 
-    @Override public void setNextReader(AtomicReaderContext context) {
-    }
-
     @Override public void setScorer(Scorer scorer) {
       this.scorer = new ScoreCachingWrappingScorer(scorer);
     }
     
-    @Override public boolean acceptsDocsOutOfOrder() {
+    @Override
+    public boolean needsScores() {
       return true;
     }
 
@@ -112,14 +116,14 @@ public class TestScoreCachingWrappingScorer extends LuceneTestCase {
     IndexReader ir = writer.getReader();
     writer.close();
     IndexSearcher searcher = newSearcher(ir);
-    Weight fake = new TermQuery(new Term("fake", "weight")).createWeight(searcher);
+    Weight fake = new TermQuery(new Term("fake", "weight")).createWeight(searcher, true);
     Scorer s = new SimpleScorer(fake);
     ScoreCachingCollector scc = new ScoreCachingCollector(scores.length);
     scc.setScorer(s);
     
     // We need to iterate on the scorer so that its doc() advances.
     int doc;
-    while ((doc = s.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+    while ((doc = s.iterator().nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
       scc.collect(doc);
     }
     

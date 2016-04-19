@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicLong;
@@ -49,28 +49,10 @@ public class TrackingIndexWriter {
   }
 
   /** Calls {@link
-   *  IndexWriter#updateDocument(Term,Iterable,Analyzer)}
-   *  and returns the generation that reflects this change. */
-  public long updateDocument(Term t, Iterable<? extends IndexableField> d, Analyzer a) throws IOException {
-    writer.updateDocument(t, d, a);
-    // Return gen as of when indexing finished:
-    return indexingGen.get();
-  }
-
-  /** Calls {@link
    *  IndexWriter#updateDocument(Term,Iterable)} and
    *  returns the generation that reflects this change. */
   public long updateDocument(Term t, Iterable<? extends IndexableField> d) throws IOException {
     writer.updateDocument(t, d);
-    // Return gen as of when indexing finished:
-    return indexingGen.get();
-  }
-
-  /** Calls {@link
-   *  IndexWriter#updateDocuments(Term,Iterable,Analyzer)}
-   *  and returns the generation that reflects this change. */
-  public long updateDocuments(Term t, Iterable<? extends Iterable<? extends IndexableField>> docs, Analyzer a) throws IOException {
-    writer.updateDocuments(t, docs, a);
     // Return gen as of when indexing finished:
     return indexingGen.get();
   }
@@ -124,24 +106,6 @@ public class TrackingIndexWriter {
     return indexingGen.get();
   }
 
-  /** Calls {@link
-   *  IndexWriter#addDocument(Iterable,Analyzer)} and
-   *  returns the generation that reflects this change. */
-  public long addDocument(Iterable<? extends IndexableField> d, Analyzer a) throws IOException {
-    writer.addDocument(d, a);
-    // Return gen as of when indexing finished:
-    return indexingGen.get();
-  }
-
-  /** Calls {@link
-   *  IndexWriter#addDocuments(Iterable,Analyzer)} and
-   *  returns the generation that reflects this change.  */
-  public long addDocuments(Iterable<? extends Iterable<? extends IndexableField>> docs, Analyzer a) throws IOException {
-    writer.addDocuments(docs, a);
-    // Return gen as of when indexing finished:
-    return indexingGen.get();
-  }
-
   /** Calls {@link IndexWriter#addDocument(Iterable)}
    *  and returns the generation that reflects this change. */
   public long addDocument(Iterable<? extends IndexableField> d) throws IOException {
@@ -166,9 +130,9 @@ public class TrackingIndexWriter {
     return indexingGen.get();
   }
 
-  /** Calls {@link IndexWriter#addIndexes(IndexReader...)}
+  /** Calls {@link IndexWriter#addIndexes(CodecReader...)}
    *  and returns the generation that reflects this change. */
-  public long addIndexes(IndexReader... readers) throws IOException {
+  public long addIndexes(CodecReader... readers) throws IOException {
     writer.addIndexes(readers);
     // Return gen as of when indexing finished:
     return indexingGen.get();

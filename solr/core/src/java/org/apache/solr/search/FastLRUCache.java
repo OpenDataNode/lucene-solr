@@ -1,4 +1,3 @@
-package org.apache.solr.search;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,13 +14,16 @@ package org.apache.solr.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.search;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.util.ConcurrentLRUCache;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 
 import java.io.Serializable;
+import java.lang.invoke.MethodHandles;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -30,10 +32,10 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * SolrCache based on ConcurrentLRUCache implementation.
- * <p/>
+ * <p>
  * This implementation does not use a separate cleanup thread. Instead it uses the calling thread
  * itself to do the cleanup when the size of the cache exceeds certain limits.
- * <p/>
+ * <p>
  * Also see <a href="http://wiki.apache.org/solr/SolrCaching">SolrCaching</a>
  *
  *
@@ -42,6 +44,7 @@ import java.util.concurrent.TimeUnit;
  * @since solr 1.4
  */
 public class FastLRUCache<K,V> extends SolrCacheBase implements SolrCache<K,V> {
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   // contains the statistics objects for all open caches of the same type
   private List<ConcurrentLRUCache.Stats> statsList;
@@ -193,6 +196,7 @@ public class FastLRUCache<K,V> extends SolrCacheBase implements SolrCache<K,V> {
   public String getSource() {
     return null;
   }
+
 
   @Override
   public NamedList getStatistics() {

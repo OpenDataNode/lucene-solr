@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.tokenattributes;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,11 @@ package org.apache.lucene.analysis.tokenattributes;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.tokenattributes;
+
 
 import org.apache.lucene.util.AttributeImpl;
+import org.apache.lucene.util.AttributeReflector;
 import org.apache.lucene.util.BytesRef;
 
 /** Default implementation of {@link PayloadAttribute}. */
@@ -55,7 +56,7 @@ public class PayloadAttributeImpl extends AttributeImpl implements PayloadAttrib
   public PayloadAttributeImpl clone()  {
     PayloadAttributeImpl clone = (PayloadAttributeImpl) super.clone();
     if (payload != null) {
-      clone.payload = payload.clone();
+      clone.payload = BytesRef.deepCopyOf(payload);
     }
     return clone;
   }
@@ -86,8 +87,11 @@ public class PayloadAttributeImpl extends AttributeImpl implements PayloadAttrib
   @Override
   public void copyTo(AttributeImpl target) {
     PayloadAttribute t = (PayloadAttribute) target;
-    t.setPayload((payload == null) ? null : payload.clone());
+    t.setPayload((payload == null) ? null : BytesRef.deepCopyOf(payload));
   }  
 
-  
+  @Override
+  public void reflectWith(AttributeReflector reflector) {
+    reflector.reflect(PayloadAttribute.class, "payload", payload);
+  }
 }

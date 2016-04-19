@@ -1,5 +1,3 @@
-package org.apache.lucene.search.grouping;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.grouping;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.grouping;
 
 import org.apache.lucene.search.FieldComparator;
 import org.apache.lucene.search.Sort;
@@ -153,12 +152,15 @@ public class SearchGroup<GROUP_VALUE_TYPE> {
 
   private static class GroupComparator<T> implements Comparator<MergedGroup<T>> {
 
+    @SuppressWarnings("rawtypes")
     public final FieldComparator[] comparators;
+    
     public final int[] reversed;
 
+    @SuppressWarnings({"unchecked", "rawtypes"})
     public GroupComparator(Sort groupSort) throws IOException {
       final SortField[] sortFields = groupSort.getSort();
-      comparators = new FieldComparator<?>[sortFields.length];
+      comparators = new FieldComparator[sortFields.length];
       reversed = new int[sortFields.length];
       for (int compIDX = 0; compIDX < sortFields.length; compIDX++) {
         final SortField sortField = sortFields[compIDX];

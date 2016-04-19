@@ -14,25 +14,38 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.Map;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Terms;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.SortField;
+import org.apache.lucene.search.TopFieldDocs;
 import org.apache.lucene.util.BitUtil;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.NumericUtils;
 import org.apache.solr.common.SolrException;
+import org.apache.solr.common.util.SuppressForbidden;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.util.RefCounted;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class VersionInfo {
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
   public static final String VERSION_FIELD="_version_";
 
   private final UpdateLog ulog;
@@ -88,7 +101,6 @@ public class VersionInfo {
   }
 
   public void reload() {
-
   }
 
   public SchemaField getVersionField() {
@@ -138,15 +150,14 @@ public class VersionInfo {
   // Time-based lamport clock.  Good for introducing some reality into clocks (to the degree
   // that times are somewhat synchronized in the cluster).
   // Good if we want to relax some constraints to scale down to where only one node may be
-  // up at a time.  Possibly harder to detect missing messages (because versions are not contiguous.
-  long vclock;
-  long time;
+  // up at a time.  Possibly harder to detect missing messages (because versions are not contiguous).
+  private long vclock;
   private final Object clockSync = new Object();
 
-
+  @SuppressForbidden(reason = "need currentTimeMillis just for getting realistic version stamps, does not assume monotonicity")
   public long getNewClock() {
     synchronized (clockSync) {
-      time = System.currentTimeMillis();
+      long time = System.currentTimeMillis();
       long result = time << 20;
       if (result <= vclock) {
         result = vclock + 1;
@@ -191,13 +202,13 @@ public class VersionInfo {
     try {
       SolrIndexSearcher searcher = newestSearcher.get();
       long lookup = searcher.lookupId(idBytes);
-      if (lookup < 0) return null;
+      if (lookup < 0) return null; // this means the doc doesn't exist in the index yet
 
       ValueSource vs = versionField.getType().getValueSource(versionField, null);
       Map context = ValueSource.newContext(searcher);
       vs.createWeight(context, searcher);
-      FunctionValues fv = vs.getValues(context, searcher.getTopReaderContext().leaves().get((int)(lookup>>32)));
-      long ver = fv.longVal((int)lookup);
+      FunctionValues fv = vs.getValues(context, searcher.getTopReaderContext().leaves().get((int) (lookup >> 32)));
+      long ver = fv.longVal((int) lookup);
       return ver;
 
     } catch (IOException e) {
@@ -209,4 +220,48 @@ public class VersionInfo {
     }
   }
 
+  public Long getMaxVersionFromIndex(SolrIndexSearcher searcher) throws IOException {
+
+    String versionFieldName = versionField.getName();
+
+    log.info("Refreshing highest value of {} for {} version buckets from index", versionFieldName, buckets.length);
+    long maxVersionInIndex = 0L;
+
+    // if indexed, then we have terms to get the max from
+    if (versionField.indexed()) {
+      Terms versionTerms = searcher.getLeafReader().terms(versionFieldName);
+      Long max = (versionTerms != null) ? NumericUtils.getMaxLong(versionTerms) : null;
+      if (max != null) {
+        maxVersionInIndex = max.longValue();
+        log.info("Found MAX value {} from Terms for {} in index", maxVersionInIndex, versionFieldName);
+      } else {
+        log.info("No terms found for {}, cannot seed version bucket highest value from index", versionFieldName);
+      }
+    } else {
+      ValueSource vs = versionField.getType().getValueSource(versionField, null);
+      Map funcContext = ValueSource.newContext(searcher);
+      vs.createWeight(funcContext, searcher);
+      // TODO: multi-thread this
+      for (LeafReaderContext ctx : searcher.getTopReaderContext().leaves()) {
+        int maxDoc = ctx.reader().maxDoc();
+        FunctionValues fv = vs.getValues(funcContext, ctx);
+        for (int doc = 0; doc < maxDoc; doc++) {
+          long v = fv.longVal(doc);
+          maxVersionInIndex = Math.max(v, maxVersionInIndex);
+        }
+      }
+    }
+
+    return maxVersionInIndex;
+  }
+
+  public void seedBucketsWithHighestVersion(long highestVersion) {
+    for (int i=0; i<buckets.length; i++) {
+      // should not happen, but in case other threads are calling updateHighest on the version bucket
+      synchronized (buckets[i]) {
+        if (buckets[i].highest < highestVersion)
+          buckets[i].highest = highestVersion;
+      }
+    }
+  }
 }

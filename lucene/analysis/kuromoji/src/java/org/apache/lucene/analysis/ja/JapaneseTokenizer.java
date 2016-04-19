@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.ja;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,10 @@ package org.apache.lucene.analysis.ja;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.ja;
+
 
 import java.io.IOException;
-import java.io.Reader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -63,8 +62,8 @@ import org.apache.lucene.util.fst.FST;
  * <p>
  * This tokenizer uses a rolling Viterbi search to find the 
  * least cost segmentation (path) of the incoming characters.  
- * For tokens that appear to be compound (> length 2 for all
- * Kanji, or > length 7 for non-Kanji), we see if there is a
+ * For tokens that appear to be compound (&gt; length 2 for all
+ * Kanji, or &gt; length 7 for non-Kanji), we see if there is a
  * 2nd best segmentation of that token after applying
  * penalties to the long tokens.  If so, and the Mode is
  * {@link Mode#SEARCH}, we output the alternate segmentation 
@@ -191,27 +190,25 @@ public final class JapaneseTokenizer extends Tokenizer {
    * <p>
    * Uses the default AttributeFactory.
    * 
-   * @param input Reader containing text
    * @param userDictionary Optional: if non-null, user dictionary.
    * @param discardPunctuation true if punctuation tokens should be dropped from the output.
    * @param mode tokenization mode.
    */
-  public JapaneseTokenizer(Reader input, UserDictionary userDictionary, boolean discardPunctuation, Mode mode) {
-    this(DEFAULT_TOKEN_ATTRIBUTE_FACTORY, input, userDictionary, discardPunctuation, mode);
+  public JapaneseTokenizer(UserDictionary userDictionary, boolean discardPunctuation, Mode mode) {
+    this(DEFAULT_TOKEN_ATTRIBUTE_FACTORY, userDictionary, discardPunctuation, mode);
   }
 
   /**
    * Create a new JapaneseTokenizer.
    *
    * @param factory the AttributeFactory to use
-   * @param input Reader containing text
    * @param userDictionary Optional: if non-null, user dictionary.
    * @param discardPunctuation true if punctuation tokens should be dropped from the output.
    * @param mode tokenization mode.
    */
   public JapaneseTokenizer
-      (AttributeFactory factory, Reader input, UserDictionary userDictionary, boolean discardPunctuation, Mode mode) {
-    super(factory, input);
+      (AttributeFactory factory, UserDictionary userDictionary, boolean discardPunctuation, Mode mode) {
+    super(factory);
     dictionary = TokenInfoDictionary.getInstance();
     fst = dictionary.getFST();
     unkDictionary = UnknownDictionary.getInstance();

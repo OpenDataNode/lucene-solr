@@ -1,5 +1,3 @@
-package org.apache.solr.search.similarities;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search.similarities;
 
 import org.apache.lucene.search.similarities.PerFieldSimilarityWrapper;
 import org.apache.lucene.search.similarities.Similarity;
@@ -30,7 +29,7 @@ public abstract class BaseSimilarityTestCase extends SolrTestCaseJ4 {
   protected Similarity getSimilarity(String field) {
     SolrCore core = h.getCore();
     RefCounted<SolrIndexSearcher> searcher = core.getSearcher();
-    Similarity sim = searcher.get().getSimilarity();
+    Similarity sim = searcher.get().getSimilarity(true);
     searcher.decref();
     while (sim instanceof PerFieldSimilarityWrapper) {
       sim = ((PerFieldSimilarityWrapper)sim).get(field);

@@ -1,14 +1,12 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements. See the NOTICE file distributed with
+ * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
  * The ASF licenses this file to You under the Apache License, Version 2.0
  * (the "License"); you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
+ * the License.  You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,9 +14,13 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 import java.text.NumberFormat;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
@@ -39,6 +41,7 @@ import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.IntBlockPool;
 import org.apache.lucene.util.MutableBits;
 import org.apache.lucene.util.RamUsageEstimator;
+import org.apache.lucene.util.StringHelper;
 import org.apache.lucene.util.Version;
 
 import static org.apache.lucene.util.ByteBlockPool.BYTE_BLOCK_MASK;
@@ -110,9 +113,9 @@ class DocumentsWriterPerThread {
    *  updating the index files) and must discard all
    *  currently buffered docs.  This resets our state,
    *  discarding any docs added since last flush. */
-  void abort(Set<String> createdFiles) {
+  void abort() {
     //System.out.println(Thread.currentThread().getName() + ": now abort seg=" + segmentInfo.name);
-    hasAborted = aborting = true;
+    aborted = true;
     try {
       if (infoStream.isEnabled("DWPT")) {
         infoStream.message("DWPT", "now abort");
@@ -123,9 +126,7 @@ class DocumentsWriterPerThread {
       }
 
       pendingUpdates.clear();
-      createdFiles.addAll(directory.getCreatedFiles());
     } finally {
-      aborting = false;
       if (infoStream.isEnabled("DWPT")) {
         infoStream.message("DWPT", "done abort");
       }
@@ -143,8 +144,7 @@ class DocumentsWriterPerThread {
   // Updates for our still-in-RAM (to be flushed next) segment
   final BufferedUpdates pendingUpdates;
   private final SegmentInfo segmentInfo;     // Current segment we are working on
-  boolean aborting = false;   // True if an abort is pending
-  boolean hasAborted = false; // True if the last exception throws by #updateDocument was aborting
+  boolean aborted = false;   // True if we aborted
 
   private final FieldInfos.Builder fieldInfos;
   private final InfoStream infoStream;
@@ -156,10 +156,13 @@ class DocumentsWriterPerThread {
   final IntBlockPool.Allocator intBlockAllocator;
   private final AtomicLong pendingNumDocs;
   private final LiveIndexWriterConfig indexWriterConfig;
+  private final boolean enableTestPoints;
+  private final IndexWriter indexWriter;
   
-  public DocumentsWriterPerThread(String segmentName, Directory directory, LiveIndexWriterConfig indexWriterConfig, InfoStream infoStream, DocumentsWriterDeleteQueue deleteQueue,
-                                  FieldInfos.Builder fieldInfos, AtomicLong pendingNumDocs) throws IOException {
-    this.directoryOrig = directory;
+  public DocumentsWriterPerThread(IndexWriter writer, String segmentName, Directory directoryOrig, Directory directory, LiveIndexWriterConfig indexWriterConfig, InfoStream infoStream, DocumentsWriterDeleteQueue deleteQueue,
+                                  FieldInfos.Builder fieldInfos, AtomicLong pendingNumDocs, boolean enableTestPoints) throws IOException {
+    this.indexWriter = writer;
+    this.directoryOrig = directoryOrig;
     this.directory = new TrackingDirectoryWrapper(directory);
     this.fieldInfos = fieldInfos;
     this.indexWriterConfig = indexWriterConfig;
@@ -177,7 +180,7 @@ class DocumentsWriterPerThread {
     pendingUpdates.clear();
     deleteSlice = deleteQueue.newSlice();
    
-    segmentInfo = new SegmentInfo(directoryOrig, Version.LATEST, segmentName, -1, false, codec, null);
+    segmentInfo = new SegmentInfo(directoryOrig, Version.LATEST, segmentName, -1, false, codec, Collections.<String,String>emptyMap(), StringHelper.randomId(), new HashMap<String,String>());
     assert numDocsInRAM == 0;
     if (INFO_VERBOSE && infoStream.isEnabled("DWPT")) {
       infoStream.message("DWPT", Thread.currentThread().getName() + " init seg=" + segmentName + " delQueue=" + deleteQueue);  
@@ -185,41 +188,34 @@ class DocumentsWriterPerThread {
     // this should be the last call in the ctor 
     // it really sucks that we need to pull this within the ctor and pass this ref to the chain!
     consumer = indexWriterConfig.getIndexingChain().getChain(this);
+    this.enableTestPoints = enableTestPoints;
   }
   
-  void setAborting() {
-    aborting = true;
-  }
-
   public FieldInfos.Builder getFieldInfosBuilder() {
     return fieldInfos;
   }
 
-  boolean checkAndResetHasAborted() {
-    final boolean retval = hasAborted;
-    hasAborted = false;
-    return retval;
-  }
-  
   final void testPoint(String message) {
-    if (infoStream.isEnabled("TP")) {
+    if (enableTestPoints) {
+      assert infoStream.isEnabled("TP"); // don't enable unless you need them.
       infoStream.message("TP", message);
     }
   }
 
   /** Anything that will add N docs to the index should reserve first to
    *  make sure it's allowed. */
-  private void reserveDoc() {
+  private void reserveOneDoc() {
     if (pendingNumDocs.incrementAndGet() > IndexWriter.getActualMaxDocs()) {
-      // Reserve failed
+      // Reserve failed: put the one doc back and throw exc:
       pendingNumDocs.decrementAndGet();
-      throw new IllegalStateException("number of documents in the index cannot exceed " + IndexWriter.getActualMaxDocs());
+      throw new IllegalArgumentException("number of documents in the index cannot exceed " + IndexWriter.getActualMaxDocs());
     }
   }
 
-  public void updateDocument(Iterable<? extends IndexableField> doc, Analyzer analyzer, Term delTerm) throws IOException {
+  public void updateDocument(Iterable<? extends IndexableField> doc, Analyzer analyzer, Term delTerm) throws IOException, AbortingException {
     testPoint("DocumentsWriterPerThread addDocument start");
     assert deleteQueue != null;
+    reserveOneDoc();
     docState.doc = doc;
     docState.analyzer = analyzer;
     docState.docID = numDocsInRAM;
@@ -232,7 +228,6 @@ class DocumentsWriterPerThread {
     // document, so the counter will be "wrong" in that case, but
     // it's very hard to fix (we can't easily distinguish aborting
     // vs non-aborting exceptions):
-    reserveDoc();
     boolean success = false;
     try {
       try {
@@ -243,19 +238,15 @@ class DocumentsWriterPerThread {
       success = true;
     } finally {
       if (!success) {
-        if (!aborting) {
-          // mark document as deleted
-          deleteDocID(docState.docID);
-          numDocsInRAM++;
-        } else {
-          abort(filesToDelete);
-        }
+        // mark document as deleted
+        deleteDocID(docState.docID);
+        numDocsInRAM++;
       }
     }
     finishDocument(delTerm);
   }
 
-  public int updateDocuments(Iterable<? extends Iterable<? extends IndexableField>> docs, Analyzer analyzer, Term delTerm) throws IOException {
+  public int updateDocuments(Iterable<? extends Iterable<? extends IndexableField>> docs, Analyzer analyzer, Term delTerm) throws IOException, AbortingException {
     testPoint("DocumentsWriterPerThread addDocuments start");
     assert deleteQueue != null;
     docState.analyzer = analyzer;
@@ -272,7 +263,7 @@ class DocumentsWriterPerThread {
         // document, so the counter will be "wrong" in that case, but
         // it's very hard to fix (we can't easily distinguish aborting
         // vs non-aborting exceptions):
-        reserveDoc();
+        reserveOneDoc();
         docState.doc = doc;
         docState.docID = numDocsInRAM;
         docCount++;
@@ -283,14 +274,9 @@ class DocumentsWriterPerThread {
           success = true;
         } finally {
           if (!success) {
-            // An exc is being thrown...
-            if (!aborting) {
-              // Incr here because finishDocument will not
-              // be called (because an exc is being thrown):
-              numDocsInRAM++;
-            } else {
-              abort(filesToDelete);
-            }
+            // Incr here because finishDocument will not
+            // be called (because an exc is being thrown):
+            numDocsInRAM++;
           }
         }
         finishDocument(null);
@@ -307,7 +293,7 @@ class DocumentsWriterPerThread {
       }
 
     } finally {
-      if (!allDocsIndexed && !aborting) {
+      if (!allDocsIndexed && !aborted) {
         // the iterator threw an exception that is not aborting 
         // go and mark all docs from this block as deleted
         int docID = numDocsInRAM-1;
@@ -400,12 +386,11 @@ class DocumentsWriterPerThread {
   }
 
   /** Flush all pending docs to a new segment */
-  FlushedSegment flush() throws IOException {
+  FlushedSegment flush() throws IOException, AbortingException {
     assert numDocsInRAM > 0;
     assert deleteSlice.isEmpty() : "all deletes must be applied in prepareFlush";
-    segmentInfo.setDocCount(numDocsInRAM);
+    segmentInfo.setMaxDoc(numDocsInRAM);
     final SegmentWriteState flushState = new SegmentWriteState(infoStream, directory, segmentInfo, fieldInfos.finish(),
-        indexWriterConfig.getTermIndexInterval(),
         pendingUpdates, new IOContext(new FlushInfo(numDocsInRAM, bytesUsed())));
     final double startMBUsed = bytesUsed() / 1024. / 1024.;
 
@@ -422,7 +407,7 @@ class DocumentsWriterPerThread {
       pendingUpdates.docIDs.clear();
     }
 
-    if (aborting) {
+    if (aborted) {
       if (infoStream.isEnabled("DWPT")) {
         infoStream.message("DWPT", "flush: skip because aborting is set");
       }
@@ -432,8 +417,6 @@ class DocumentsWriterPerThread {
     if (infoStream.isEnabled("DWPT")) {
       infoStream.message("DWPT", "flush postings as segment " + flushState.segmentInfo.name + " numDocs=" + numDocsInRAM);
     }
-
-    boolean success = false;
 
     try {
       consumer.flush(flushState);
@@ -465,8 +448,8 @@ class DocumentsWriterPerThread {
         final double newSegmentSize = segmentInfoPerCommit.sizeInBytes()/1024./1024.;
         infoStream.message("DWPT", "flushed: segment=" + segmentInfo.name + 
                 " ramUsed=" + nf.format(startMBUsed) + " MB" +
-                " newFlushedSize(includes docstores)=" + nf.format(newSegmentSize) + " MB" +
-                " docs/MB=" + nf.format(flushState.segmentInfo.getDocCount() / newSegmentSize));
+                " newFlushedSize=" + nf.format(newSegmentSize) + " MB" +
+                " docs/MB=" + nf.format(flushState.segmentInfo.maxDoc() / newSegmentSize));
       }
 
       assert segmentInfo != null;
@@ -474,13 +457,11 @@ class DocumentsWriterPerThread {
       FlushedSegment fs = new FlushedSegment(segmentInfoPerCommit, flushState.fieldInfos,
                                              segmentDeletes, flushState.liveDocs, flushState.delCountOnFlush);
       sealFlushedSegment(fs);
-      success = true;
 
       return fs;
-    } finally {
-      if (!success) {
-        abort(filesToDelete);
-      }
+    } catch (Throwable th) {
+      abort();
+      throw AbortingException.wrap(th);
     }
   }
   
@@ -500,13 +481,16 @@ class DocumentsWriterPerThread {
 
     IndexWriter.setDiagnostics(newSegment.info, IndexWriter.SOURCE_FLUSH);
     
-    IOContext context = new IOContext(new FlushInfo(newSegment.info.getDocCount(), newSegment.sizeInBytes()));
+    IOContext context = new IOContext(new FlushInfo(newSegment.info.maxDoc(), newSegment.sizeInBytes()));
 
     boolean success = false;
     try {
       
       if (indexWriterConfig.getUseCompoundFile()) {
-        filesToDelete.addAll(IndexWriter.createCompoundFile(infoStream, directory, MergeState.CheckAbort.NONE, newSegment.info, context));
+        Set<String> originalFiles = newSegment.info.files();
+        // TODO: like addIndexes, we are relying on createCompoundFile to successfully cleanup...
+        indexWriter.createCompoundFile(infoStream, new TrackingDirectoryWrapper(directory), newSegment.info, context);
+        filesToDelete.addAll(originalFiles);
         newSegment.info.setUseCompoundFile(true);
       }
 
@@ -514,7 +498,7 @@ class DocumentsWriterPerThread {
       // creating CFS so that 1) .si isn't slurped into CFS,
       // and 2) .si reflects useCompoundFile=true change
       // above:
-      codec.segmentInfoFormat().getSegmentInfoWriter().write(directory, newSegment.info, flushedSegment.fieldInfos, context);
+      codec.segmentInfoFormat().write(directory, newSegment.info, context);
 
       // TODO: ideally we would freeze newSegment here!!
       // because any changes after writing the .si will be
@@ -601,7 +585,7 @@ class DocumentsWriterPerThread {
   @Override
   public String toString() {
     return "DocumentsWriterPerThread [pendingDeletes=" + pendingUpdates
-      + ", segment=" + (segmentInfo != null ? segmentInfo.name : "null") + ", aborting=" + aborting + ", numDocsInRAM="
+      + ", segment=" + (segmentInfo != null ? segmentInfo.name : "null") + ", aborted=" + aborted + ", numDocsInRAM="
         + numDocsInRAM + ", deleteQueue=" + deleteQueue + "]";
   }
   

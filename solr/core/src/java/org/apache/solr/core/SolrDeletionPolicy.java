@@ -1,4 +1,3 @@
-package org.apache.solr.core;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,20 +14,21 @@ package org.apache.solr.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.core;
 import org.apache.lucene.index.IndexCommit;
 import org.apache.lucene.index.IndexDeletionPolicy;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.solr.common.util.NamedList;
-import org.apache.solr.schema.DateField;
 import org.apache.solr.util.DateMathParser;
+import org.apache.solr.util.DateFormatUtil;
 import org.apache.solr.util.plugin.NamedListInitializedPlugin;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.List;
 import java.util.Locale;
 
@@ -42,7 +42,7 @@ import java.util.Locale;
  * @see org.apache.lucene.index.IndexDeletionPolicy
  */
 public class SolrDeletionPolicy extends IndexDeletionPolicy implements NamedListInitializedPlugin {
-  public static Logger log = LoggerFactory.getLogger(SolrCore.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private String maxCommitAge = null;
   private int maxCommitsToKeep = 1;
@@ -174,7 +174,7 @@ public class SolrDeletionPolicy extends IndexDeletionPolicy implements NamedList
         try {
           if (maxCommitAge != null) {
             if (maxCommitAgeTimeStamp==-1) {
-              DateMathParser dmp = new DateMathParser(DateField.UTC, Locale.ROOT);
+              DateMathParser dmp = new DateMathParser(DateFormatUtil.UTC, Locale.ROOT);
               maxCommitAgeTimeStamp = dmp.parseMath(maxCommitAge).getTime();
             }
             if (IndexDeletionPolicyWrapper.getCommitTimestamp(commit) < maxCommitAgeTimeStamp) {
@@ -211,7 +211,7 @@ public class SolrDeletionPolicy extends IndexDeletionPolicy implements NamedList
     // be the same, regardless of the Directory instance.
     if (dir instanceof FSDirectory) {
       FSDirectory fsd = (FSDirectory) dir;
-      File fdir = fsd.getDirectory();
+      File fdir = fsd.getDirectory().toFile();
       sb.append(fdir.getPath());
     } else {
       sb.append(dir);

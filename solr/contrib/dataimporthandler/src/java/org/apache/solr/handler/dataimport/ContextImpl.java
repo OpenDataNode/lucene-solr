@@ -1,4 +1,3 @@
-package org.apache.solr.handler.dataimport;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,8 +14,7 @@ package org.apache.solr.handler.dataimport;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
+package org.apache.solr.handler.dataimport;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.dataimport.config.Script;
 
@@ -50,11 +48,12 @@ public class ContextImpl extends Context {
 
   private Map<String, Object> entitySession, globalSession;
 
+  private Exception lastException = null;
+
   DocBuilder.DocWrapper doc;
 
   DocBuilder docBuilder;
 
-  Exception lastException = null;
 
 
   public ContextImpl(EntityProcessorWrapper epw, VariableResolver resolver,
@@ -255,4 +254,8 @@ public class ContextImpl extends Context {
   public String replaceTokens(String template) {
     return resolver.replaceTokens(template);
   }
+
+  public Exception getLastException() { return lastException; }
+
+  public void setLastException(Exception lastException) {this.lastException = lastException; }
 }

@@ -14,12 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update;
 
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.common.params.MapSolrParams;
@@ -34,7 +35,10 @@ import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.util.AbstractSolrTestCase;
 import org.apache.solr.util.RefCounted;
+import org.apache.solr.util.TimeOut;
 import org.junit.BeforeClass;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 class NewSearcherListener implements SolrEventListener {
 
@@ -85,9 +89,9 @@ class NewSearcherListener implements SolrEventListener {
     // log.info("TEST: trigger reset");
   }
 
-  boolean waitForNewSearcher(int timeout) {
-    long timeoutTime = System.currentTimeMillis() + timeout;
-    while (System.currentTimeMillis() < timeoutTime) {
+  boolean waitForNewSearcher(int timeoutMs) {
+    TimeOut timeout = new TimeOut(timeoutMs, TimeUnit.MILLISECONDS);
+    while (! timeout.hasTimedOut()) {
       if (triggered) {
         // check if the new searcher has been registered yet
         RefCounted<SolrIndexSearcher> registeredSearcherH = newSearcher.getCore().getSearcher();
@@ -108,6 +112,8 @@ class NewSearcherListener implements SolrEventListener {
 
 @Slow
 public class AutoCommitTest extends AbstractSolrTestCase {
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
    @BeforeClass
   public static void beforeClass() throws Exception {
@@ -144,7 +150,7 @@ public class AutoCommitTest extends AbstractSolrTestCase {
   {
     ArrayList<ContentStream> streams = new ArrayList<>();
     ContentStreamBase stream = new ContentStreamBase.StringStream( str );
-    stream.setContentType( contentType );
+    if (contentType != null) stream.setContentType( contentType );
     streams.add( stream );
     return streams;
   }

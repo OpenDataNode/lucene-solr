@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.spans;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.spans;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.spans;
 
 import org.apache.lucene.queryparser.flexible.core.QueryNodeException;
 import org.apache.lucene.queryparser.flexible.core.builders.QueryTreeBuilder;
@@ -27,12 +26,12 @@ import org.apache.lucene.search.spans.SpanQuery;
 
 /**
  * Sets up a query tree builder to build a span query tree from a query node
- * tree.<br/>
- * <br/>
+ * tree.<br>
+ * <br>
  * 
- * The defined map is:<br/>
- * - every BooleanQueryNode instance is delegated to the SpanOrQueryNodeBuilder<br/>
- * - every FieldQueryNode instance is delegated to the SpanTermQueryNodeBuilder <br/>
+ * The defined map is:<br>
+ * - every BooleanQueryNode instance is delegated to the SpanOrQueryNodeBuilder<br>
+ * - every FieldQueryNode instance is delegated to the SpanTermQueryNodeBuilder <br>
  * 
  */
 public class SpansQueryTreeBuilder extends QueryTreeBuilder implements

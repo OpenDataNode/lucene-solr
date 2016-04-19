@@ -14,8 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update.processor;
+
+import java.lang.invoke.MethodHandles;
+import java.util.Collection;
 
 import org.apache.solr.common.SolrInputField;
 
@@ -32,7 +34,7 @@ import org.slf4j.LoggerFactory;
 public abstract class FieldValueMutatingUpdateProcessor 
   extends FieldMutatingUpdateProcessor {
 
-  private static final Logger log = LoggerFactory.getLogger(FieldValueMutatingUpdateProcessor.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   
   public static final Object DELETE_VALUE_SINGLETON = new Object() {
@@ -61,8 +63,10 @@ public abstract class FieldValueMutatingUpdateProcessor
   
   @Override
   protected final SolrInputField mutate(final SolrInputField src) {
+    Collection<Object> values = src.getValues();
+    if(values == null) return src;//don't mutate
     SolrInputField result = new SolrInputField(src.getName());
-    for (final Object srcVal : src.getValues()) {
+    for (final Object srcVal : values) {
       final Object destVal = mutateValue(srcVal);
       if (DELETE_VALUE_SINGLETON == destVal) { 
         /* NOOP */

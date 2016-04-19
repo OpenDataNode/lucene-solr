@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.simpletext;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,10 @@ package org.apache.lucene.codecs.simpletext;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.simpletext;
+
 
 import java.io.IOException;
-import java.util.Comparator;
 
 import org.apache.lucene.codecs.TermVectorsWriter;
 import org.apache.lucene.index.FieldInfo;
@@ -34,7 +33,7 @@ import org.apache.lucene.util.IOUtils;
 /**
  * Writes plain-text term vectors.
  * <p>
- * <b><font color="red">FOR RECREATIONAL USE ONLY</font></B>
+ * <b>FOR RECREATIONAL USE ONLY</b>
  * @lucene.experimental
  */
 public class SimpleTextTermVectorsWriter extends TermVectorsWriter {
@@ -75,7 +74,7 @@ public class SimpleTextTermVectorsWriter extends TermVectorsWriter {
       success = true;
     } finally {
       if (!success) {
-        abort();
+        IOUtils.closeWhileHandlingException(this);
       }
     }
   }
@@ -165,14 +164,6 @@ public class SimpleTextTermVectorsWriter extends TermVectorsWriter {
   }
 
   @Override
-  public void abort() {
-    try {
-      close();
-    } catch (Throwable ignored) {}
-    IOUtils.deleteFilesIgnoringExceptions(directory, IndexFileNames.segmentFileName(segment, "", VECTORS_EXTENSION));
-  }
-
-  @Override
   public void finish(FieldInfos fis, int numDocs) throws IOException {
     if (numDocsWritten != numDocs) {
       throw new RuntimeException("mergeVectors produced an invalid result: mergedDocs is " + numDocs + " but vec numDocs is " + numDocsWritten + " file=" + out.toString() + "; now aborting this merge to prevent index corruption");
@@ -189,11 +180,6 @@ public class SimpleTextTermVectorsWriter extends TermVectorsWriter {
     } finally {
       out = null;
     }
-  }
-  
-  @Override
-  public Comparator<BytesRef> getComparator() throws IOException {
-    return BytesRef.getUTF8SortedAsUnicodeComparator();
   }
   
   private void write(String s) throws IOException {

@@ -1,5 +1,3 @@
-package org.apache.lucene.util.packed;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.util.packed;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util.packed;
+
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -27,13 +27,13 @@ import org.apache.lucene.store.IndexOutput;
  * Class for writing packed integers to be directly read from Directory.
  * Integers can be read on-the-fly via {@link DirectReader}.
  * <p>
- * Unlike PackedInts, it optimizes for read i/o operations and supports > 2B values.
+ * Unlike PackedInts, it optimizes for read i/o operations and supports &gt; 2B values.
  * Example usage:
  * <pre class="prettyprint">
  *   int bitsPerValue = DirectWriter.bitsRequired(100); // values up to and including 100
  *   IndexOutput output = dir.createOutput("packed", IOContext.DEFAULT);
  *   DirectWriter writer = DirectWriter.getInstance(output, numberOfValues, bitsPerValue);
- *   for (int i = 0; i < numberOfValues; i++) {
+ *   for (int i = 0; i &lt; numberOfValues; i++) {
  *     writer.add(value);
  *   }
  *   writer.finish();

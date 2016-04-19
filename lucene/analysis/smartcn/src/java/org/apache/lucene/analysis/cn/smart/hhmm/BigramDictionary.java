@@ -14,21 +14,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.analysis.cn.smart.hhmm;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.RandomAccessFile;
-import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 import org.apache.lucene.analysis.cn.smart.AnalyzerProfile;
 
@@ -67,7 +64,11 @@ class BigramDictionary extends AbstractDictionary {
         singleInstance.load();
       } catch (IOException e) {
         String dictRoot = AnalyzerProfile.ANALYSIS_DATA_DIR;
-        singleInstance.load(dictRoot);
+        try {
+          singleInstance.load(dictRoot);
+        } catch (IOException ioe) {
+          throw new RuntimeException(ioe);
+        }
       } catch (ClassNotFoundException e) {
         throw new RuntimeException(e);
       }
@@ -75,9 +76,9 @@ class BigramDictionary extends AbstractDictionary {
     return singleInstance;
   }
 
-  private boolean loadFromObj(File serialObj) {
+  private boolean loadFromObj(Path serialObj) {
     try {
-      loadFromInputStream(new FileInputStream(serialObj));
+      loadFromInputStream(Files.newInputStream(serialObj));
       return true;
     } catch (Exception e) {
       throw new RuntimeException(e);
@@ -86,23 +87,19 @@ class BigramDictionary extends AbstractDictionary {
 
   private void loadFromInputStream(InputStream serialObjectInputStream)
       throws IOException, ClassNotFoundException {
-    ObjectInputStream input = new ObjectInputStream(serialObjectInputStream);
-    bigramHashTable = (long[]) input.readObject();
-    frequencyTable = (int[]) input.readObject();
-    // log.info("load bigram dict from serialization.");
-    input.close();
+    try (ObjectInputStream input = new ObjectInputStream(serialObjectInputStream)) {
+      bigramHashTable = (long[]) input.readObject();
+      frequencyTable = (int[]) input.readObject();
+      // log.info("load bigram dict from serialization.");
+    }
   }
 
-  private void saveToObj(File serialObj) {
-    try {
-      ObjectOutputStream output = new ObjectOutputStream(new FileOutputStream(
-          serialObj));
+  private void saveToObj(Path serialObj) throws IOException {
+    try (ObjectOutputStream output = new ObjectOutputStream(Files.newOutputStream(
+        serialObj))) {
       output.writeObject(bigramHashTable);
       output.writeObject(frequencyTable);
-      output.close();
       // log.info("serialize bigram dict.");
-    } catch (Exception e) {
-      // log.warn(e.getMessage());
     }
   }
 
@@ -111,12 +108,12 @@ class BigramDictionary extends AbstractDictionary {
     loadFromInputStream(input);
   }
 
-  private void load(String dictRoot) {
+  private void load(String dictRoot) throws IOException {
     String bigramDictPath = dictRoot + "/bigramdict.dct";
 
-    File serialObj = new File(dictRoot + "/bigramdict.mem");
+    Path serialObj = Paths.get(dictRoot + "/bigramdict.mem");
 
-    if (serialObj.exists() && loadFromObj(serialObj)) {
+    if (Files.exists(serialObj) && loadFromObj(serialObj)) {
 
     } else {
       try {
@@ -149,7 +146,7 @@ class BigramDictionary extends AbstractDictionary {
     int[] buffer = new int[3];
     byte[] intBuffer = new byte[4];
     String tmpword;
-    RandomAccessFile dctFile = new RandomAccessFile(dctFilePath, "r");
+    DataInputStream dctFile = new DataInputStream(Files.newInputStream(Paths.get(dctFilePath)));
 
     // GB2312 characters 0 - 6768
     for (i = GB2312_FIRST_CHAR; i < GB2312_FIRST_CHAR + CHAR_NUM_IN_FILE; i++) {

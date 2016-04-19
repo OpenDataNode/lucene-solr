@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.cjk;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,10 @@ package org.apache.lucene.analysis.cjk;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.cjk;
+
 
 import java.io.IOException;
-import java.io.Reader;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
@@ -26,6 +25,7 @@ import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.core.LowerCaseFilter;
 import org.apache.lucene.analysis.core.StopFilter;
 import org.apache.lucene.analysis.standard.StandardTokenizer;
+import org.apache.lucene.analysis.standard.std40.StandardTokenizer40;
 import org.apache.lucene.analysis.util.CharArraySet;
 import org.apache.lucene.analysis.util.StopwordAnalyzerBase;
 import org.apache.lucene.util.Version;
@@ -40,7 +40,7 @@ public final class CJKAnalyzer extends StopwordAnalyzerBase {
 
   /**
    * File containing default CJK stopwords.
-   * <p/>
+   * <p>
    * Currently it contains some common English words that are not usually
    * useful for searching and some double-byte interpunctions.
    */
@@ -74,14 +74,6 @@ public final class CJKAnalyzer extends StopwordAnalyzerBase {
   public CJKAnalyzer() {
     this(DefaultSetHolder.DEFAULT_STOP_SET);
   }
-
-  /**
-   * @deprecated Use {@link #CJKAnalyzer()}
-   */
-  @Deprecated
-  public CJKAnalyzer(Version matchVersion) {
-    this(matchVersion, DefaultSetHolder.DEFAULT_STOP_SET);
-  }
   
   /**
    * Builds an analyzer with the given stop words
@@ -93,27 +85,18 @@ public final class CJKAnalyzer extends StopwordAnalyzerBase {
     super(stopwords);
   }
 
-  /**
-   * @deprecated Use {@link #CJKAnalyzer(CharArraySet)}
-   */
-  @Deprecated
-  public CJKAnalyzer(Version matchVersion, CharArraySet stopwords){
-    super(matchVersion, stopwords);
-  }
-
   @Override
-  protected TokenStreamComponents createComponents(String fieldName,
-      Reader reader) {
-    if (getVersion().onOrAfter(Version.LUCENE_3_6_0)) {
-      final Tokenizer source = new StandardTokenizer(getVersion(), reader);
-      // run the widthfilter first before bigramming, it sometimes combines characters.
-      TokenStream result = new CJKWidthFilter(source);
-      result = new LowerCaseFilter(getVersion(), result);
-      result = new CJKBigramFilter(result);
-      return new TokenStreamComponents(source, new StopFilter(getVersion(), result, stopwords));
+  protected TokenStreamComponents createComponents(String fieldName) {
+    final Tokenizer source;
+    if (getVersion().onOrAfter(Version.LUCENE_4_7_0)) {
+      source = new StandardTokenizer();
     } else {
-      final Tokenizer source = new CJKTokenizer(reader);
-      return new TokenStreamComponents(source, new StopFilter(getVersion(), source, stopwords));
+      source = new StandardTokenizer40();
     }
+    // run the widthfilter first before bigramming, it sometimes combines characters.
+    TokenStream result = new CJKWidthFilter(source);
+    result = new LowerCaseFilter(result);
+    result = new CJKBigramFilter(result);
+    return new TokenStreamComponents(source, new StopFilter(result, stopwords));
   }
 }

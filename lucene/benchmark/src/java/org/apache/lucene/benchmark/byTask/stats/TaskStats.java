@@ -1,5 +1,3 @@
-package org.apache.lucene.benchmark.byTask.stats;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.benchmark.byTask.stats;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.benchmark.byTask.stats;
+
 
 import org.apache.lucene.benchmark.byTask.tasks.PerfTask;
 
@@ -35,7 +35,7 @@ public class TaskStats implements Cloneable {
   /** task start time */
   private long start;
   
-  /** task elapsed time.  elapsed >= 0 indicates run completion! */
+  /** task elapsed time.  elapsed &gt;= 0 indicates run completion! */
   private long elapsed = -1;
   
   /** max tot mem during task */

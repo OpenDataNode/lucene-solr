@@ -14,19 +14,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler.component;
 
-import org.apache.solr.util.PivotListEntry;
-import org.apache.solr.common.SolrException.ErrorCode;
-import org.apache.solr.common.params.FacetParams;
-import org.apache.solr.common.params.SolrParams;
-import org.apache.solr.common.util.NamedList;
-import org.apache.solr.common.util.StrUtils;
-
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Collections;
+import java.util.Map;
+import java.util.Map.Entry;
+
+import org.apache.solr.common.SolrException;
+import org.apache.solr.common.SolrException.ErrorCode;
+import org.apache.solr.common.util.NamedList;
+import org.apache.solr.common.util.SimpleOrderedMap;
+import org.apache.solr.common.util.StrUtils;
+import org.apache.solr.util.PivotListEntry;
 
 public class PivotFacetHelper {
 
@@ -46,8 +47,9 @@ public class PivotFacetHelper {
     assert null != values;
 
     // special case: empty list => empty string
-    if (values.isEmpty()) { return ""; }
-
+    if (values.isEmpty()) {
+      return "";
+    }
     
     StringBuilder out = new StringBuilder();
     for (String val : values) {
@@ -59,7 +61,7 @@ public class PivotFacetHelper {
       }
       out.append(',');
     }
-    out.deleteCharAt(out.length()-1);  // prune the last seperator
+    out.deleteCharAt(out.length()-1);  // prune the last separator
     return out.toString();
     // return StrUtils.join(values, ',');
   }
@@ -70,11 +72,11 @@ public class PivotFacetHelper {
    * @see #encodeRefinementValuePath
    */
   public static List<String> decodeRefinementValuePath(String valuePath) {
-    List <String> rawvals = StrUtils.splitSmart(valuePath, ",", true);
+    List<String> rawvals = StrUtils.splitSmart(valuePath, ",", true);
     // special case: empty list => empty string
     if (rawvals.isEmpty()) return rawvals;
 
-    List<String> out = new ArrayList<String>(rawvals.size());
+    List<String> out = new ArrayList<>(rawvals.size());
     for (String raw : rawvals) {
       assert 0 < raw.length();
       if ('^' == raw.charAt(0)) {
@@ -91,31 +93,97 @@ public class PivotFacetHelper {
 
   /** @see PivotListEntry#VALUE */
   public static Comparable getValue(NamedList<Object> pivotList) {
-    return (Comparable) PivotFacetHelper.retrieve(PivotListEntry.VALUE,
-                                                  pivotList);
+    return (Comparable) PivotListEntry.VALUE.extract(pivotList);
   }
 
   /** @see PivotListEntry#FIELD */
   public static String getField(NamedList<Object> pivotList) {
-    return (String) PivotFacetHelper.retrieve(PivotListEntry.FIELD, pivotList);
+    return (String) PivotListEntry.FIELD.extract(pivotList);
   }
   
   /** @see PivotListEntry#COUNT */
   public static Integer getCount(NamedList<Object> pivotList) {
-    return (Integer) PivotFacetHelper.retrieve(PivotListEntry.COUNT, pivotList);
+    return (Integer) PivotListEntry.COUNT.extract(pivotList);
   }
 
   /** @see PivotListEntry#PIVOT */
   public static List<NamedList<Object>> getPivots(NamedList<Object> pivotList) {
-    int pivotIdx = pivotList.indexOf(PivotListEntry.PIVOT.getName(), 0);
-    if (pivotIdx > -1) {
-      return (List<NamedList<Object>>) pivotList.getVal(pivotIdx);
-    }
-    return null;
+    return (List<NamedList<Object>>) PivotListEntry.PIVOT.extract(pivotList);
   }
   
-  private static Object retrieve(PivotListEntry entryToGet, NamedList<Object> pivotList) {
-    return pivotList.get(entryToGet.getName(), entryToGet.getIndex());
+  /** @see PivotListEntry#STATS */
+  public static NamedList<NamedList<NamedList<?>>> getStats(NamedList<Object> pivotList) {
+    return (NamedList<NamedList<NamedList<?>>>) PivotListEntry.STATS.extract(pivotList);
   }
 
+  /** @see PivotListEntry#QUERIES */
+  public static NamedList<Number> getQueryCounts(NamedList<Object> pivotList) {
+    return (NamedList<Number>) PivotListEntry.QUERIES.extract(pivotList);
+  }
+  
+  /** @see PivotListEntry#RANGES */
+  public static SimpleOrderedMap<SimpleOrderedMap<Object>> getRanges(NamedList<Object> pivotList) {
+    return (SimpleOrderedMap<SimpleOrderedMap<Object>>) PivotListEntry.RANGES.extract(pivotList);
+  }
+  
+  /**
+   * Given a mapping of keys to {@link StatsValues} representing the currently 
+   * known "merged" stats (which may be null if none exist yet), and a 
+   * {@link NamedList} containing the "stats" response block returned by an individual 
+   * shard, this method accumulates the stats for each {@link StatsField} found in
+   * the shard response with the existing mergeStats
+   *
+   * @return the original <code>merged</code> Map after modifying, or a new Map if the <code>merged</code> param was originally null.
+   * @see StatsInfo#getStatsField
+   * @see StatsValuesFactory#createStatsValues
+   * @see StatsValues#accumulate(NamedList)
+   */
+  public static Map<String,StatsValues> mergeStats
+    (Map<String,StatsValues> merged, 
+     NamedList<NamedList<NamedList<?>>> remoteWrapper, 
+     StatsInfo statsInfo) {
+
+    if (null == merged) merged = new LinkedHashMap<>();
+
+    NamedList<NamedList<?>> remoteStats = StatsComponent.unwrapStats(remoteWrapper);
+
+    for (Entry<String,NamedList<?>> entry : remoteStats) {
+      StatsValues receivingStatsValues = merged.get(entry.getKey());
+      if (receivingStatsValues == null) {
+        StatsField receivingStatsField = statsInfo.getStatsField(entry.getKey());
+        if (null == receivingStatsField) {
+          throw new SolrException(ErrorCode.SERVER_ERROR , "No stats.field found corresponding to pivot stats received from shard: "+entry.getKey());
+        }
+        receivingStatsValues = StatsValuesFactory.createStatsValues(receivingStatsField);
+        merged.put(entry.getKey(), receivingStatsValues);
+      }
+      receivingStatsValues.accumulate(entry.getValue());
+    }
+    return merged;
+  }
+
+  /**
+   * Merges query counts returned by a shard into global query counts.
+   * Entries found only in shard's query counts will be added to global counts.
+   * Entries found in both shard and global query counts will be summed.
+   *
+   * @param globalQueryCounts The global query counts (across all shards) in which to merge the shard query counts
+   * @param shardQueryCounts  Named list from a shard response to be merged into the global counts.
+   * @return NamedList containing merged values
+   */
+  static NamedList<Number> mergeQueryCounts(
+      NamedList<Number> globalQueryCounts, NamedList<Number> shardQueryCounts) {
+    if (globalQueryCounts == null) {
+      return shardQueryCounts;
+    }
+    for (Entry<String, Number> entry : shardQueryCounts) {
+      int idx = globalQueryCounts.indexOf(entry.getKey(), 0);
+      if (idx == -1) {
+        globalQueryCounts.add(entry.getKey(), entry.getValue());
+      } else {
+        globalQueryCounts.setVal(idx, FacetComponent.num(globalQueryCounts.getVal(idx).longValue() + entry.getValue().longValue()));
+      }
+    }
+    return globalQueryCounts;
+  }
 }

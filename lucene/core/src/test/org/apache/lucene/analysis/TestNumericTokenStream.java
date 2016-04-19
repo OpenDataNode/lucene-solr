@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,20 +14,25 @@ package org.apache.lucene.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis;
+
 
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.NumericUtils;
+import org.apache.lucene.analysis.NumericTokenStream.NumericTermAttributeImpl;
 import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
+import org.apache.lucene.analysis.tokenattributes.TestCharTermAttributeImpl;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttributeImpl;
 
 public class TestNumericTokenStream extends BaseTokenStreamTestCase {
 
-  static final long lvalue = 4573245871874382L;
-  static final int ivalue = 123456;
+  final long lvalue = random().nextLong();
+  final int ivalue = random().nextInt();
 
   public void testLongStream() throws Exception {
+    @SuppressWarnings("resource")
     final NumericTokenStream stream=new NumericTokenStream().setLongValue(lvalue);
     final TermToBytesRefAttribute bytesAtt = stream.getAttribute(TermToBytesRefAttribute.class);
     assertNotNull(bytesAtt);
@@ -37,14 +40,12 @@ public class TestNumericTokenStream extends BaseTokenStreamTestCase {
     assertNotNull(typeAtt);
     final NumericTokenStream.NumericTermAttribute numericAtt = stream.getAttribute(NumericTokenStream.NumericTermAttribute.class);
     assertNotNull(numericAtt);
-    final BytesRef bytes = bytesAtt.getBytesRef();
     stream.reset();
     assertEquals(64, numericAtt.getValueSize());
     for (int shift=0; shift<64; shift+=NumericUtils.PRECISION_STEP_DEFAULT) {
       assertTrue("New token is available", stream.incrementToken());
       assertEquals("Shift value wrong", shift, numericAtt.getShift());
-      bytesAtt.fillBytesRef();
-      assertEquals("Term is incorrectly encoded", lvalue & ~((1L << shift) - 1L), NumericUtils.prefixCodedToLong(bytes));
+      assertEquals("Term is incorrectly encoded", lvalue & ~((1L << shift) - 1L), NumericUtils.prefixCodedToLong(bytesAtt.getBytesRef()));
       assertEquals("Term raw value is incorrectly encoded", lvalue & ~((1L << shift) - 1L), numericAtt.getRawValue());
       assertEquals("Type incorrect", (shift == 0) ? NumericTokenStream.TOKEN_TYPE_FULL_PREC : NumericTokenStream.TOKEN_TYPE_LOWER_PREC, typeAtt.type());
     }
@@ -54,6 +55,7 @@ public class TestNumericTokenStream extends BaseTokenStreamTestCase {
   }
 
   public void testIntStream() throws Exception {
+    @SuppressWarnings("resource")
     final NumericTokenStream stream=new NumericTokenStream().setIntValue(ivalue);
     final TermToBytesRefAttribute bytesAtt = stream.getAttribute(TermToBytesRefAttribute.class);
     assertNotNull(bytesAtt);
@@ -61,14 +63,12 @@ public class TestNumericTokenStream extends BaseTokenStreamTestCase {
     assertNotNull(typeAtt);
     final NumericTokenStream.NumericTermAttribute numericAtt = stream.getAttribute(NumericTokenStream.NumericTermAttribute.class);
     assertNotNull(numericAtt);
-    final BytesRef bytes = bytesAtt.getBytesRef();
     stream.reset();
     assertEquals(32, numericAtt.getValueSize());
     for (int shift=0; shift<32; shift+=NumericUtils.PRECISION_STEP_DEFAULT) {
       assertTrue("New token is available", stream.incrementToken());
       assertEquals("Shift value wrong", shift, numericAtt.getShift());
-      bytesAtt.fillBytesRef();
-      assertEquals("Term is incorrectly encoded", ivalue & ~((1 << shift) - 1), NumericUtils.prefixCodedToInt(bytes));
+      assertEquals("Term is incorrectly encoded", ivalue & ~((1 << shift) - 1), NumericUtils.prefixCodedToInt(bytesAtt.getBytesRef()));
       assertEquals("Term raw value is incorrectly encoded", ((long) ivalue) & ~((1L << shift) - 1L), numericAtt.getRawValue());
       assertEquals("Type incorrect", (shift == 0) ? NumericTokenStream.TOKEN_TYPE_FULL_PREC : NumericTokenStream.TOKEN_TYPE_LOWER_PREC, typeAtt.type());
     }
@@ -93,6 +93,8 @@ public class TestNumericTokenStream extends BaseTokenStreamTestCase {
     } catch (IllegalStateException e) {
       // pass
     }
+    
+    stream.close();
   }
   
   public static interface TestAttribute extends CharTermAttribute {}
@@ -112,6 +114,64 @@ public class TestNumericTokenStream extends BaseTokenStreamTestCase {
     } catch (IllegalArgumentException iae) {
       assertTrue(iae.getMessage().startsWith("NumericTokenStream does not support"));
     }
+    stream.close();
+  }
+  
+  /** LUCENE-7027 */
+  public void testCaptureStateAfterExhausted() throws Exception {
+    // default precstep
+    try (NumericTokenStream stream=new NumericTokenStream()) {
+      // int
+      stream.setIntValue(ivalue);
+      stream.reset();
+      while (stream.incrementToken());
+      stream.captureState();
+      stream.end();
+      stream.captureState();
+      // long
+      stream.setLongValue(lvalue);
+      stream.reset();
+      while (stream.incrementToken());
+      stream.captureState();
+      stream.end();
+      stream.captureState();
+    }
+    // huge precstep
+    try (NumericTokenStream stream=new NumericTokenStream(Integer.MAX_VALUE)) {
+      // int
+      stream.setIntValue(ivalue);
+      stream.reset();
+      while (stream.incrementToken());
+      stream.captureState();
+      stream.end();
+      stream.captureState();
+      // long
+      stream.setLongValue(lvalue);
+      stream.reset();
+      while (stream.incrementToken());
+      stream.captureState();
+      stream.end();
+      stream.captureState();
+    }
+  }
+  
+  public void testAttributeClone() throws Exception {
+    NumericTermAttributeImpl att = new NumericTermAttributeImpl();
+    att.init(lvalue, 64, 8, 0); // set some value, to make getBytesRef() work
+    NumericTermAttributeImpl copy = TestCharTermAttributeImpl.assertCloneIsEqual(att);
+    assertNotSame(att.getBytesRef(), copy.getBytesRef());
+    NumericTermAttributeImpl copy2 = TestCharTermAttributeImpl.assertCopyIsEqual(att);
+    assertNotSame(att.getBytesRef(), copy2.getBytesRef());
+    
+    // LUCENE-7027 test
+    att.init(lvalue, 64, 8, 64); // Exhausted TokenStream -> should return empty BytesRef
+    assertEquals(new BytesRef(), att.getBytesRef());
+    copy = TestCharTermAttributeImpl.assertCloneIsEqual(att);
+    assertEquals(new BytesRef(), copy.getBytesRef());
+    assertNotSame(att.getBytesRef(), copy.getBytesRef());
+    copy2 = TestCharTermAttributeImpl.assertCopyIsEqual(att);
+    assertEquals(new BytesRef(), copy2.getBytesRef());
+    assertNotSame(att.getBytesRef(), copy2.getBytesRef());
   }
   
 }

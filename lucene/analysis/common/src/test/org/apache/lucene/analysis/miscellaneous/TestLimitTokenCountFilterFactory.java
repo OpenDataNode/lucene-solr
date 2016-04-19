@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.miscellaneous;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.miscellaneous;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.miscellaneous;
+
 
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
@@ -29,7 +29,8 @@ public class TestLimitTokenCountFilterFactory extends BaseTokenStreamFactoryTest
   public void test() throws Exception {
     for (final boolean consumeAll : new boolean[]{true, false}) {
       Reader reader = new StringReader("A1 B2 C3 D4 E5 F6");
-      MockTokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+      MockTokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+      tokenizer.setReader(reader);
       tokenizer.setEnableChecks(consumeAll);
       TokenStream stream = tokenizer;
       stream = tokenFilterFactory("LimitTokenCount",

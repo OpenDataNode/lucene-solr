@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.search.join;
 
 import org.apache.lucene.util.FixedBitSet;
@@ -41,6 +40,6 @@ class BitSetSlice {
 
   public int nextSetBit(int pos) {
     int result = fbs.nextSetBit(pos + off) - off;
-    return (result < 0 || result >= len) ? -1 : result;
+    return (result >= len) ? -1 : result;
   }
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene;
+
 
 import java.io.IOException;
 
@@ -60,7 +60,7 @@ public class TestDemo extends LuceneTestCase {
 
     assertEquals(1, isearcher.search(new TermQuery(new Term("fieldname", longTerm)), 1).totalHits);
     Query query = new TermQuery(new Term("fieldname", "text"));
-    TopDocs hits = isearcher.search(query, null, 1);
+    TopDocs hits = isearcher.search(query, 1);
     assertEquals(1, hits.totalHits);
     // Iterate through the results:
     for (int i = 0; i < hits.scoreDocs.length; i++) {
@@ -69,12 +69,11 @@ public class TestDemo extends LuceneTestCase {
     }
 
     // Test simple phrase query
-    PhraseQuery phraseQuery = new PhraseQuery();
-    phraseQuery.add(new Term("fieldname", "to"));
-    phraseQuery.add(new Term("fieldname", "be"));
-    assertEquals(1, isearcher.search(phraseQuery, null, 1).totalHits);
+    PhraseQuery phraseQuery = new PhraseQuery("fieldname", "to", "be");
+    assertEquals(1, isearcher.search(phraseQuery, 1).totalHits);
 
     ireader.close();
     directory.close();
+    analyzer.close();
   }
 }

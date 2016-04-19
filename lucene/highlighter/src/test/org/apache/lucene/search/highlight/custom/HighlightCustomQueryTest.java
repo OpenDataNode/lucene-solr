@@ -1,5 +1,3 @@
-package org.apache.lucene.search.highlight.custom;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,15 +14,16 @@ package org.apache.lucene.search.highlight.custom;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import java.io.IOException;
-import java.util.Map;
+package org.apache.lucene.search.highlight.custom;
 
+import org.apache.lucene.analysis.CannedTokenStream;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenFilter;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.highlight.Highlighter;
@@ -35,6 +34,10 @@ import org.apache.lucene.search.highlight.SimpleHTMLFormatter;
 import org.apache.lucene.search.highlight.WeightedSpanTerm;
 import org.apache.lucene.search.highlight.WeightedSpanTermExtractor;
 import org.apache.lucene.util.LuceneTestCase;
+
+import java.io.IOException;
+import java.util.Collections;
+import java.util.Map;
 
 /**
  * Tests the extensibility of {@link WeightedSpanTermExtractor} and
@@ -81,6 +84,19 @@ public class HighlightCustomQueryTest extends LuceneTestCase {
 
   }
 
+  public void testHighlightKnownQuery() throws IOException {
+    WeightedSpanTermExtractor extractor = new WeightedSpanTermExtractor() {
+      @Override
+      protected void extractUnknownQuery(Query query, Map<String,WeightedSpanTerm> terms) throws IOException {
+        terms.put("foo", new WeightedSpanTerm(3, "foo"));
+      }
+    };
+    Map<String,WeightedSpanTerm> terms = extractor.getWeightedSpanTerms(
+        new TermQuery(new Term("bar", "quux")), 3, new CannedTokenStream());
+    // no foo
+    assertEquals(Collections.singleton("quux"), terms.keySet());
+  }
+
   /**
    * This method intended for use with
    * <tt>testHighlightingWithDefaultField()</tt>
@@ -114,8 +130,14 @@ public class HighlightCustomQueryTest extends LuceneTestCase {
     @Override
     protected void extractUnknownQuery(Query query,
         Map<String, WeightedSpanTerm> terms) throws IOException {
+      float boost = 1f;
+      while (query instanceof BoostQuery) {
+        BoostQuery bq = (BoostQuery) query;
+        boost *= bq.getBoost();
+        query = bq.getQuery();
+      }
       if (query instanceof CustomQuery) {
-        extractWeightedTerms(terms, new TermQuery(((CustomQuery) query).term));
+        extractWeightedTerms(terms, new TermQuery(((CustomQuery) query).term), boost);
       }
     }
 

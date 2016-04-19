@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.core;
 
 import java.util.Arrays;
@@ -39,17 +38,17 @@ public class QueryResultKeyTest extends SolrTestCaseJ4 {
     // the hashcode should be the same even when the list
     // of filters is in a different order
     
-    Sort sort = new Sort(new SortField("test", SortField.Type.BYTE));
-    BooleanQuery query = new BooleanQuery();
+    Sort sort = new Sort(new SortField("test", SortField.Type.INT));
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(new TermQuery(new Term("test", "field")), Occur.MUST);
     
     List<Query> filters = Arrays.<Query>asList(new TermQuery(new Term("test", "field")),
                                                new TermQuery(new Term("test2", "field2")));
-    QueryResultKey qrk1 = new QueryResultKey(query , filters, sort, 1);
+    QueryResultKey qrk1 = new QueryResultKey(query.build() , filters, sort, 1);
     
     List<Query> filters2 = Arrays.<Query>asList(new TermQuery(new Term("test2", "field2")),
                                                 new TermQuery(new Term("test", "field")));
-    QueryResultKey qrk2 = new QueryResultKey(query , filters2, sort, 1);
+    QueryResultKey qrk2 = new QueryResultKey(query.build() , filters2, sort, 1);
     assertKeyEquals(qrk1, qrk2);
   }
 

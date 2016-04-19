@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.common.util;
 
 import java.io.*;
@@ -101,7 +100,7 @@ public class FastOutputStream extends OutputStream implements DataOutput {
 
 
   /** reserve at least len bytes at the end of the buffer.
-   * Invalid if len > buffer.length
+   * Invalid if len &gt; buffer.length
    */
   public void reserve(int len) throws IOException {
     if (len > (buf.length - pos))

@@ -62,7 +62,6 @@ for (my $line_num = 0 ; $line_num <= $#lines ; ++$line_num) {
     $in_major_component_versions_section = 0;
     next;
   }
-  next if (/^\s*\$Id(?::.*)?\$/);      # Skip $Id$ lines
   next if (/^\s{0,4}-{5,}\s*$/);       # Skip Solr's section underlines
 
   unless ($title) {
@@ -546,6 +545,7 @@ for my $rel (@releases) {
                                         }se;
                                   $bulleted_list;
                                 }ge;
+                    $uncode = markup_trailing_attribution($uncode);
                     $uncode;
                   }
                 }sge;
@@ -579,19 +579,19 @@ for my $rel (@releases) {
                   ~gex;
         # Find multiple Bugzilla issues
         $item =~ s~(?<=(?i:bugs))(\s*)(\d+)(\s*(?i:\&|and)\s*)(\d+)
-		              ~ my $leading_whitespace = $1;
-		                my $issue_num_1 = $2;
-		                my $interlude = $3;
+                  ~ my $leading_whitespace = $1;
+                    my $issue_num_1 = $2;
+                    my $interlude = $3;
                     my $issue_num_2 = $4;
                     # Link to JIRA copies
                     my $jira_issue_1 = $lucene_bugzilla_jira_map{$issue_num_1};
                     my $issue1
-		                    = qq!<a href="${jira_url_prefix}LUCENE-$jira_issue_1">!
+                        = qq!<a href="${jira_url_prefix}LUCENE-$jira_issue_1">!
                         . qq!$issue_num_1&nbsp;[LUCENE-$jira_issue_1]</a>!
                       if (defined($jira_issue_1));
                     my $jira_issue_2 = $lucene_bugzilla_jira_map{$issue_num_2};
                     my $issue2
-		                    = qq!<a href="${jira_url_prefix}LUCENE-$jira_issue_2">!
+                        = qq!<a href="${jira_url_prefix}LUCENE-$jira_issue_2">!
                         . qq!$issue_num_2&nbsp;[LUCENE-$jira_issue_2]</a>!
                       if (defined($jira_issue_2));
                     $leading_whitespace . $issue1 . $interlude . $issue2;
@@ -627,13 +627,18 @@ print "</body>\n</html>\n";
 sub markup_trailing_attribution {
   my $item = shift;
 
-  # Put attributions on their own lines.
+  # Put attributions on their own lines - this already happens if there is a preceding </ul>
+  my $extra_newline = ($item =~ m:</ul>:) ? '' : '<br />';
   # Check for trailing parenthesized attribution with no following period.
   # Exclude things like "(see #3 above)" and "(use the bug number instead of xxxx)"
-  unless ($item =~ s{\s*(\((?![Ss]ee )
+  unless ($item =~ s{\s+(\((?![Ss]ee )
                            (?!spans\b)
                            (?!mainly\ )
                            (?!LUCENE-\d+\))
+                           (?!SOLR-\d+\))
+                           (?!user's)
+                           (?!like\ )
+                           (?!r\d{6})     # subversion revision 
                            (?!and\ )
                            (?!backported\ )
                            (?!in\ )
@@ -641,7 +646,7 @@ sub markup_trailing_attribution {
                            (?![Tt]he\ )
                            (?!use\ the\ bug\ number)
                      [^()"]+?\))\s*$}
-                    {\n<br /><span class="attrib">$1</span>}x) {
+                    {\n${extra_newline}<span class="attrib">$1</span>}x) {
     # If attribution is not found, then look for attribution with a
     # trailing period, but try not to include trailing parenthesized things
     # that are not attributions.
@@ -649,12 +654,16 @@ sub markup_trailing_attribution {
     # Rule of thumb: if a trailing parenthesized expression with a following
     # period does not contain "LUCENE-XXX", and it either has three or
     # fewer words or it includes the word "via" or the phrase "updates from",
-	  # then it is considered to be an attribution.
+    # then it is considered to be an attribution.
 
-    $item =~ s{(\s*(\((?![Ss]ee\ )
+    $item =~ s{(\s+(\((?![Ss]ee\ )
                       (?!spans\b)
                       (?!mainly\ )
                       (?!LUCENE-\d+\))
+                      (?!SOLR-\d+\))
+                      (?!user's)
+                      (?!like\ )
+                      (?!r\d{6})     # subversion revision 
                       (?!and\ )
                       (?!backported\ )
                       (?!in\ )
@@ -666,12 +675,14 @@ sub markup_trailing_attribution {
               {
                 my $subst = $1;  # default: no change
                 my $parenthetical = $2;
-	              my $trailing_period_and_or_issue = $3;
+                my $trailing_period_and_or_issue = $3;
                 if ($parenthetical !~ /LUCENE-\d+/) {
                   my ($no_parens) = $parenthetical =~ /^\((.*)\)$/s;
                   my @words = grep {/\S/} split /\s+/, $no_parens;
-                  if ($no_parens =~ /\b(?:via|updates\s+from)\b/i || scalar(@words) <= 4) {
-                    $subst = "\n<br /><span class=\"attrib\">$parenthetical</span>";
+                  my $commas = $no_parens =~ s/,/,/g; # count commas
+                  my $max_words = 4 + $commas;
+                  if ($no_parens =~ /\b(?:via|updates\s+from)\b/i || scalar(@words) <= $max_words) {
+                    $subst = "\n${extra_newline}<span class=\"attrib\">$parenthetical</span>";
                   }
                 }
                 $subst . $trailing_period_and_or_issue;
@@ -793,7 +804,9 @@ sub get_release_date {
     # Handle '1.2 RC6', which should be '1.2 final'
     $release = '1.2 final' if ($release eq '1.2 RC6');
 
-    $release =~ s/\.0\.0/\.0/;
+    if (not exists($release_dates{$release})) {
+      $release =~ s/\.0\.0/\.0/;
+    }
 
     $reldate = ( exists($release_dates{$release}) 
                ? $release_dates{$release}

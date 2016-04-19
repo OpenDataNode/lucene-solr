@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.client.solrj;
 
 import org.apache.solr.util.AbstractSolrTestCase;
@@ -57,10 +56,10 @@ abstract public class SolrExampleTestBase extends AbstractSolrTestCase {
   /**
    * Subclasses need to initialize the server impl
    */
-  protected abstract SolrServer getSolrServer();
+  protected abstract SolrClient getSolrClient();
   
   /**
    * Create a new solr server
    */
-  protected abstract SolrServer createNewSolrServer();
+  protected abstract SolrClient createNewSolrClient();
 }

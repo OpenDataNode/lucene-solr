@@ -1,21 +1,3 @@
-package org.apache.lucene.queryparser.xml.builders;
-
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
-import org.apache.lucene.search.Filter;
-import org.apache.lucene.queries.TermsFilter;
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.IOUtils;
-import org.apache.lucene.queryparser.xml.DOMUtils;
-import org.apache.lucene.queryparser.xml.FilterBuilder;
-import org.apache.lucene.queryparser.xml.ParserException;
-import org.w3c.dom.Element;
-
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -32,6 +14,22 @@ import java.util.List;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.xml.builders;
+
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
+import org.apache.lucene.search.Filter;
+import org.apache.lucene.queries.TermsFilter;
+import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.queryparser.xml.DOMUtils;
+import org.apache.lucene.queryparser.xml.FilterBuilder;
+import org.apache.lucene.queryparser.xml.ParserException;
+import org.w3c.dom.Element;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Builder for {@link TermsFilter}
@@ -55,22 +53,16 @@ public class TermsFilterBuilder implements FilterBuilder {
     String text = DOMUtils.getNonBlankTextOrFail(e);
     String fieldName = DOMUtils.getAttributeWithInheritanceOrFail(e, "fieldName");
 
-    TokenStream ts = null;
-    try {
-      ts = analyzer.tokenStream(fieldName, text);
+    try (TokenStream ts = analyzer.tokenStream(fieldName, text)) {
       TermToBytesRefAttribute termAtt = ts.addAttribute(TermToBytesRefAttribute.class);
-      BytesRef bytes = termAtt.getBytesRef();
       ts.reset();
       while (ts.incrementToken()) {
-        termAtt.fillBytesRef();
-        terms.add(BytesRef.deepCopyOf(bytes));
+        terms.add(BytesRef.deepCopyOf(termAtt.getBytesRef()));
       }
       ts.end();
     }
     catch (IOException ioe) {
       throw new RuntimeException("Error constructing terms from index:" + ioe);
-    } finally {
-      IOUtils.closeWhileHandlingException(ts);
     }
     return new TermsFilter(fieldName, terms);
   }

@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.processors;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard.processors;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.processors;
 
 import java.util.List;
 
@@ -34,7 +33,7 @@ import org.apache.lucene.search.FuzzyQuery;
  * query configuration for
  * {@link ConfigurationKeys#FUZZY_CONFIG}, gets the
  * fuzzy prefix length and default similarity from it and set to the fuzzy node.
- * For more information about fuzzy prefix length check: {@link FuzzyQuery}. <br/>
+ * For more information about fuzzy prefix length check: {@link FuzzyQuery}.
  * 
  * @see ConfigurationKeys#FUZZY_CONFIG
  * @see FuzzyQuery

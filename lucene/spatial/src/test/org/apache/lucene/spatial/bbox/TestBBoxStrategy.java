@@ -1,5 +1,3 @@
-package org.apache.lucene.spatial.bbox;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,9 @@ package org.apache.lucene.spatial.bbox;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.spatial.bbox;
+
+import java.io.IOException;
 
 import com.carrotsearch.randomizedtesting.annotations.Repeat;
 import com.spatial4j.core.context.SpatialContext;
@@ -25,6 +26,8 @@ import com.spatial4j.core.shape.Rectangle;
 import com.spatial4j.core.shape.Shape;
 import com.spatial4j.core.shape.impl.RectangleImpl;
 import org.apache.lucene.document.FieldType;
+import org.apache.lucene.index.DocValuesType;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.spatial.SpatialMatchConcern;
 import org.apache.lucene.spatial.prefix.RandomSpatialOpStrategyTestCase;
@@ -33,8 +36,6 @@ import org.apache.lucene.spatial.query.SpatialOperation;
 import org.apache.lucene.spatial.util.ShapeAreaValueSource;
 import org.junit.Ignore;
 import org.junit.Test;
-
-import java.io.IOException;
 
 public class TestBBoxStrategy extends RandomSpatialOpStrategyTestCase {
 
@@ -55,27 +56,18 @@ public class TestBBoxStrategy extends RandomSpatialOpStrategyTestCase {
     int worldHeight = (int) Math.round(world.getHeight());
     int deltaTop = nextIntInclusive(worldHeight);
     int deltaBottom = nextIntInclusive(worldHeight - deltaTop);
-
-    double rectMinX = world.getMinX() + deltaLeft;
-    double rectMaxX = world.getMaxX() - deltaRight;
-    if (ctx.isGeo()) {
-      int shift = 0;
-      if ((deltaLeft != 0 || deltaRight != 0)) {
-        //if geo & doesn't world-wrap, we shift randomly to potentially cross dateline
-        shift = nextIntInclusive(360);
-      }
-      rectMinX = DistanceUtils.normLonDEG(rectMinX + shift);
-      rectMaxX = DistanceUtils.normLonDEG(rectMaxX + shift);
-      if (rectMinX == 180 && rectMaxX == 180) {
-        // Work-around for https://github.com/spatial4j/spatial4j/issues/85
-        rectMinX = -180;
-        rectMaxX = -180;
-      }
+    if (ctx.isGeo() && (deltaLeft != 0 || deltaRight != 0)) {
+      //if geo & doesn't world-wrap, we shift randomly to potentially cross dateline
+      int shift = nextIntInclusive(360);
+      return ctx.makeRectangle(
+          DistanceUtils.normLonDEG(world.getMinX() + deltaLeft + shift),
+          DistanceUtils.normLonDEG(world.getMaxX() - deltaRight + shift),
+          world.getMinY() + deltaBottom, world.getMaxY() - deltaTop);
+    } else {
+      return ctx.makeRectangle(
+          world.getMinX() + deltaLeft, world.getMaxX() - deltaRight,
+          world.getMinY() + deltaBottom, world.getMaxY() - deltaTop);
     }
-    return ctx.makeRectangle(
-        rectMinX,
-        rectMaxX,
-        world.getMinY() + deltaBottom, world.getMaxY() - deltaTop);
   }
 
   /** next int, inclusive, rounds to multiple of 10 if given evenly divisible. */
@@ -94,7 +86,7 @@ public class TestBBoxStrategy extends RandomSpatialOpStrategyTestCase {
   }
 
   @Test
-  @Repeat(iterations = 20)
+  @Repeat(iterations = 15)
   public void testOperations() throws IOException {
     //setup
     if (random().nextInt(4) > 0) {//75% of the time choose geo (more interesting to test)
@@ -110,7 +102,7 @@ public class TestBBoxStrategy extends RandomSpatialOpStrategyTestCase {
     if (random().nextBoolean()) {
       BBoxStrategy bboxStrategy = (BBoxStrategy) strategy;
       FieldType fieldType = new FieldType(bboxStrategy.getFieldType());
-      fieldType.setDocValueType(null);
+      fieldType.setDocValuesType(DocValuesType.NONE);
       bboxStrategy.setFieldType(fieldType);
     }
     for (SpatialOperation operation : SpatialOperation.values()) {
@@ -292,16 +284,18 @@ public class TestBBoxStrategy extends RandomSpatialOpStrategyTestCase {
     BBoxStrategy bboxStrategy = (BBoxStrategy) strategy;
     if (random().nextBoolean()) {
       FieldType fieldType = new FieldType(bboxStrategy.getFieldType());
-      fieldType.setIndexed(false);
+      fieldType.setIndexOptions(IndexOptions.NONE);
       bboxStrategy.setFieldType(fieldType);
     }
 
     adoc("100", ctx.makeRectangle(0, 20, 40, 80));
     adoc("999", (Shape) null);
     commit();
-    checkValueSource(new ShapeAreaValueSource(bboxStrategy.makeShapeValueSource(), ctx, false),
+    checkValueSource(new ShapeAreaValueSource(bboxStrategy.makeShapeValueSource(), ctx, false, 1.0),
         new float[]{800f, 0f}, 0f);
-    checkValueSource(new ShapeAreaValueSource(bboxStrategy.makeShapeValueSource(), ctx, true),//geo
+    checkValueSource(new ShapeAreaValueSource(bboxStrategy.makeShapeValueSource(), ctx, true, 1.0),//geo
         new float[]{391.93f, 0f}, 0.01f);
+    checkValueSource(new ShapeAreaValueSource(bboxStrategy.makeShapeValueSource(), ctx, true, 2.0),
+        new float[]{783.86f, 0f}, 0.01f); // testing with a different multiplier
   }
 }

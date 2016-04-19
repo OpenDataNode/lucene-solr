@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.core;
+
 
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.util.ResourceLoader;
@@ -42,20 +42,26 @@ import java.util.Set;
  */
 public class TypeTokenFilterFactory extends TokenFilterFactory implements ResourceLoaderAware {
   private final boolean useWhitelist;
-  private final boolean enablePositionIncrements;
   private final String stopTypesFiles;
   private Set<String> stopTypes;
+  private boolean enablePositionIncrements;
   
   /** Creates a new TypeTokenFilterFactory */
   public TypeTokenFilterFactory(Map<String,String> args) {
     super(args);
     stopTypesFiles = require(args, "types");
-    enablePositionIncrements = getBoolean(args, "enablePositionIncrements", true);
-    if (enablePositionIncrements == false &&
-        (luceneMatchVersion == null || luceneMatchVersion.onOrAfter(Version.LUCENE_4_4_0))) {
-      throw new IllegalArgumentException("enablePositionIncrements=false is not supported anymore as of Lucene 4.4");
-    }
     useWhitelist = getBoolean(args, "useWhitelist", false);
+
+    if (luceneMatchVersion.onOrAfter(Version.LUCENE_5_0_0) == false) {
+      boolean defaultValue = luceneMatchVersion.onOrAfter(Version.LUCENE_4_4_0);
+      enablePositionIncrements = getBoolean(args, "enablePositionIncrements", defaultValue);
+      if (enablePositionIncrements == false && luceneMatchVersion.onOrAfter(Version.LUCENE_4_4_0)) {
+        throw new IllegalArgumentException("enablePositionIncrements=false is not supported anymore as of Lucene 4.4");
+      }
+    } else if (args.containsKey("enablePositionIncrements")) {
+      throw new IllegalArgumentException("enablePositionIncrements is not a valid option as of Lucene 5.0");
+    }
+    
     if (!args.isEmpty()) {
       throw new IllegalArgumentException("Unknown parameters: " + args);
     }
@@ -73,22 +79,18 @@ public class TypeTokenFilterFactory extends TokenFilterFactory implements Resour
     }
   }
 
-  public boolean isEnablePositionIncrements() {
-    return enablePositionIncrements;
-  }
-
   public Set<String> getStopTypes() {
     return stopTypes;
   }
 
   @Override
   public TokenStream create(TokenStream input) {
-    if (luceneMatchVersion == null) {
-      final TokenStream filter = new TypeTokenFilter(input, stopTypes, useWhitelist);
+    if (luceneMatchVersion.onOrAfter(Version.LUCENE_4_4_0)) {
+      return new TypeTokenFilter(input, stopTypes, useWhitelist);
+    } else {
+      @SuppressWarnings("deprecation")
+      final TokenStream filter = new Lucene43TypeTokenFilter(enablePositionIncrements, input, stopTypes, useWhitelist);
       return filter;
     }
-    @SuppressWarnings("deprecation")
-    final TokenStream filter = new TypeTokenFilter(luceneMatchVersion, enablePositionIncrements, input, stopTypes, useWhitelist);
-    return filter;
   }
 }

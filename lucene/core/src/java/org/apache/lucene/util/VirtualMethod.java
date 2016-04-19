@@ -1,5 +1,3 @@
-package org.apache.lucene.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
+
 
 import java.lang.reflect.Method;
 import java.util.Collections;
@@ -43,11 +43,11 @@ import java.util.Set;
  * instance's class, use a <strong>non-static</strong> field:</p>
  * <pre class="prettyprint">
  *  final boolean isDeprecatedMethodOverridden =
- *   oldMethod.getImplementationDistance(this.getClass()) > newMethod.getImplementationDistance(this.getClass());
+ *   oldMethod.getImplementationDistance(this.getClass()) &gt; newMethod.getImplementationDistance(this.getClass());
  *
  *  <em>// alternatively (more readable):</em>
  *  final boolean isDeprecatedMethodOverridden =
- *   VirtualMethod.compareImplementationDistance(this.getClass(), oldMethod, newMethod) > 0
+ *   VirtualMethod.compareImplementationDistance(this.getClass(), oldMethod, newMethod) &gt; 0
  * </pre> 
  * <p>{@link #getImplementationDistance} returns the distance of the subclass that overrides this method.
  * The one with the larger distance should be used preferable.

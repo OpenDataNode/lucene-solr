@@ -1,5 +1,3 @@
-package org.apache.solr.store.blockcache;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.store.blockcache;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.store.blockcache;
 
 import java.io.IOException;
 
@@ -43,11 +42,12 @@ public abstract class ReusedBufferedIndexOutput extends IndexOutput {
   
   private final Store store;
   
-  public ReusedBufferedIndexOutput() {
-    this(BUFFER_SIZE);
+  public ReusedBufferedIndexOutput(String resourceDescription) {
+    this(resourceDescription, BUFFER_SIZE);
   }
   
-  public ReusedBufferedIndexOutput(int bufferSize) {
+  public ReusedBufferedIndexOutput(String resourceDescription, int bufferSize) {
+    super(resourceDescription);
     checkBufferSize(bufferSize);
     this.bufferSize = bufferSize;
     store = BufferStore.instance(bufferSize);
@@ -64,20 +64,12 @@ public abstract class ReusedBufferedIndexOutput extends IndexOutput {
   }
   
   /** Write the buffered bytes to cache */
-  private void flushBufferToCache() throws IOException {
+  protected void flushBufferToCache() throws IOException {
     writeInternal(buffer, 0, bufferLength);
     
     bufferStart += bufferLength;
     bufferLength = 0;
     bufferPosition = 0;
-  }
-  
-  protected abstract void flushInternal() throws IOException;
-  
-  @Override
-  public void flush() throws IOException {
-    flushBufferToCache();
-    flushInternal();
   }
   
   protected abstract void closeInternal() throws IOException;

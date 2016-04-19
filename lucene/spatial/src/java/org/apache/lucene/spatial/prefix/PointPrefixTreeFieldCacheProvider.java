@@ -1,5 +1,3 @@
-package org.apache.lucene.spatial.prefix;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.spatial.prefix;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.spatial.prefix;
 
 import com.spatial4j.core.shape.Point;
 import org.apache.lucene.spatial.prefix.tree.Cell;
@@ -24,29 +23,26 @@ import org.apache.lucene.spatial.util.ShapeFieldCacheProvider;
 import org.apache.lucene.util.BytesRef;
 
 /**
- * Implementation of {@link ShapeFieldCacheProvider} designed for {@link PrefixTreeStrategy}s.
- *
- * Note, due to the fragmented representation of Shapes in these Strategies, this implementation
- * can only retrieve the central {@link Point} of the original Shapes.
+ * Implementation of {@link ShapeFieldCacheProvider} designed for {@link PrefixTreeStrategy}s that index points
+ * (AND ONLY POINTS!).
  *
  * @lucene.internal
  */
 public class PointPrefixTreeFieldCacheProvider extends ShapeFieldCacheProvider<Point> {
 
-  final SpatialPrefixTree grid; //
+  private final SpatialPrefixTree grid;
+  private Cell scanCell;//re-used in readShape to save GC
 
   public PointPrefixTreeFieldCacheProvider(SpatialPrefixTree grid, String shapeField, int defaultSize) {
     super( shapeField, defaultSize );
     this.grid = grid;
   }
 
-  private Cell scanCell = null;//re-used in readShape to save GC
-
   @Override
   protected Point readShape(BytesRef term) {
-    scanCell = grid.getCell(term.bytes, term.offset, term.length, scanCell);
-    if (scanCell.getLevel() == grid.getMaxLevels() && !scanCell.isLeaf())
-      return scanCell.getCenter();
+    scanCell = grid.readCell(term, scanCell);
+    if (scanCell.getLevel() == grid.getMaxLevels())
+      return scanCell.getShape().getCenter();
     return null;
   }
 }

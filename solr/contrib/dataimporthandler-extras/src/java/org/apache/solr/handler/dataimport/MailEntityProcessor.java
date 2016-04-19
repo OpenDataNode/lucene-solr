@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -19,6 +19,7 @@ package org.apache.solr.handler.dataimport;
 import com.sun.mail.imap.IMAPMessage;
 
 import org.apache.solr.handler.dataimport.config.ConfigNameConstants;
+import org.apache.solr.util.RTimer;
 import org.apache.tika.Tika;
 import org.apache.tika.metadata.Metadata;
 import org.slf4j.Logger;
@@ -32,6 +33,7 @@ import javax.mail.internet.MimeMessage;
 import javax.mail.search.*;
 
 import java.io.InputStream;
+import java.lang.invoke.MethodHandles;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -54,6 +56,7 @@ public class MailEntityProcessor extends EntityProcessorBase {
       new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT);
   private static final SimpleDateFormat afterFmt = 
       new SimpleDateFormat("yyyy/MM/dd", Locale.ROOT);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   public static interface CustomFilter {
     public SearchTerm getCustomSearch(Folder folder);
@@ -534,7 +537,7 @@ public class MailEntityProcessor extends EntityProcessorBase {
     }
     
     public void remove() {
-      throw new UnsupportedOperationException("Its read only mode...");
+      throw new UnsupportedOperationException("It's read only mode...");
     }
     
     private void getTopLevelFolders(Store mailBox) {
@@ -544,7 +547,7 @@ public class MailEntityProcessor extends EntityProcessorBase {
         try {
           folders.add(mailbox.getFolder(topLevelFolders.get(i)));
         } catch (MessagingException e) {
-          // skip bad ones unless its the last one and still no good folder
+          // skip bad ones unless it's the last one and still no good folder
           if (folders.size() == 0 && i == topLevelFolders.size() - 1) throw new DataImportHandlerException(
               DataImportHandlerException.SEVERE, "Folder retreival failed");
         }
@@ -623,8 +626,8 @@ public class MailEntityProcessor extends EntityProcessorBase {
           // envelopes; unless you're using gmail server-side filter, which is
           // fast
           LOG.info("Searching folder " + folder.getName() + " for messages");
-          long searchAtMs = System.currentTimeMillis();
-          
+          final RTimer searchTimer = new RTimer();
+
           // If using GMail, speed up the envelope processing by doing a
           // server-side
           // search for messages occurring on or after the fetch date (at
@@ -652,9 +655,8 @@ public class MailEntityProcessor extends EntityProcessorBase {
           totalInFolder = messagesInCurBatch.length;
           folder.fetch(messagesInCurBatch, fp);
           current = 0;
-          long tookMs = (System.currentTimeMillis() - searchAtMs);
           LOG.info("Total messages : " + totalInFolder);
-          LOG.info("Search criteria applied. Batching disabled. Took " + tookMs + " (ms)");
+          LOG.info("Search criteria applied. Batching disabled. Took {} (ms)", searchTimer.getTime());
         } else {
           totalInFolder = folder.getMessageCount();
           LOG.info("Total messages : " + totalInFolder);
@@ -705,7 +707,7 @@ public class MailEntityProcessor extends EntityProcessorBase {
     }
     
     public void remove() {
-      throw new UnsupportedOperationException("Its read only mode...");
+      throw new UnsupportedOperationException("It's read only mode...");
     }
     
     private SearchTerm getSearchTerm() {
@@ -806,7 +808,6 @@ public class MailEntityProcessor extends EntityProcessorBase {
   private MessageIterator msgIter;
   private List<CustomFilter> filters = new ArrayList<>();
   private static FetchProfile fp = new FetchProfile();
-  private static final Logger LOG = LoggerFactory.getLogger(DataImporter.class);
   
   static {
     fp.add(FetchProfile.Item.ENVELOPE);

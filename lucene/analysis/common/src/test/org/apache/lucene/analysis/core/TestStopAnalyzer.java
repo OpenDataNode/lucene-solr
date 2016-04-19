@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,14 @@ package org.apache.lucene.analysis.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.core;
+
 
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.util.CharArraySet;
-import org.apache.lucene.util.IOUtils;
-
 
 import java.io.IOException;
 import java.util.Iterator;
@@ -32,7 +30,7 @@ import java.util.HashSet;
 
 public class TestStopAnalyzer extends BaseTokenStreamTestCase {
   
-  private StopAnalyzer stop = new StopAnalyzer();
+  private StopAnalyzer stop;
   private Set<Object> inValidTokens = new HashSet<>();
 
   @Override
@@ -43,12 +41,18 @@ public class TestStopAnalyzer extends BaseTokenStreamTestCase {
     while(it.hasNext()) {
       inValidTokens.add(it.next());
     }
+    stop = new StopAnalyzer();
+  }
+  
+  @Override
+  public void tearDown() throws Exception {
+    stop.close();
+    super.tearDown();
   }
 
   public void testDefaults() throws IOException {
     assertTrue(stop != null);
-    TokenStream stream = stop.tokenStream("test", "This is a test of the english stop analyzer");
-    try {
+    try (TokenStream stream = stop.tokenStream("test", "This is a test of the english stop analyzer")) {
       assertTrue(stream != null);
       CharTermAttribute termAtt = stream.getAttribute(CharTermAttribute.class);
       stream.reset();
@@ -57,16 +61,13 @@ public class TestStopAnalyzer extends BaseTokenStreamTestCase {
         assertFalse(inValidTokens.contains(termAtt.toString()));
       }
       stream.end();
-    } finally {
-      IOUtils.closeWhileHandlingException(stream);
     }
   }
 
   public void testStopList() throws IOException {
     CharArraySet stopWordsSet = new CharArraySet(asSet("good", "test", "analyzer"), false);
     StopAnalyzer newStop = new StopAnalyzer(stopWordsSet);
-    TokenStream stream = newStop.tokenStream("test", "This is a good test of the english stop analyzer");
-    try {
+    try (TokenStream stream = newStop.tokenStream("test", "This is a good test of the english stop analyzer")) {
       assertNotNull(stream);
       CharTermAttribute termAtt = stream.getAttribute(CharTermAttribute.class);
     
@@ -76,9 +77,8 @@ public class TestStopAnalyzer extends BaseTokenStreamTestCase {
         assertFalse(stopWordsSet.contains(text));
       }
       stream.end();
-    } finally {
-      IOUtils.closeWhileHandlingException(stream);
     }
+    newStop.close();
   }
 
   public void testStopListPositions() throws IOException {
@@ -86,8 +86,7 @@ public class TestStopAnalyzer extends BaseTokenStreamTestCase {
     StopAnalyzer newStop = new StopAnalyzer(stopWordsSet);
     String s =             "This is a good test of the english stop analyzer with positions";
     int expectedIncr[] =  { 1,   1, 1,          3, 1,  1,      1,            2,   1};
-    TokenStream stream = newStop.tokenStream("test", s);
-    try {
+    try (TokenStream stream = newStop.tokenStream("test", s)) {
       assertNotNull(stream);
       int i = 0;
       CharTermAttribute termAtt = stream.getAttribute(CharTermAttribute.class);
@@ -100,9 +99,8 @@ public class TestStopAnalyzer extends BaseTokenStreamTestCase {
         assertEquals(expectedIncr[i++],posIncrAtt.getPositionIncrement());
       }
       stream.end();
-    } finally {
-      IOUtils.closeWhileHandlingException(stream);
     }
+    newStop.close();
   }
 
 }

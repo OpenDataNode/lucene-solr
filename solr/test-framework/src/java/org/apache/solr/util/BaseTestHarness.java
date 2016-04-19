@@ -1,4 +1,3 @@
-package org.apache.solr.util;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,8 @@ package org.apache.solr.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.util;
+import org.apache.solr.client.solrj.impl.HttpClientUtil;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.util.XML;
 import org.w3c.dom.Document;
@@ -107,7 +107,7 @@ abstract public class BaseTestHarness {
     Document document = null;
     try {
       document = getXmlDocumentBuilder().parse(new ByteArrayInputStream
-          (xml.getBytes("UTF-8")));
+          (xml.getBytes(StandardCharsets.UTF_8)));
     } catch (UnsupportedEncodingException e1) {
       throw new RuntimeException("Totally weird UTF-8 exception", e1);
     } catch (IOException e2) {

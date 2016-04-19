@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.memory;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,16 @@ package org.apache.lucene.codecs.memory;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.memory;
+
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 
 import org.apache.lucene.index.FieldInfo;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.store.DataInput;
 import org.apache.lucene.store.DataOutput;
 import org.apache.lucene.util.Accountable;
@@ -79,6 +81,11 @@ class FSTTermOutputs extends Outputs<FSTTermOutputs.TermData> {
       return ramBytesUsed;
     }
 
+    @Override
+    public Collection<Accountable> getChildResources() {
+      return Collections.emptyList();
+    }
+    
     // NOTE: actually, FST nodes are seldom 
     // identical when outputs on their arcs 
     // aren't NO_OUTPUTs.
@@ -103,6 +110,11 @@ class FSTTermOutputs extends Outputs<FSTTermOutputs.TermData> {
     }
 
     @Override
+    public String toString() {
+      return "FSTTermOutputs$TermData longs=" + Arrays.toString(longs) + " bytes=" + Arrays.toString(bytes) + " docFreq=" + docFreq + " totalTermFreq=" + totalTermFreq;
+    }
+
+    @Override
     public boolean equals(Object other_) {
       if (other_ == this) {
         return true;
@@ -118,7 +130,7 @@ class FSTTermOutputs extends Outputs<FSTTermOutputs.TermData> {
   }
   
   protected FSTTermOutputs(FieldInfo fieldInfo, int longsSize) {
-    this.hasPos = (fieldInfo.getIndexOptions() != IndexOptions.DOCS_ONLY);
+    this.hasPos = fieldInfo.getIndexOptions() != IndexOptions.DOCS;
     this.longsSize = longsSize;
   }
 
@@ -240,6 +252,7 @@ class FSTTermOutputs extends Outputs<FSTTermOutputs.TermData> {
 
   @Override
   public void write(TermData data, DataOutput out) throws IOException {
+    assert hasPos || data.totalTermFreq == -1;
     int bit0 = allZero(data.longs) ? 0 : 1;
     int bit1 = ((data.bytes == null || data.bytes.length == 0) ? 0 : 1) << 1;
     int bit2 = ((data.docFreq == 0)  ? 0 : 1) << 2;

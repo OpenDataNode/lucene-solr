@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -21,8 +21,10 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.invoke.MethodHandles;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Locale;
@@ -45,7 +47,7 @@ import org.slf4j.LoggerFactory;
 
 public class SolrOutputFormat<K, V> extends FileOutputFormat<K, V> {
 
-  private static final Logger LOG = LoggerFactory.getLogger(SolrOutputFormat.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   /**
    * The parameter used to pass the solr config zip file information. This will
@@ -224,7 +226,7 @@ public class SolrOutputFormat<K, V> extends FileOutputFormat<K, V> {
                                    // to store in the zip file
     }
 
-    out.delete();
+    Files.deleteIfExists(out.toPath());
     int subst = dir.toString().length();
     ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(out));
     byte[] buf = new byte[1024];
@@ -243,7 +245,7 @@ public class SolrOutputFormat<K, V> extends FileOutputFormat<K, V> {
     
     ZipEntry ze = new ZipEntry("solr.xml");
     zos.putNextEntry(ze);
-    zos.write("<cores><core name=\"collection1\" instanceDir=\".\"/></cores>".getBytes(StandardCharsets.UTF_8));
+    zos.write("<solr></solr>".getBytes("UTF-8"));
     zos.flush();
     zos.closeEntry();
     zos.close();

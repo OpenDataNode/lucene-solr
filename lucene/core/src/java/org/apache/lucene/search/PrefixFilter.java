@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,13 +14,16 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
 import org.apache.lucene.index.Term;
 
 /**
  * A Filter that restricts search results to values that have a matching prefix in a given
  * field.
+ * @deprecated Use {@link PrefixQuery} and {@link BooleanClause.Occur#FILTER} clauses instead.
  */
+@Deprecated
 public class PrefixFilter extends MultiTermQueryWrapperFilter<PrefixQuery> {
 
   public PrefixFilter(Term prefix) {
@@ -31,9 +32,9 @@ public class PrefixFilter extends MultiTermQueryWrapperFilter<PrefixQuery> {
 
   public Term getPrefix() { return query.getPrefix(); }
 
-  /** Prints a user-readable version of this query. */
+  /** Prints a user-readable version of this filter. */
   @Override
-  public String toString () {
+  public String toString(String field) {
     StringBuilder buffer = new StringBuilder();
     buffer.append("PrefixFilter(");
     buffer.append(getPrefix().toString());

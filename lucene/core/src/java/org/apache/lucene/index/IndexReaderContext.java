@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.util.List;
 
@@ -34,7 +34,7 @@ public abstract class IndexReaderContext {
   public final int ordInParent;
   
   IndexReaderContext(CompositeReaderContext parent, int ordInParent, int docBaseInParent) {
-    if (!(this instanceof CompositeReaderContext || this instanceof AtomicReaderContext))
+    if (!(this instanceof CompositeReaderContext || this instanceof LeafReaderContext))
       throw new Error("This class should never be extended by custom code!");
     this.parent = parent;
     this.docBaseInParent = docBaseInParent;
@@ -47,14 +47,14 @@ public abstract class IndexReaderContext {
   
   /**
    * Returns the context's leaves if this context is a top-level context.
-   * For convenience, if this is an {@link AtomicReaderContext} this
+   * For convenience, if this is an {@link LeafReaderContext} this
    * returns itself as the only leaf.
    * <p>Note: this is convenience method since leaves can always be obtained by
    * walking the context tree using {@link #children()}.
    * @throws UnsupportedOperationException if this is not a top-level context.
    * @see #children()
    */
-  public abstract List<AtomicReaderContext> leaves() throws UnsupportedOperationException;
+  public abstract List<LeafReaderContext> leaves() throws UnsupportedOperationException;
   
   /**
    * Returns the context's children iff this context is a composite context

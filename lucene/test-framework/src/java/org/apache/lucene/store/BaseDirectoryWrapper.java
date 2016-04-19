@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
 
 import java.io.IOException;
 
@@ -28,21 +27,23 @@ import org.apache.lucene.util.TestUtil;
 // do NOT make any methods in this class synchronized, volatile
 // do NOT import anything from the concurrency package.
 // no randoms, no nothing.
-public class BaseDirectoryWrapper extends FilterDirectory {
+public abstract class BaseDirectoryWrapper extends FilterDirectory {
   
   private boolean checkIndexOnClose = true;
   private boolean crossCheckTermVectorsOnClose = true;
   protected volatile boolean isOpen = true;
 
-  public BaseDirectoryWrapper(Directory delegate) {
+  protected BaseDirectoryWrapper(Directory delegate) {
     super(delegate);
   }
 
   @Override
   public void close() throws IOException {
-    isOpen = false;
-    if (checkIndexOnClose && DirectoryReader.indexExists(this)) {
-      TestUtil.checkIndex(this, crossCheckTermVectorsOnClose);
+    if (isOpen) {
+      isOpen = false;
+      if (checkIndexOnClose && DirectoryReader.indexExists(this)) {
+        TestUtil.checkIndex(this, crossCheckTermVectorsOnClose);
+      }
     }
     super.close();
   }
@@ -69,10 +70,5 @@ public class BaseDirectoryWrapper extends FilterDirectory {
 
   public boolean getCrossCheckTermVectorsOnClose() {
     return crossCheckTermVectorsOnClose;
-  }
-
-  @Override
-  public void copy(Directory to, String src, String dest, IOContext context) throws IOException {
-    in.copy(to, src, dest, context);
   }
 }

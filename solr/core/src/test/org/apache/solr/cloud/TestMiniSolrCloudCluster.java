@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,34 +14,40 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
 import java.io.File;
+import java.io.IOException;
+import java.lang.invoke.MethodHandles;
+import java.net.URL;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import com.carrotsearch.randomizedtesting.rules.SystemPropertiesRestoreRule;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.LuceneTestCase.SuppressSysoutChecks;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.client.solrj.SolrQuery;
+import org.apache.solr.client.solrj.embedded.JettyConfig;
+import org.apache.solr.client.solrj.embedded.JettyConfig.Builder;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
-import org.apache.solr.client.solrj.impl.CloudSolrServer;
-import org.apache.solr.client.solrj.request.QueryRequest;
+import org.apache.solr.client.solrj.impl.CloudSolrClient;
 import org.apache.solr.client.solrj.response.QueryResponse;
+import org.apache.solr.client.solrj.response.RequestStatusState;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.cloud.ClusterState;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkStateReader;
-import org.apache.solr.common.params.CollectionParams.CollectionAction;
-import org.apache.solr.common.params.CoreAdminParams;
-import org.apache.solr.common.params.ModifiableSolrParams;
-import org.apache.solr.common.util.NamedList;
+import org.apache.solr.core.CoreDescriptor;
 import org.apache.solr.util.RevertDefaultThreadHandlerRule;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
 import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
@@ -51,8 +55,6 @@ import org.junit.rules.RuleChain;
 import org.junit.rules.TestRule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.carrotsearch.randomizedtesting.rules.SystemPropertiesRestoreRule;
 
 /**
  * Test of the MiniSolrCloudCluster functionality. Keep in mind, 
@@ -62,12 +64,17 @@ import com.carrotsearch.randomizedtesting.rules.SystemPropertiesRestoreRule;
 @SuppressSysoutChecks(bugUrl = "Solr logs to JUL")
 public class TestMiniSolrCloudCluster extends LuceneTestCase {
 
-  private static Logger log = LoggerFactory.getLogger(MiniSolrCloudCluster.class);
-  private static final int NUM_SERVERS = 5;
-  private static final int NUM_SHARDS = 2;
-  private static final int REPLICATION_FACTOR = 2;
-  private static MiniSolrCloudCluster miniCluster;
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+  protected int NUM_SERVERS = 5;
+  protected int NUM_SHARDS = 2;
+  protected int REPLICATION_FACTOR = 2;
 
+  public TestMiniSolrCloudCluster () {
+    NUM_SERVERS = 5;
+    NUM_SHARDS = 2;
+    REPLICATION_FACTOR = 2;
+  }
+  
   @Rule
   public TestRule solrTestRules = RuleChain
       .outerRule(new SystemPropertiesRestoreRule());
@@ -76,80 +83,101 @@ public class TestMiniSolrCloudCluster extends LuceneTestCase {
   public static TestRule solrClassRules = RuleChain.outerRule(
       new SystemPropertiesRestoreRule()).around(
       new RevertDefaultThreadHandlerRule());
-
-  @BeforeClass
-  public static void startup() throws Exception {
-    String testHome = SolrTestCaseJ4.TEST_HOME();
-    miniCluster = new MiniSolrCloudCluster(NUM_SERVERS, null, new File(testHome, "solr-no-core.xml"),
-      null, null);
+  
+  private MiniSolrCloudCluster createMiniSolrCloudCluster() throws Exception {
+    Builder jettyConfig = JettyConfig.builder();
+    jettyConfig.waitForLoadingCoresToFinish(null);
+    return new MiniSolrCloudCluster(NUM_SERVERS, createTempDir(), jettyConfig.build());
   }
+    
+  private void createCollection(MiniSolrCloudCluster miniCluster, String collectionName, String createNodeSet, String asyncId,
+      Boolean indexToPersist, Map<String,String> collectionProperties) throws Exception {
+    String configName = "solrCloudCollectionConfig";
+    File configDir = new File(SolrTestCaseJ4.TEST_HOME() + File.separator + "collection1" + File.separator + "conf");
+    miniCluster.uploadConfigDir(configDir, configName);
 
-  @AfterClass
-  public static void shutdown() throws Exception {
-    if (miniCluster != null) {
-      miniCluster.shutdown();
+    final boolean persistIndex = (indexToPersist != null ? indexToPersist.booleanValue() : random().nextBoolean());
+    if (collectionProperties == null) {
+      collectionProperties = new HashMap<>();
     }
-    miniCluster = null;
-    System.clearProperty("solr.tests.mergePolicy");
-    System.clearProperty("solr.tests.maxBufferedDocs");
-    System.clearProperty("solr.tests.maxIndexingThreads");
-    System.clearProperty("solr.tests.ramBufferSizeMB");
-    System.clearProperty("solr.tests.mergeScheduler");
-    System.clearProperty("solr.directoryFactory");
-    System.clearProperty("solr.solrxml.location");
-    System.clearProperty("zkHost");
+    if (!collectionProperties.containsKey(CoreDescriptor.CORE_CONFIG))  {
+      collectionProperties.put(CoreDescriptor.CORE_CONFIG, "solrconfig-tlog.xml");
+    }
+    if (!collectionProperties.containsKey("solr.tests.maxBufferedDocs"))  {
+      collectionProperties.put("solr.tests.maxBufferedDocs", "100000");
+    }
+    if (!collectionProperties.containsKey("solr.tests.ramBufferSizeMB"))  {
+      collectionProperties.put("solr.tests.ramBufferSizeMB", "100");
+    }
+    // use non-test classes so RandomizedRunner isn't necessary
+    if (!collectionProperties.containsKey("solr.tests.mergePolicy"))  {
+      collectionProperties.put("solr.tests.mergePolicy", "org.apache.lucene.index.TieredMergePolicy");
+    }
+    if (!collectionProperties.containsKey("solr.tests.mergeScheduler")) {
+      collectionProperties.put("solr.tests.mergeScheduler", "org.apache.lucene.index.ConcurrentMergeScheduler");
+    }
+    if (!collectionProperties.containsKey("solr.directoryFactory")) {
+      collectionProperties.put("solr.directoryFactory", (persistIndex ? "solr.StandardDirectoryFactory" : "solr.RAMDirectoryFactory"));
+    }
+    
+    miniCluster.createCollection(collectionName, NUM_SHARDS, REPLICATION_FACTOR, configName, createNodeSet, asyncId, collectionProperties);
   }
 
   @Test
-  public void testBasics() throws Exception {
-    assertNotNull(miniCluster.getZkServer());
-    List<JettySolrRunner> jettys = miniCluster.getJettySolrRunners();
-    assertEquals(NUM_SERVERS, jettys.size());
-    for (JettySolrRunner jetty : jettys) {
-      assertTrue(jetty.isRunning());
-    }
+  public void testCollectionCreateSearchDelete() throws Exception {
 
-    // shut down a server
-    JettySolrRunner stoppedServer = miniCluster.stopJettySolrRunner(0);
-    assertTrue(stoppedServer.isStopped());
-    assertEquals(NUM_SERVERS - 1, miniCluster.getJettySolrRunners().size());
+    final String collectionName = "testcollection";
+    MiniSolrCloudCluster miniCluster = createMiniSolrCloudCluster();
 
-    // create a server
-    JettySolrRunner startedServer = miniCluster.startJettySolrRunner(null, null, null);
-    assertTrue(startedServer.isRunning());
-    assertEquals(NUM_SERVERS, miniCluster.getJettySolrRunners().size());
+    final CloudSolrClient cloudSolrClient = miniCluster.getSolrClient();
 
-    CloudSolrServer cloudSolrServer = null;
-    SolrZkClient zkClient = null;
     try {
-      cloudSolrServer = new CloudSolrServer(miniCluster.getZkServer().getZkAddress(), true);
-      cloudSolrServer.connect();
-      zkClient = new SolrZkClient(miniCluster.getZkServer().getZkAddress(),
-        AbstractZkTestCase.TIMEOUT, 45000, null);
+      assertNotNull(miniCluster.getZkServer());
+      List<JettySolrRunner> jettys = miniCluster.getJettySolrRunners();
+      assertEquals(NUM_SERVERS, jettys.size());
+      for (JettySolrRunner jetty : jettys) {
+        assertTrue(jetty.isRunning());
+      }
+
+      // shut down a server
+      log.info("#### Stopping a server");
+      JettySolrRunner stoppedServer = miniCluster.stopJettySolrRunner(0);
+      assertTrue(stoppedServer.isStopped());
+      assertEquals(NUM_SERVERS - 1, miniCluster.getJettySolrRunners().size());
+
+      // create a server
+      log.info("#### Starting a server");
+      JettySolrRunner startedServer = miniCluster.startJettySolrRunner();
+      assertTrue(startedServer.isRunning());
+      assertEquals(NUM_SERVERS, miniCluster.getJettySolrRunners().size());
 
       // create collection
-      String collectionName = "testSolrCloudCollection";
-      String configName = "solrCloudCollectionConfig";
-      System.setProperty("solr.tests.mergePolicy", "org.apache.lucene.index.TieredMergePolicy");
-      uploadConfigToZk(SolrTestCaseJ4.TEST_HOME() + File.separator + "collection1" + File.separator + "conf", configName);
-      createCollection(cloudSolrServer, collectionName, NUM_SHARDS, REPLICATION_FACTOR, configName);
+      log.info("#### Creating a collection");
+      final String asyncId = (random().nextBoolean() ? null : "asyncId("+collectionName+".create)="+random().nextInt());
+      createCollection(miniCluster, collectionName, null, asyncId, null, null);
+      if (asyncId != null) {
+        final RequestStatusState state = AbstractFullDistribZkTestBase.getRequestStateAfterCompletion(asyncId, 330,
+            cloudSolrClient);
+        assertSame("did not see async createCollection completion", RequestStatusState.COMPLETED, state);
+      }
+
+      ZkStateReader zkStateReader = miniCluster.getSolrClient().getZkStateReader();
+      AbstractDistribZkTestBase.waitForRecoveriesToFinish(collectionName, zkStateReader, true, true, 330);
 
       // modify/query collection
-      cloudSolrServer.setDefaultCollection(collectionName);
+      log.info("#### updating a querying collection");
+      cloudSolrClient.setDefaultCollection(collectionName);
       SolrInputDocument doc = new SolrInputDocument();
       doc.setField("id", "1");
-
-      ZkStateReader zkStateReader = new ZkStateReader(zkClient);
-      waitForRecoveriesToFinish(collectionName, zkStateReader, true, true, 330);
-      cloudSolrServer.add(doc);
-      cloudSolrServer.commit();
+      cloudSolrClient.add(doc);
+      cloudSolrClient.commit();
       SolrQuery query = new SolrQuery();
       query.setQuery("*:*");
-      QueryResponse rsp = cloudSolrServer.query(query);
+      QueryResponse rsp = cloudSolrClient.query(query);
       assertEquals(1, rsp.getResults().getNumFound());
 
       // remove a server not hosting any replicas
-      zkStateReader.updateClusterState(true);
+      zkStateReader.updateClusterState();
       ClusterState clusterState = zkStateReader.getClusterState();
       HashMap<String, JettySolrRunner> jettyMap = new HashMap<String, JettySolrRunner>();
       for (JettySolrRunner jetty : miniCluster.getJettySolrRunners()) {
@@ -165,6 +193,7 @@ public class TestMiniSolrCloudCluster extends LuceneTestCase {
         }
       }
       assertTrue("Expected to find a node without a replica", jettyMap.size() > 0);
+      log.info("#### Stopping a server");
       JettySolrRunner jettyToStop = jettyMap.entrySet().iterator().next().getValue();
       jettys = miniCluster.getJettySolrRunners();
       for (int i = 0; i < jettys.size(); ++i) {
@@ -173,112 +202,265 @@ public class TestMiniSolrCloudCluster extends LuceneTestCase {
           assertEquals(NUM_SERVERS - 1, miniCluster.getJettySolrRunners().size());
         }
       }
-    } finally {
-      if (cloudSolrServer != null) {
-        cloudSolrServer.shutdown();
+
+      // re-create a server (to restore original NUM_SERVERS count)
+      log.info("#### Starting a server");
+      startedServer = miniCluster.startJettySolrRunner(jettyToStop);
+      assertTrue(startedServer.isRunning());
+      assertEquals(NUM_SERVERS, miniCluster.getJettySolrRunners().size());
+
+
+      // delete the collection we created earlier
+      miniCluster.deleteCollection(collectionName);
+      AbstractDistribZkTestBase.waitForCollectionToDisappear(collectionName, zkStateReader, true, true, 330);
+
+      // create it again
+      String asyncId2 = (random().nextBoolean() ? null : "asyncId("+collectionName+".create)="+random().nextInt());
+      createCollection(miniCluster, collectionName, null, asyncId2, null, null);
+      if (asyncId2 != null) {
+        final RequestStatusState state = AbstractFullDistribZkTestBase.getRequestStateAfterCompletion(asyncId2, 330,
+            cloudSolrClient);
+        assertSame("did not see async createCollection completion", RequestStatusState.COMPLETED, state);
       }
-      if (zkClient != null) {
-        zkClient.close();
-      }
+      AbstractDistribZkTestBase.waitForRecoveriesToFinish(collectionName, zkStateReader, true, true, 330);
+
+      // check that there's no left-over state
+      assertEquals(0, cloudSolrClient.query(new SolrQuery("*:*")).getResults().getNumFound());
+      cloudSolrClient.add(doc);
+      cloudSolrClient.commit();
+      assertEquals(1, cloudSolrClient.query(new SolrQuery("*:*")).getResults().getNumFound());
+
+    }
+    finally {
+      miniCluster.shutdown();
     }
   }
 
-  protected void uploadConfigToZk(String configDir, String configName) throws Exception {
-    // override settings in the solrconfig include
-    System.setProperty("solr.tests.maxBufferedDocs", "100000");
-    System.setProperty("solr.tests.maxIndexingThreads", "-1");
-    System.setProperty("solr.tests.ramBufferSizeMB", "100");
-    // use non-test classes so RandomizedRunner isn't necessary
-    System.setProperty("solr.tests.mergeScheduler", "org.apache.lucene.index.ConcurrentMergeScheduler");
-    System.setProperty("solr.directoryFactory", "solr.RAMDirectoryFactory");
+  @Test
+  public void testErrorsInStartup() throws Exception {
 
-    SolrZkClient zkClient = null;
+    final AtomicInteger jettyIndex = new AtomicInteger();
+
+    MiniSolrCloudCluster cluster = null;
     try {
-      zkClient =  new SolrZkClient(miniCluster.getZkServer().getZkAddress(), AbstractZkTestCase.TIMEOUT, 45000, null);
-      uploadConfigFileToZk(zkClient, configName, "solrconfig.xml", new File(configDir, "solrconfig-tlog.xml"));
-      uploadConfigFileToZk(zkClient, configName, "schema.xml", new File(configDir, "schema.xml"));
-      uploadConfigFileToZk(zkClient, configName, "solrconfig.snippet.randomindexconfig.xml",
-        new File(configDir, "solrconfig.snippet.randomindexconfig.xml"));
-      uploadConfigFileToZk(zkClient, configName, "currency.xml", new File(configDir, "currency.xml"));
-      uploadConfigFileToZk(zkClient, configName, "mapping-ISOLatin1Accent.txt",
-        new File(configDir, "mapping-ISOLatin1Accent.txt"));
-      uploadConfigFileToZk(zkClient, configName, "old_synonyms.txt", new File(configDir, "old_synonyms.txt"));
-      uploadConfigFileToZk(zkClient, configName, "open-exchange-rates.json",
-        new File(configDir, "open-exchange-rates.json"));
-      uploadConfigFileToZk(zkClient, configName, "protwords.txt", new File(configDir, "protwords.txt"));
-      uploadConfigFileToZk(zkClient, configName, "stopwords.txt", new File(configDir, "stopwords.txt"));
-      uploadConfigFileToZk(zkClient, configName, "synonyms.txt", new File(configDir, "synonyms.txt"));
-    } finally {
-      if (zkClient != null) zkClient.close();
+      cluster = new MiniSolrCloudCluster(3, createTempDir(), JettyConfig.builder().build()) {
+        @Override
+        public JettySolrRunner startJettySolrRunner(String name, String context, JettyConfig config) throws Exception {
+          if (jettyIndex.incrementAndGet() != 2)
+            return super.startJettySolrRunner(name, context, config);
+          throw new IOException("Fake exception on startup!");
+        }
+      };
+      fail("Expected an exception to be thrown from MiniSolrCloudCluster");
+    }
+    catch (Exception e) {
+      assertEquals("Error starting up MiniSolrCloudCluster", e.getMessage());
+      assertEquals("Expected one suppressed exception", 1, e.getSuppressed().length);
+      assertEquals("Fake exception on startup!", e.getSuppressed()[0].getMessage());
+    }
+    finally {
+      if (cluster != null)
+        cluster.shutdown();
     }
   }
 
-  protected void uploadConfigFileToZk(SolrZkClient zkClient, String configName, String nameInZk, File file)
-      throws Exception {
-    zkClient.makePath(ZkController.CONFIGS_ZKNODE + "/" + configName + "/" + nameInZk, file, false, true);
-  }
+  @Test
+  public void testErrorsInShutdown() throws Exception {
 
-  protected NamedList<Object> createCollection(CloudSolrServer server, String name, int numShards,
-      int replicationFactor, String configName) throws Exception {
-    ModifiableSolrParams modParams = new ModifiableSolrParams();
-    modParams.set(CoreAdminParams.ACTION, CollectionAction.CREATE.name());
-    modParams.set("name", name);
-    modParams.set("numShards", numShards);
-    modParams.set("replicationFactor", replicationFactor);
-    modParams.set("collection.configName", configName);
-    QueryRequest request = new QueryRequest(modParams);
-    request.setPath("/admin/collections");
-    return server.request(request);
-  }
+    final AtomicInteger jettyIndex = new AtomicInteger();
 
-  protected void waitForRecoveriesToFinish(String collection,
-      ZkStateReader zkStateReader, boolean verbose, boolean failOnTimeout, int timeoutSeconds)
-      throws Exception {
-    log.info("Wait for recoveries to finish - collection: " + collection + " failOnTimeout:" + failOnTimeout + " timeout (sec):" + timeoutSeconds);
-    boolean cont = true;
-    int cnt = 0;
-    
-    while (cont) {
-      if (verbose) System.out.println("-");
-      boolean sawLiveRecovering = false;
-      zkStateReader.updateClusterState(true);
-      ClusterState clusterState = zkStateReader.getClusterState();
-      Map<String,Slice> slices = clusterState.getSlicesMap(collection);
-      assertNotNull("Could not find collection:" + collection, slices);
-      for (Map.Entry<String,Slice> entry : slices.entrySet()) {
-        Map<String,Replica> shards = entry.getValue().getReplicasMap();
-        for (Map.Entry<String,Replica> shard : shards.entrySet()) {
-          if (verbose) System.out.println("rstate:"
-              + shard.getValue().getStr(ZkStateReader.STATE_PROP)
-              + " live:"
-              + clusterState.liveNodesContain(shard.getValue().getNodeName()));
-          String state = shard.getValue().getStr(ZkStateReader.STATE_PROP);
-          if ((state.equals(ZkStateReader.RECOVERING) || state
-              .equals(ZkStateReader.SYNC) || state.equals(ZkStateReader.DOWN))
-              && clusterState.liveNodesContain(shard.getValue().getStr(
-              ZkStateReader.NODE_NAME_PROP))) {
-            sawLiveRecovering = true;
-          }
+    MiniSolrCloudCluster cluster = new MiniSolrCloudCluster(3, createTempDir(), JettyConfig.builder().build()) {
+        @Override
+        protected JettySolrRunner stopJettySolrRunner(JettySolrRunner jetty) throws Exception {
+          JettySolrRunner j = super.stopJettySolrRunner(jetty);
+          if (jettyIndex.incrementAndGet() == 2)
+            throw new IOException("Fake IOException on shutdown!");
+          return j;
         }
-      }
-      if (!sawLiveRecovering || cnt == timeoutSeconds) {
-        if (!sawLiveRecovering) {
-          if (verbose) System.out.println("no one is recoverying");
-        } else {
-          if (verbose) System.out.println("Gave up waiting for recovery to finish..");
-          if (failOnTimeout) {
-            fail("There are still nodes recoverying - waited for " + timeoutSeconds + " seconds");
-            // won't get here
-            return;
-          }
-        }
-        cont = false;
-      } else {
-        Thread.sleep(1000);
-      }
-      cnt++;
+      };
+
+    try {
+      cluster.shutdown();
+      fail("Expected an exception to be thrown on MiniSolrCloudCluster shutdown");
+    }
+    catch (Exception e) {
+      assertEquals("Error shutting down MiniSolrCloudCluster", e.getMessage());
+      assertEquals("Expected one suppressed exception", 1, e.getSuppressed().length);
+      assertEquals("Fake IOException on shutdown!", e.getSuppressed()[0].getMessage());
     }
 
-    log.info("Recoveries finished - collection: " + collection);
   }
+
+  @Test
+  public void testExtraFilters() throws Exception {
+    Builder jettyConfig = JettyConfig.builder();
+    jettyConfig.waitForLoadingCoresToFinish(null);
+    jettyConfig.withFilter(JettySolrRunner.DebugFilter.class, "*");
+    MiniSolrCloudCluster cluster = new MiniSolrCloudCluster(NUM_SERVERS, createTempDir(), jettyConfig.build());
+    cluster.shutdown();
+  }
+
+  @Test
+  public void testCollectionCreateWithoutCoresThenDelete() throws Exception {
+
+    final String collectionName = "testSolrCloudCollectionWithoutCores";
+    final MiniSolrCloudCluster miniCluster = createMiniSolrCloudCluster();
+    final CloudSolrClient cloudSolrClient = miniCluster.getSolrClient();
+
+    try {
+      assertNotNull(miniCluster.getZkServer());
+      assertFalse(miniCluster.getJettySolrRunners().isEmpty());
+
+      // create collection
+      final String asyncId = (random().nextBoolean() ? null : "asyncId("+collectionName+".create)="+random().nextInt());
+      createCollection(miniCluster, collectionName, OverseerCollectionMessageHandler.CREATE_NODE_SET_EMPTY, asyncId, null, null);
+      if (asyncId != null) {
+        final RequestStatusState state = AbstractFullDistribZkTestBase.getRequestStateAfterCompletion(asyncId, 330, cloudSolrClient);
+        assertSame("did not see async createCollection completion", RequestStatusState.COMPLETED, state);
+      }
+
+      try (SolrZkClient zkClient = new SolrZkClient
+          (miniCluster.getZkServer().getZkAddress(), AbstractZkTestCase.TIMEOUT, AbstractZkTestCase.TIMEOUT, null);
+          ZkStateReader zkStateReader = new ZkStateReader(zkClient)) {
+        
+        // wait for collection to appear
+        AbstractDistribZkTestBase.waitForRecoveriesToFinish(collectionName, zkStateReader, true, true, 330);
+
+        // check the collection's corelessness
+        {
+          int coreCount = 0; 
+          for (Map.Entry<String,Slice> entry : zkStateReader.getClusterState().getSlicesMap(collectionName).entrySet()) {
+            coreCount += entry.getValue().getReplicasMap().entrySet().size();
+          }
+          assertEquals(0, coreCount);
+        }
+        
+        // delete the collection we created earlier
+        miniCluster.deleteCollection(collectionName);
+        AbstractDistribZkTestBase.waitForCollectionToDisappear(collectionName, zkStateReader, true, true, 330);    
+      }
+    }
+    finally {
+      miniCluster.shutdown();
+    }
+  }
+
+  @Test
+  public void testStopAllStartAll() throws Exception {
+
+    final String collectionName = "testStopAllStartAllCollection";
+
+    final MiniSolrCloudCluster miniCluster = createMiniSolrCloudCluster();
+
+    try {
+      assertNotNull(miniCluster.getZkServer());
+      List<JettySolrRunner> jettys = miniCluster.getJettySolrRunners();
+      assertEquals(NUM_SERVERS, jettys.size());
+      for (JettySolrRunner jetty : jettys) {
+        assertTrue(jetty.isRunning());
+      }
+
+      createCollection(miniCluster, collectionName, null, null, Boolean.TRUE, null);
+      final CloudSolrClient cloudSolrClient = miniCluster.getSolrClient();
+      cloudSolrClient.setDefaultCollection(collectionName);
+      final SolrQuery query = new SolrQuery("*:*");
+      final SolrInputDocument doc = new SolrInputDocument();
+
+      try (SolrZkClient zkClient = new SolrZkClient
+          (miniCluster.getZkServer().getZkAddress(), AbstractZkTestCase.TIMEOUT, AbstractZkTestCase.TIMEOUT, null);
+          ZkStateReader zkStateReader = new ZkStateReader(zkClient)) {
+        AbstractDistribZkTestBase.waitForRecoveriesToFinish(collectionName, zkStateReader, true, true, 330);
+
+        // modify collection
+        final int numDocs = 1 + random().nextInt(10);
+        for (int ii = 1; ii <= numDocs; ++ii) {
+          doc.setField("id", ""+ii);
+          cloudSolrClient.add(doc);
+          if (ii*2 == numDocs) cloudSolrClient.commit();
+        }
+        cloudSolrClient.commit();
+        // query collection
+        {
+          final QueryResponse rsp = cloudSolrClient.query(query);
+          assertEquals(numDocs, rsp.getResults().getNumFound());
+        }
+
+        // the test itself
+        zkStateReader.updateClusterState();
+        final ClusterState clusterState = zkStateReader.getClusterState();
+
+        final HashSet<Integer> leaderIndices = new HashSet<Integer>();
+        final HashSet<Integer> followerIndices = new HashSet<Integer>();
+        {
+          final HashMap<String,Boolean> shardLeaderMap = new HashMap<String,Boolean>();
+          for (final Slice slice : clusterState.getSlices(collectionName)) {
+            for (final Replica replica : slice.getReplicas()) {
+              shardLeaderMap.put(replica.getNodeName().replace("_solr", "/solr"), Boolean.FALSE);
+            }
+            shardLeaderMap.put(slice.getLeader().getNodeName().replace("_solr", "/solr"), Boolean.TRUE);
+          }
+          for (int ii = 0; ii < jettys.size(); ++ii) {
+            final URL jettyBaseUrl = jettys.get(ii).getBaseUrl();
+            final String jettyBaseUrlString = jettyBaseUrl.toString().substring((jettyBaseUrl.getProtocol() + "://").length());
+            final Boolean isLeader = shardLeaderMap.get(jettyBaseUrlString);
+            if (Boolean.TRUE.equals(isLeader)) {
+              leaderIndices.add(new Integer(ii));
+            } else if (Boolean.FALSE.equals(isLeader)) {
+              followerIndices.add(new Integer(ii));
+            } // else neither leader nor follower i.e. node without a replica (for our collection)
+          }
+        }
+        final List<Integer> leaderIndicesList = new ArrayList<Integer>(leaderIndices);
+        final List<Integer> followerIndicesList = new ArrayList<Integer>(followerIndices);
+
+        // first stop the followers (in no particular order)
+        Collections.shuffle(followerIndicesList, random());
+        for (Integer ii : followerIndicesList) {
+          if (!leaderIndices.contains(ii)) {
+            miniCluster.stopJettySolrRunner(jettys.get(ii.intValue()));
+          }
+        }
+
+        // then stop the leaders (again in no particular order)
+        Collections.shuffle(leaderIndicesList, random());
+        for (Integer ii : leaderIndicesList) {
+          miniCluster.stopJettySolrRunner(jettys.get(ii.intValue()));
+        }
+
+        // calculate restart order
+        final List<Integer> restartIndicesList = new ArrayList<Integer>();
+        Collections.shuffle(leaderIndicesList, random());
+        restartIndicesList.addAll(leaderIndicesList);
+        Collections.shuffle(followerIndicesList, random());
+        restartIndicesList.addAll(followerIndicesList);
+        if (random().nextBoolean()) Collections.shuffle(restartIndicesList, random());
+
+        // and then restart jettys in that order
+        for (Integer ii : restartIndicesList) {
+          final JettySolrRunner jetty = jettys.get(ii.intValue());
+          if (!jetty.isRunning()) {
+            miniCluster.startJettySolrRunner(jetty);
+            assertTrue(jetty.isRunning());
+          }
+        }
+        AbstractDistribZkTestBase.waitForRecoveriesToFinish(collectionName, zkStateReader, true, true, 330);
+
+        zkStateReader.updateClusterState();
+
+        // re-query collection
+        {
+          final QueryResponse rsp = cloudSolrClient.query(query);
+          assertEquals(numDocs, rsp.getResults().getNumFound());
+        }
+
+        // delete the collection we created earlier
+        miniCluster.deleteCollection(collectionName);
+        AbstractDistribZkTestBase.waitForCollectionToDisappear(collectionName, zkStateReader, true, true, 330);
+      }
+    }
+    finally {
+      miniCluster.shutdown();
+    }
+  }
+
 }

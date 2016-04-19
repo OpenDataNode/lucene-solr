@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.complexPhrase;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,11 @@ package org.apache.lucene.queryparser.complexPhrase;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.complexPhrase;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 
@@ -29,16 +29,18 @@ import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.BoostQuery;
+import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MultiTermQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TermRangeQuery;
+import org.apache.lucene.search.spans.SpanBoostQuery;
 import org.apache.lucene.search.spans.SpanNearQuery;
 import org.apache.lucene.search.spans.SpanNotQuery;
 import org.apache.lucene.search.spans.SpanOrQuery;
 import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.search.spans.SpanTermQuery;
-import org.apache.lucene.util.Version;
 
 /**
  * QueryParser which permits complex phrase query syntax eg "(john jon
@@ -80,16 +82,8 @@ public class ComplexPhraseQueryParser extends QueryParser {
 
   private ComplexPhraseQuery currentPhraseQuery = null;
 
-  /**
-   * @deprecated Use {@link #ComplexPhraseQueryParser(String, Analyzer)}
-   */
-  @Deprecated
-  public ComplexPhraseQueryParser(Version matchVersion, String f, Analyzer a) {
-    super(matchVersion, f, a);
-  }
-
   public ComplexPhraseQueryParser(String f, Analyzer a) {
-    this(Version.LATEST, f, a);
+    super(f, a);
   }
 
   @Override
@@ -115,7 +109,7 @@ public class ComplexPhraseQueryParser extends QueryParser {
         // QueryParser is not guaranteed threadsafe anyway so this temporary
         // state change should not
         // present an issue
-        setMultiTermRewriteMethod(MultiTermQuery.SCORING_BOOLEAN_QUERY_REWRITE);
+        setMultiTermRewriteMethod(MultiTermQuery.SCORING_BOOLEAN_REWRITE);
         return super.parse(query);
       } finally {
         setMultiTermRewriteMethod(oldMethod);
@@ -195,7 +189,7 @@ public class ComplexPhraseQueryParser extends QueryParser {
       // Must use old-style RangeQuery in order to produce a BooleanQuery
       // that can be turned into SpanOr clause
       TermRangeQuery rangeQuery = TermRangeQuery.newStringRange(field, part1, part2, startInclusive, endInclusive);
-      rangeQuery.setRewriteMethod(MultiTermQuery.SCORING_BOOLEAN_QUERY_REWRITE);
+      rangeQuery.setRewriteMethod(MultiTermQuery.SCORING_BOOLEAN_REWRITE);
       return rangeQuery;
     }
     return super.newRangeQuery(field, part1, part2, startInclusive, endInclusive);
@@ -224,7 +218,7 @@ public class ComplexPhraseQueryParser extends QueryParser {
 
     private final boolean inOrder;
 
-    private Query contents;
+    private final Query[] contents = new Query[1];
 
     public ComplexPhraseQuery(String field, String phrasedQueryStringContents,
         int slopFactor, boolean inOrder) {
@@ -249,7 +243,7 @@ public class ComplexPhraseQueryParser extends QueryParser {
       try {
         //temporarily set the QueryParser to be parsing the default field for this phrase e.g author:"fred* smith"
         qp.field = this.field;
-        contents = qp.parse(phrasedQueryStringContents);
+        contents[0] = qp.parse(phrasedQueryStringContents);
       }
       finally {
         qp.field = oldDefaultParserField;
@@ -258,6 +252,10 @@ public class ComplexPhraseQueryParser extends QueryParser {
 
     @Override
     public Query rewrite(IndexReader reader) throws IOException {
+      if (getBoost() != 1f) {
+        return super.rewrite(reader);
+      }
+      final Query contents = this.contents[0];
       // ArrayList spanClauses = new ArrayList();
       if (contents instanceof TermQuery) {
         return contents;
@@ -273,16 +271,20 @@ public class ComplexPhraseQueryParser extends QueryParser {
             + "\"");
       }
       BooleanQuery bq = (BooleanQuery) contents;
-      BooleanClause[] bclauses = bq.getClauses();
-      SpanQuery[] allSpanClauses = new SpanQuery[bclauses.length];
+      SpanQuery[] allSpanClauses = new SpanQuery[bq.clauses().size()];
       // For all clauses e.g. one* two~
-      for (int i = 0; i < bclauses.length; i++) {
+      int i = 0;
+      for (BooleanClause clause : bq) {
         // HashSet bclauseterms=new HashSet();
-        Query qc = bclauses[i].getQuery();
+        Query qc = clause.getQuery();
         // Rewrite this clause e.g one* becomes (one OR onerous)
-        qc = qc.rewrite(reader);
-        if (bclauses[i].getOccur().equals(BooleanClause.Occur.MUST_NOT)) {
+        qc = new IndexSearcher(reader).rewrite(qc);
+        if (clause.getOccur().equals(BooleanClause.Occur.MUST_NOT)) {
           numNegatives++;
+        }
+
+        while (qc instanceof BoostQuery) {
+          qc = ((BoostQuery) qc).getQuery();
         }
 
         if (qc instanceof BooleanQuery) {
@@ -309,6 +311,7 @@ public class ComplexPhraseQueryParser extends QueryParser {
           }
 
         }
+        i += 1;
       }
       if (numNegatives == 0) {
         // The simple case - no negative elements in phrase
@@ -318,10 +321,12 @@ public class ComplexPhraseQueryParser extends QueryParser {
       // sequence.
       // Need to return a SpanNotQuery
       ArrayList<SpanQuery> positiveClauses = new ArrayList<>();
-      for (int j = 0; j < allSpanClauses.length; j++) {
-        if (!bclauses[j].getOccur().equals(BooleanClause.Occur.MUST_NOT)) {
-          positiveClauses.add(allSpanClauses[j]);
+      i = 0;
+      for (BooleanClause clause : bq) {
+        if (!clause.getOccur().equals(BooleanClause.Occur.MUST_NOT)) {
+          positiveClauses.add(allSpanClauses[i]);
         }
+        i += 1;
       }
 
       SpanQuery[] includeClauses = positiveClauses
@@ -346,22 +351,30 @@ public class ComplexPhraseQueryParser extends QueryParser {
     private void addComplexPhraseClause(List<SpanQuery> spanClauses, BooleanQuery qc) {
       ArrayList<SpanQuery> ors = new ArrayList<>();
       ArrayList<SpanQuery> nots = new ArrayList<>();
-      BooleanClause[] bclauses = qc.getClauses();
 
       // For all clauses e.g. one* two~
-      for (int i = 0; i < bclauses.length; i++) {
-        Query childQuery = bclauses[i].getQuery();
+      for (BooleanClause clause : qc) {
+        Query childQuery = clause.getQuery();
+
+        float boost = 1f;
+        while (childQuery instanceof BoostQuery) {
+          BoostQuery bq = (BoostQuery) childQuery;
+          boost *= bq.getBoost();
+          childQuery = bq.getQuery();
+        }
 
         // select the list to which we will add these options
         ArrayList<SpanQuery> chosenList = ors;
-        if (bclauses[i].getOccur() == BooleanClause.Occur.MUST_NOT) {
+        if (clause.getOccur() == BooleanClause.Occur.MUST_NOT) {
           chosenList = nots;
         }
 
         if (childQuery instanceof TermQuery) {
           TermQuery tq = (TermQuery) childQuery;
-          SpanTermQuery stq = new SpanTermQuery(tq.getTerm());
-          stq.setBoost(tq.getBoost());
+          SpanQuery stq = new SpanTermQuery(tq.getTerm());
+          if (boost != 1f) {
+            stq = new SpanBoostQuery(stq, boost);
+          }
           chosenList.add(stq);
         } else if (childQuery instanceof BooleanQuery) {
           BooleanQuery cbq = (BooleanQuery) childQuery;
@@ -389,7 +402,10 @@ public class ComplexPhraseQueryParser extends QueryParser {
 
     @Override
     public String toString(String field) {
-      return "\"" + phrasedQueryStringContents + "\"";
+      if (slopFactor == 0)
+        return "\"" + phrasedQueryStringContents + "\"";
+      else
+        return "\"" + phrasedQueryStringContents + "\"" + "~" + slopFactor;
     }
 
     @Override

@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,17 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.Terms;
-import org.apache.lucene.index.TermsEnum;
+
+import java.io.IOException;
+import java.util.Set;
+
+import org.apache.lucene.index.FieldInvertState;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.util.Bits;
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.util.PriorityQueue;
 
 /**
@@ -37,7 +38,7 @@ final class JustCompileSearch {
 
   private static final String UNSUPPORTED_MSG = "unsupported: used for back-compat testing only !";
 
-  static final class JustCompileCollector extends Collector {
+  static final class JustCompileCollector extends SimpleCollector {
 
     @Override
     public void collect(int doc) {
@@ -45,7 +46,7 @@ final class JustCompileSearch {
     }
 
     @Override
-    public void setNextReader(AtomicReaderContext context) {
+    protected void doSetNextReader(LeafReaderContext context) throws IOException {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
 
@@ -53,12 +54,11 @@ final class JustCompileSearch {
     public void setScorer(Scorer scorer) {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
-    
+
     @Override
-    public boolean acceptsDocsOutOfOrder() {
+    public boolean needsScores() {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
-
   }
   
   static final class JustCompileDocIdSet extends DocIdSet {
@@ -67,7 +67,11 @@ final class JustCompileSearch {
     public DocIdSetIterator iterator() {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
-    
+
+    @Override
+    public long ramBytesUsed() {
+      return 0L;
+    }
   }
 
   static final class JustCompileDocIdSetIterator extends DocIdSetIterator {
@@ -93,63 +97,10 @@ final class JustCompileSearch {
     }
   }
   
-  static final class JustCompileExtendedFieldCacheLongParser implements FieldCache.LongParser {
-
-    @Override
-    public long parseLong(BytesRef string) {
-      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
-    }
-
-    @Override
-    public TermsEnum termsEnum(Terms terms) {
-      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
-    }
-    
-  }
-  
-  static final class JustCompileExtendedFieldCacheDoubleParser implements FieldCache.DoubleParser {
-    
-    @Override
-    public double parseDouble(BytesRef term) {
-      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
-    }
-
-    @Override
-    public TermsEnum termsEnum(Terms terms) {
-      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
-    }
-    
-  }
-
   static final class JustCompileFieldComparator extends FieldComparator<Object> {
 
     @Override
-    public int compare(int slot1, int slot2) {
-      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
-    }
-
-    @Override
-    public int compareBottom(int doc) {
-      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
-    }
-
-    @Override
-    public void copy(int slot, int doc) {
-      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
-    }
-
-    @Override
-    public void setBottom(int slot) {
-      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
-    }
-
-    @Override
     public void setTopValue(Object value) {
-      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
-    }
-
-    @Override
-    public FieldComparator<Object> setNextReader(AtomicReaderContext context) {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
 
@@ -159,7 +110,12 @@ final class JustCompileSearch {
     }
 
     @Override
-    public int compareTop(int doc) {
+    public LeafFieldComparator getLeafComparator(LeafReaderContext context) throws IOException {
+      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
+    }
+
+    @Override
+    public int compare(int slot1, int slot2) {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
   }
@@ -179,8 +135,13 @@ final class JustCompileSearch {
     // still added here in case someone will add abstract methods in the future.
     
     @Override
-    public DocIdSet getDocIdSet(AtomicReaderContext context, Bits acceptDocs) {
+    public DocIdSet getDocIdSet(LeafReaderContext context, Bits acceptDocs) {
       return null;
+    }
+
+    @Override
+    public String toString(String field) {
+      return "JustCompileFilter";
     }
   }
 
@@ -245,17 +206,7 @@ final class JustCompileSearch {
     }
 
     @Override
-    public int nextDoc() {
-      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
-    }
-    
-    @Override
-    public int advance(int target) {
-      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
-    }
-    
-    @Override
-    public long cost() {
+    public DocIdSetIterator iterator() {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
   }
@@ -263,12 +214,12 @@ final class JustCompileSearch {
   static final class JustCompileSimilarity extends Similarity {
 
     @Override
-    public SimWeight computeWeight(float queryBoost, CollectionStatistics collectionStats, TermStatistics... termStats) {
+    public SimWeight computeWeight(CollectionStatistics collectionStats, TermStatistics... termStats) {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
 
     @Override
-    public SimScorer simScorer(SimWeight stats, AtomicReaderContext context) {
+    public SimScorer simScorer(SimWeight stats, LeafReaderContext context) {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
 
@@ -285,23 +236,8 @@ final class JustCompileSearch {
     }
 
     @Override
-    public void collect(int doc) {
-      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
-    }
-
-    @Override
-    public void setNextReader(AtomicReaderContext context) {
-      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
-    }
-
-    @Override
-    public void setScorer(Scorer scorer) {
-      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
-    }
-    
-    @Override
-    public boolean acceptsDocsOutOfOrder() {
-      throw new UnsupportedOperationException(UNSUPPORTED_MSG);
+    public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
+      throw new UnsupportedOperationException( UNSUPPORTED_MSG );
     }
 
     @Override
@@ -318,18 +254,26 @@ final class JustCompileSearch {
     public TopDocs topDocs( int start, int end ) {
         throw new UnsupportedOperationException( UNSUPPORTED_MSG );
     }
-    
+
+    @Override
+    public boolean needsScores() {
+      throw new UnsupportedOperationException( UNSUPPORTED_MSG );
+    }
   }
 
   static final class JustCompileWeight extends Weight {
 
+    protected JustCompileWeight() {
+      super(null);
+    }
+
     @Override
-    public Explanation explain(AtomicReaderContext context, int doc) {
+    public void extractTerms(Set<Term> terms) {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
 
     @Override
-    public Query getQuery() {
+    public Explanation explain(LeafReaderContext context, int doc) {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
 
@@ -344,10 +288,10 @@ final class JustCompileSearch {
     }
 
     @Override
-    public Scorer scorer(AtomicReaderContext context, Bits acceptDocs) {
+    public Scorer scorer(LeafReaderContext context) {
       throw new UnsupportedOperationException(UNSUPPORTED_MSG);
     }
-    
+
   }
   
 }

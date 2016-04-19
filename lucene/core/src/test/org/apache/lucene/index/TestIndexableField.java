@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,9 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
 
-import java.io.IOException;
+
 import java.io.Reader;
 import java.io.StringReader;
 import java.util.Collections;
@@ -25,13 +24,10 @@ import java.util.Iterator;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.codecs.Codec;
-import org.apache.lucene.codecs.lucene3x.Lucene3xCodec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.StoredField;
-import org.apache.lucene.index.FieldInfo.DocValuesType;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.DocIdSetIterator;
@@ -50,11 +46,6 @@ public class TestIndexableField extends LuceneTestCase {
     private final int counter;
     private final IndexableFieldType fieldType = new IndexableFieldType() {
       @Override
-      public boolean indexed() {
-        return (counter % 10) != 3;
-      }
-
-      @Override
       public boolean stored() {
         return (counter & 1) == 0 || (counter % 10) == 3;
       }
@@ -66,7 +57,7 @@ public class TestIndexableField extends LuceneTestCase {
 
       @Override
       public boolean storeTermVectors() {
-        return indexed() && counter % 2 == 1 && counter % 10 != 9;
+        return indexOptions() != IndexOptions.NONE && counter % 2 == 1 && counter % 10 != 9;
       }
 
       @Override
@@ -81,11 +72,7 @@ public class TestIndexableField extends LuceneTestCase {
       
       @Override
       public boolean storeTermVectorPayloads() {
-        if (Codec.getDefault() instanceof Lucene3xCodec) {
-          return false; // 3.x doesnt support
-        } else {
-          return storeTermVectors() && counter % 10 != 9;
-        }
+        return storeTermVectors() && counter % 10 != 9;
       }
 
       @Override
@@ -94,13 +81,13 @@ public class TestIndexableField extends LuceneTestCase {
       }
 
       @Override
-      public FieldInfo.IndexOptions indexOptions() {
-        return FieldInfo.IndexOptions.DOCS_AND_FREQS_AND_POSITIONS;
+      public IndexOptions indexOptions() {
+        return counter%10 == 3 ? IndexOptions.NONE : IndexOptions.DOCS_AND_FREQS_AND_POSITIONS;
       }
 
       @Override
-      public DocValuesType docValueType() {
-        return null;
+      public DocValuesType docValuesType() {
+        return DocValuesType.NONE;
       }
     };
 
@@ -161,7 +148,7 @@ public class TestIndexableField extends LuceneTestCase {
     }
 
     @Override
-    public TokenStream tokenStream(Analyzer analyzer, TokenStream previous) throws IOException {
+    public TokenStream tokenStream(Analyzer analyzer, TokenStream previous) {
       return readerValue() != null ? analyzer.tokenStream(name(), readerValue()) :
         analyzer.tokenStream(name(), new StringReader(stringValue()));
     }
@@ -276,17 +263,17 @@ public class TestIndexableField extends LuceneTestCase {
           if (tv) {
             final Terms tfv = r.getTermVectors(docID).terms(name);
             assertNotNull(tfv);
-            TermsEnum termsEnum = tfv.iterator(null);
+            TermsEnum termsEnum = tfv.iterator();
             assertEquals(new BytesRef(""+counter), termsEnum.next());
             assertEquals(1, termsEnum.totalTermFreq());
-            DocsAndPositionsEnum dpEnum = termsEnum.docsAndPositions(null, null);
+            PostingsEnum dpEnum = termsEnum.postings(null, PostingsEnum.ALL);
             assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
             assertEquals(1, dpEnum.freq());
             assertEquals(1, dpEnum.nextPosition());
 
             assertEquals(new BytesRef("text"), termsEnum.next());
             assertEquals(1, termsEnum.totalTermFreq());
-            dpEnum = termsEnum.docsAndPositions(null, dpEnum);
+            dpEnum = termsEnum.postings(dpEnum, PostingsEnum.ALL);
             assertTrue(dpEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
             assertEquals(1, dpEnum.freq());
             assertEquals(0, dpEnum.nextPosition());
@@ -300,17 +287,17 @@ public class TestIndexableField extends LuceneTestCase {
             assertTrue(vectors == null || vectors.terms(name) == null);
           }
 
-          BooleanQuery bq = new BooleanQuery();
+          BooleanQuery.Builder bq = new BooleanQuery.Builder();
           bq.add(new TermQuery(new Term("id", ""+id)), BooleanClause.Occur.MUST);
           bq.add(new TermQuery(new Term(name, "text")), BooleanClause.Occur.MUST);
-          final TopDocs hits2 = s.search(bq, 1);
+          final TopDocs hits2 = s.search(bq.build(), 1);
           assertEquals(1, hits2.totalHits);
           assertEquals(docID, hits2.scoreDocs[0].doc);
 
-          bq = new BooleanQuery();
+          bq = new BooleanQuery.Builder();
           bq.add(new TermQuery(new Term("id", ""+id)), BooleanClause.Occur.MUST);
           bq.add(new TermQuery(new Term(name, ""+counter)), BooleanClause.Occur.MUST);
-          final TopDocs hits3 = s.search(bq, 1);
+          final TopDocs hits3 = s.search(bq.build(), 1);
           assertEquals(1, hits3.totalHits);
           assertEquals(docID, hits3.scoreDocs[0].doc);
         }

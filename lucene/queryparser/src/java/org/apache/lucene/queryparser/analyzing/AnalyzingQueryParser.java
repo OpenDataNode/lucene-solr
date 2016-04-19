@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.analyzing;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.analyzing;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.analyzing;
 
 import java.io.IOException;
 import java.util.regex.Matcher;
@@ -26,8 +25,6 @@ import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.util.IOUtils;
-import org.apache.lucene.util.Version;
 
 /**
  * Overrides Lucene's default QueryParser so that Fuzzy-, Prefix-, Range-, and WildcardQuerys
@@ -43,18 +40,9 @@ import org.apache.lucene.util.Version;
 public class AnalyzingQueryParser extends org.apache.lucene.queryparser.classic.QueryParser {
   // gobble escaped chars or find a wildcard character 
   private final Pattern wildcardPattern = Pattern.compile("(\\.)|([?*]+)");
-
-  /**
-   * @deprecated Use {@link #AnalyzingQueryParser(String, Analyzer)}
-   */
-  @Deprecated
-  public AnalyzingQueryParser(Version matchVersion, String field, Analyzer analyzer) {
-    super(matchVersion, field, analyzer);
-    setAnalyzeRangeTerms(true);
-  }
-
   public AnalyzingQueryParser(String field, Analyzer analyzer) {
-    this(Version.LATEST, field, analyzer);
+    super(field, analyzer);
+    setAnalyzeRangeTerms(true);
   }
 
   /**
@@ -172,9 +160,7 @@ public class AnalyzingQueryParser extends org.apache.lucene.queryparser.classic.
    */
   protected String analyzeSingleChunk(String field, String termStr, String chunk) throws ParseException{
     String analyzed = null;
-    TokenStream stream = null;
-    try {
-      stream = getAnalyzer().tokenStream(field, chunk);
+    try (TokenStream stream = getAnalyzer().tokenStream(field, chunk)) {
       stream.reset();
       CharTermAttribute termAtt = stream.getAttribute(CharTermAttribute.class);
       // get first and hopefully only output token
@@ -210,8 +196,6 @@ public class AnalyzingQueryParser extends org.apache.lucene.queryparser.classic.
     } catch (IOException e){
       throw new ParseException(
           String.format(getLocale(), "IO error while trying to analyze single term: \"%s\"", termStr));
-    } finally {
-      IOUtils.closeWhileHandlingException(stream);
     }
     return analyzed;
   }

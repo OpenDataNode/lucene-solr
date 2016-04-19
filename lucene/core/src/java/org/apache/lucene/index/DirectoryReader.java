@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -26,7 +26,6 @@ import java.util.List;
 
 import org.apache.lucene.search.SearcherManager; // javadocs
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.NoSuchDirectoryException;
 
 /** DirectoryReader is an implementation of {@link CompositeReader}
  that can read indexes in a {@link Directory}. 
@@ -50,10 +49,7 @@ import org.apache.lucene.store.NoSuchDirectoryException;
  <code>IndexReader</code> instance; use your own
  (non-Lucene) objects instead.
 */
-public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> {
-
-  /** Default termInfosIndexDivisor. */
-  public static final int DEFAULT_TERMS_INDEX_DIVISOR = 1;
+public abstract class DirectoryReader extends BaseCompositeReader<LeafReader> {
 
   /** The index directory. */
   protected final Directory directory;
@@ -64,33 +60,28 @@ public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> 
    * @throws IOException if there is a low-level IO error
    */
   public static DirectoryReader open(final Directory directory) throws IOException {
-    return StandardDirectoryReader.open(directory, null, DEFAULT_TERMS_INDEX_DIVISOR);
-  }
-  
-  /** Expert: Returns a IndexReader reading the index in the given
-   *  Directory with the given termInfosIndexDivisor.
-   * @param directory the index directory
-   * @param termInfosIndexDivisor Subsamples which indexed
-   *  terms are loaded into RAM. This has the same effect as {@link
-   *  IndexWriterConfig#setTermIndexInterval} except that setting
-   *  must be done at indexing time while this setting can be
-   *  set per reader.  When set to N, then one in every
-   *  N*termIndexInterval terms in the index is loaded into
-   *  memory.  By setting this to a value > 1 you can reduce
-   *  memory usage, at the expense of higher latency when
-   *  loading a TermInfo.  The default value is 1.  Set this
-   *  to -1 to skip loading the terms index entirely.
-   *  <b>NOTE:</b> divisor settings &gt; 1 do not apply to all PostingsFormat
-   *  implementations, including the default one in this release. It only makes
-   *  sense for terms indexes that can efficiently re-sample terms at load time.
-   * @throws IOException if there is a low-level IO error
-   */
-  public static DirectoryReader open(final Directory directory, int termInfosIndexDivisor) throws IOException {
-    return StandardDirectoryReader.open(directory, null, termInfosIndexDivisor);
+    return StandardDirectoryReader.open(directory, null);
   }
   
   /**
    * Open a near real time IndexReader from the {@link org.apache.lucene.index.IndexWriter}.
+   *
+   * @param writer The IndexWriter to open from
+   * @return The new IndexReader
+   * @throws CorruptIndexException if the index is corrupt
+   * @throws IOException if there is a low-level IO error
+   *
+   * @see #openIfChanged(DirectoryReader,IndexWriter,boolean)
+   *
+   * @lucene.experimental
+   */
+  public static DirectoryReader open(final IndexWriter writer) throws IOException {
+    return open(writer, true);
+  }
+
+  /**
+   * Expert: open a near real time IndexReader from the {@link org.apache.lucene.index.IndexWriter},
+   * controlling whether past deletions should be applied.
    *
    * @param writer The IndexWriter to open from
    * @param applyAllDeletes If true, all buffered deletes will
@@ -100,11 +91,8 @@ public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> 
    * future.  Applying deletes can be costly, so if your app
    * can tolerate deleted documents being returned you might
    * gain some performance by passing false.
-   * @return The new IndexReader
-   * @throws CorruptIndexException if the index is corrupt
-   * @throws IOException if there is a low-level IO error
    *
-   * @see #openIfChanged(DirectoryReader,IndexWriter,boolean)
+   * @see #open(IndexWriter)
    *
    * @lucene.experimental
    */
@@ -118,29 +106,7 @@ public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> 
    * @throws IOException if there is a low-level IO error
    */
   public static DirectoryReader open(final IndexCommit commit) throws IOException {
-    return StandardDirectoryReader.open(commit.getDirectory(), commit, DEFAULT_TERMS_INDEX_DIVISOR);
-  }
-
-  /** Expert: returns an IndexReader reading the index in the given
-   *  {@link IndexCommit} and termInfosIndexDivisor.
-   * @param commit the commit point to open
-   * @param termInfosIndexDivisor Subsamples which indexed
-   *  terms are loaded into RAM. This has the same effect as {@link
-   *  IndexWriterConfig#setTermIndexInterval} except that setting
-   *  must be done at indexing time while this setting can be
-   *  set per reader.  When set to N, then one in every
-   *  N*termIndexInterval terms in the index is loaded into
-   *  memory.  By setting this to a value > 1 you can reduce
-   *  memory usage, at the expense of higher latency when
-   *  loading a TermInfo.  The default value is 1.  Set this
-   *  to -1 to skip loading the terms index entirely.
-   *  <b>NOTE:</b> divisor settings &gt; 1 do not apply to all PostingsFormat
-   *  implementations, including the default one in this release. It only makes
-   *  sense for terms indexes that can efficiently re-sample terms at load time.
-   * @throws IOException if there is a low-level IO error
-   */
-  public static DirectoryReader open(final IndexCommit commit, int termInfosIndexDivisor) throws IOException {
-    return StandardDirectoryReader.open(commit.getDirectory(), commit, termInfosIndexDivisor);
+    return StandardDirectoryReader.open(commit.getDirectory(), commit);
   }
 
   /**
@@ -235,6 +201,21 @@ public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> 
    *
    * @param writer The IndexWriter to open from
    *
+   * @throws IOException if there is a low-level IO error
+   *
+   * @lucene.experimental
+   */
+  public static DirectoryReader openIfChanged(DirectoryReader oldReader, IndexWriter writer) throws IOException {
+    return openIfChanged(oldReader, writer, true);
+  }
+
+  /**
+   * Expert: Opens a new reader, if there are any changes, controlling whether past deletions should be applied.
+   *
+   * @see #openIfChanged(DirectoryReader,IndexWriter)
+   *
+   * @param writer The IndexWriter to open from
+   *
    * @param applyAllDeletes If true, all buffered deletes will
    * be applied (made visible) in the returned reader.  If
    * false, the deletes are not applied but remain buffered
@@ -273,25 +254,24 @@ public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> 
 
     List<IndexCommit> commits = new ArrayList<>();
 
-    SegmentInfos latest = new SegmentInfos();
-    latest.read(dir);
+    SegmentInfos latest = SegmentInfos.readLatestCommit(dir);
     final long currentGen = latest.getGeneration();
 
-    commits.add(new StandardDirectoryReader.ReaderCommit(latest, dir));
+    commits.add(new StandardDirectoryReader.ReaderCommit(null, latest, dir));
 
     for(int i=0;i<files.length;i++) {
 
       final String fileName = files[i];
 
       if (fileName.startsWith(IndexFileNames.SEGMENTS) &&
-          !fileName.equals(IndexFileNames.SEGMENTS_GEN) &&
+          !fileName.equals(IndexFileNames.OLD_SEGMENTS_GEN) &&
           SegmentInfos.generationFromSegmentsFileName(fileName) < currentGen) {
 
-        SegmentInfos sis = new SegmentInfos();
+        SegmentInfos sis = null;
         try {
           // IOException allowed to throw there, in case
           // segments_N is corrupt
-          sis.read(dir, fileName);
+          sis = SegmentInfos.readCommit(dir, fileName);
         } catch (FileNotFoundException | NoSuchFileException fnfe) {
           // LUCENE-948: on NFS (and maybe others), if
           // you have writers switching back and forth
@@ -300,11 +280,11 @@ public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> 
           // file segments_X exists when in fact it
           // doesn't.  So, we catch this and handle it
           // as if the file does not exist
-          sis = null;
         }
 
-        if (sis != null)
-          commits.add(new StandardDirectoryReader.ReaderCommit(sis, dir));
+        if (sis != null) {
+          commits.add(new StandardDirectoryReader.ReaderCommit(null, sis, dir));
+        }
       }
     }
 
@@ -335,22 +315,12 @@ public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> 
     // corrupt indices.  This means that IndexWriter will
     // throw an exception on such indices and the app must
     // resolve the situation manually:
-    String[] files;
-    try {
-      files = directory.listAll();
-    } catch (NoSuchDirectoryException nsde) {
-      // Directory does not exist --> no index exists
-      return false;
-    }
+    String[] files = directory.listAll();
 
-    // Defensive: maybe a Directory impl returns null
-    // instead of throwing NoSuchDirectoryException:
-    if (files != null) {
-      String prefix = IndexFileNames.SEGMENTS + "_";
-      for(String file : files) {
-        if (file.startsWith(prefix) || file.equals(IndexFileNames.SEGMENTS_GEN)) {
-          return true;
-        }
+    String prefix = IndexFileNames.SEGMENTS + "_";
+    for(String file : files) {
+      if (file.startsWith(prefix)) {
+        return true;
       }
     }
     return false;
@@ -365,11 +335,11 @@ public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> 
    * Subclasses of {@code DirectoryReader} should take care to not allow
    * modification of this internal array, e.g. {@link #doOpenIfChanged()}.
    */
-  protected DirectoryReader(Directory directory, AtomicReader[] segmentReaders) {
+  protected DirectoryReader(Directory directory, LeafReader[] segmentReaders) throws IOException {
     super(segmentReaders);
     this.directory = directory;
   }
-  
+
   /** Returns the directory this index resides in. */
   public final Directory directory() {
     // Don't ensureOpen here -- in certain cases, when a
@@ -427,7 +397,7 @@ public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> 
    *
    * <p>If instead this reader is a near real-time reader
    * (ie, obtained by a call to {@link
-   * DirectoryReader#open(IndexWriter,boolean)}, or by calling {@link #openIfChanged}
+   * DirectoryReader#open(IndexWriter)}, or by calling {@link #openIfChanged}
    * on a near real-time reader), then this method checks if
    * either a new commit has occurred, or any new
    * uncommitted changes have taken place via the writer.
@@ -444,7 +414,6 @@ public abstract class DirectoryReader extends BaseCompositeReader<AtomicReader> 
 
   /**
    * Expert: return the IndexCommit that this reader has opened.
-   * <p/>
    * @lucene.experimental
    */
   public abstract IndexCommit getIndexCommit() throws IOException;

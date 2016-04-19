@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
+
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -29,13 +29,13 @@ import java.io.OutputStream;
  * external server ({@link LockVerifyServer}) to assert that
  * at most one process holds the lock at a time.  To use
  * this, you should also run {@link LockVerifyServer} on the
- * host & port matching what you pass to the constructor.
+ * host and port matching what you pass to the constructor.
  *
  * @see LockVerifyServer
  * @see LockStressTest
  */
 
-public class VerifyingLockFactory extends LockFactory {
+public final class VerifyingLockFactory extends LockFactory {
 
   final LockFactory lf;
   final InputStream in;
@@ -44,8 +44,22 @@ public class VerifyingLockFactory extends LockFactory {
   private class CheckedLock extends Lock {
     private final Lock lock;
 
-    public CheckedLock(Lock lock) {
+    public CheckedLock(Lock lock) throws IOException {
       this.lock = lock;
+      verify((byte) 1);
+    }
+
+    @Override
+    public void ensureValid() throws IOException {
+      lock.ensureValid();
+    }
+
+    @Override
+    public void close() throws IOException {
+      try (Lock l = lock) {
+        l.ensureValid();
+        verify((byte) 0);
+      }
     }
 
     private void verify(byte message) throws IOException {
@@ -57,27 +71,6 @@ public class VerifyingLockFactory extends LockFactory {
       }
       if (ret != message) {
         throw new IOException("Protocol violation.");
-      }
-    }
-
-    @Override
-    public synchronized boolean obtain() throws IOException {
-      boolean obtained = lock.obtain();
-      if (obtained)
-        verify((byte) 1);
-      return obtained;
-    }
-
-    @Override
-    public synchronized boolean isLocked() throws IOException {
-      return lock.isLocked();
-    }
-
-    @Override
-    public synchronized void close() throws IOException {
-      if (isLocked()) {
-        verify((byte) 0);
-        lock.close();
       }
     }
   }
@@ -94,13 +87,7 @@ public class VerifyingLockFactory extends LockFactory {
   }
 
   @Override
-  public synchronized Lock makeLock(String lockName) {
-    return new CheckedLock(lf.makeLock(lockName));
-  }
-
-  @Override
-  public synchronized void clearLock(String lockName)
-    throws IOException {
-    lf.clearLock(lockName);
+  public Lock obtainLock(Directory dir, String lockName) throws IOException {
+    return new CheckedLock(lf.obtainLock(dir, lockName));
   }
 }

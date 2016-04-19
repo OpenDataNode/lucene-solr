@@ -1,5 +1,3 @@
-package org.apache.solr.handler.dataimport;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,9 @@ package org.apache.solr.handler.dataimport;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.dataimport;
+
+import java.lang.invoke.MethodHandles;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -31,7 +32,7 @@ import org.slf4j.LoggerFactory;
 
 public class TestSortedMapBackedCache extends AbstractDIHCacheTestCase {
   
-  public static Logger log = LoggerFactory.getLogger(TestSortedMapBackedCache.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   @Test
   public void testCacheWithKeyLookup() {

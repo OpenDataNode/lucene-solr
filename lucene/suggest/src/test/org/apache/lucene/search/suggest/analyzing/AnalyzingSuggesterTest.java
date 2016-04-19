@@ -1,5 +1,3 @@
-package org.apache.lucene.search.suggest.analyzing;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,14 @@ package org.apache.lucene.search.suggest.analyzing;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.suggest.analyzing;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Reader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -52,8 +50,8 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.search.suggest.Lookup.LookupResult;
 import org.apache.lucene.search.suggest.Input;
 import org.apache.lucene.search.suggest.InputArrayIterator;
-import org.apache.lucene.util.AttributeFactory;
 import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LineFileDocs;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
@@ -72,7 +70,8 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
         new Input("barbara", 1)
     );
 
-    AnalyzingSuggester suggester = new AnalyzingSuggester(new MockAnalyzer(random(), MockTokenizer.KEYWORD, false));
+    Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.KEYWORD, false);
+    AnalyzingSuggester suggester = new AnalyzingSuggester(analyzer);
     suggester.build(new InputArrayIterator(keys));
     
     // top N of 2, but only foo is available
@@ -105,6 +104,8 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     assertEquals(10, results.get(1).value, 0.01F);
     assertEquals("barbara", results.get(2).key.toString());
     assertEquals(6, results.get(2).value, 0.01F);
+    
+    analyzer.close();
   }
   
   public void testKeywordWithPayloads() throws Exception {
@@ -116,7 +117,8 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
       new Input("bar", 8, new BytesRef("should also be deduplicated")),
       new Input("barbara", 6, new BytesRef("for all the fish")));
     
-    AnalyzingSuggester suggester = new AnalyzingSuggester(new MockAnalyzer(random(), MockTokenizer.KEYWORD, false));
+    Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.KEYWORD, false);
+    AnalyzingSuggester suggester = new AnalyzingSuggester(analyzer);
     suggester.build(new InputArrayIterator(keys));
     for (int i = 0; i < 2; i++) {
       // top N of 2, but only foo is available
@@ -157,6 +159,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
       assertEquals(6, results.get(2).value, 0.01F);
       assertEquals(new BytesRef("for all the fish"), results.get(2).payload);
     }
+    analyzer.close();
   }
   
   public void testRandomRealisticKeys() throws IOException {
@@ -174,7 +177,9 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
           mapping.put(title, Long.valueOf(randomWeight));
       }
     }
-    AnalyzingSuggester analyzingSuggester = new AnalyzingSuggester(new MockAnalyzer(random()), new MockAnalyzer(random()),
+    Analyzer indexAnalyzer = new MockAnalyzer(random());
+    Analyzer queryAnalyzer = new MockAnalyzer(random());
+    AnalyzingSuggester analyzingSuggester = new AnalyzingSuggester(indexAnalyzer, queryAnalyzer,
         AnalyzingSuggester.EXACT_FIRST | AnalyzingSuggester.PRESERVE_SEP, 256, -1, random().nextBoolean());
     boolean doPayloads = random().nextBoolean();
     if (doPayloads) {
@@ -199,7 +204,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
       }
     }
     
-    lineFile.close();
+    IOUtils.close(lineFile, indexAnalyzer, queryAnalyzer);
   }
   
   // TODO: more tests
@@ -222,17 +227,19 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     assertEquals("the ghost of christmas past", results.get(0).key.toString());
     assertEquals(50, results.get(0).value, 0.01F);
 
-    // omit the 'the' since its a stopword, its suggested anyway
+    // omit the 'the' since it's a stopword, it's suggested anyway
     results = suggester.lookup(TestUtil.stringToCharSequence("ghost of chris", random()), false, 1);
     assertEquals(1, results.size());
     assertEquals("the ghost of christmas past", results.get(0).key.toString());
     assertEquals(50, results.get(0).value, 0.01F);
 
-    // omit the 'the' and 'of' since they are stopwords, its suggested anyway
+    // omit the 'the' and 'of' since they are stopwords, it's suggested anyway
     results = suggester.lookup(TestUtil.stringToCharSequence("ghost chris", random()), false, 1);
     assertEquals(1, results.size());
     assertEquals("the ghost of christmas past", results.get(0).key.toString());
     assertEquals(50, results.get(0).value, 0.01F);
+    
+    standard.close();
   }
 
   public void testEmpty() throws Exception {
@@ -242,6 +249,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
 
     List<LookupResult> result = suggester.lookup("a", false, 20);
     assertTrue(result.isEmpty());
+    standard.close();
   }
 
   public void testNoSeps() throws Exception {
@@ -266,14 +274,15 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     // complete to "abcd", which has higher weight so should
     // appear first:
     assertEquals("abcd", r.get(0).key.toString());
+    a.close();
   }
 
   public void testGraphDups() throws Exception {
 
     final Analyzer analyzer = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.SIMPLE, true);
         
         return new TokenStreamComponents(tokenizer) {
           int tokenStreamCounter = 0;
@@ -309,7 +318,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
           }
          
           @Override
-          protected void setReader(final Reader reader) throws IOException {
+          protected void setReader(final Reader reader) {
           }
         };
       }
@@ -331,6 +340,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     assertEquals(50, results.get(0).value);
     assertEquals("wi fi network is fast", results.get(1).key);
     assertEquals(10, results.get(1).value);
+    analyzer.close();
   }
 
   public void testInputPathRequired() throws Exception {
@@ -345,8 +355,8 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
 
     final Analyzer analyzer = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.SIMPLE, true);
         
         return new TokenStreamComponents(tokenizer) {
           int tokenStreamCounter = 0;
@@ -375,7 +385,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
           }
          
           @Override
-          protected void setReader(final Reader reader) throws IOException {
+          protected void setReader(final Reader reader) {
           }
         };
       }
@@ -389,6 +399,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     suggester.build(new InputArrayIterator(keys));
     List<LookupResult> results = suggester.lookup("ab x", false, 1);
     assertTrue(results.size() == 1);
+    analyzer.close();
   }
 
   private static Token token(String term, int posInc, int posLength) {
@@ -423,8 +434,8 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
   private final Analyzer getUnusualAnalyzer() {
     return new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.SIMPLE, true);
         
         return new TokenStreamComponents(tokenizer) {
 
@@ -448,7 +459,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
           }
          
           @Override
-          protected void setReader(final Reader reader) throws IOException {
+          protected void setReader(final Reader reader)  {
           }
         };
       }
@@ -493,6 +504,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
         }
       }
     }
+    a.close();
   }
 
   public void testNonExactFirst() throws Exception {
@@ -530,6 +542,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
         }
       }
     }
+    a.close();
   }
   
   // Holds surface form separately:
@@ -628,8 +641,9 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     }
 
     @Override
-    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      MockTokenizer tokenizer = new MockTokenizer(MockUTF16TermAttributeImpl.UTF16_TERM_ATTRIBUTE_FACTORY, reader, MockTokenizer.WHITESPACE, false, MockTokenizer.DEFAULT_MAX_TOKEN_LENGTH);
+    public TokenStreamComponents createComponents(String fieldName) {
+      MockTokenizer tokenizer = new MockTokenizer(MockUTF16TermAttributeImpl.UTF16_TERM_ATTRIBUTE_FACTORY,
+          MockTokenizer.WHITESPACE, false, MockTokenizer.DEFAULT_MAX_TOKEN_LENGTH);
       tokenizer.setEnableChecks(true);
       TokenStream next;
       if (numStopChars != 0) {
@@ -817,7 +831,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
         System.out.println("  analyzed: " + analyzedKey);
       }
 
-      // TODO: could be faster... but its slowCompletor for a reason
+      // TODO: could be faster... but it's slowCompletor for a reason
       for (TermFreq2 e : slowCompletor) {
         if (e.analyzedForm.startsWith(analyzedKey)) {
           matches.add(e);
@@ -867,6 +881,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
         }
       }
     }
+    a.close();
   }
 
   public void testMaxSurfaceFormsPerAnalyzedForm() throws Exception {
@@ -881,6 +896,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     assertEquals(60, results.get(0).value);
     assertEquals("a ", results.get(1).key);
     assertEquals(50, results.get(1).value);
+    a.close();
   }
 
   public void testQueueExhaustion() throws Exception {
@@ -895,6 +911,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
         }));
 
     suggester.lookup("a", false, 4);
+    a.close();
   }
 
   public void testExactFirstMissingResult() throws Exception {
@@ -920,16 +937,15 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     assertEquals(3, results.get(2).value);
 
     // Try again after save/load:
-    File tmpDir = createTempDir("AnalyzingSuggesterTest");
-    tmpDir.mkdir();
+    Path tmpDir = createTempDir("AnalyzingSuggesterTest");
 
-    File path = new File(tmpDir, "suggester");
+    Path path = tmpDir.resolve("suggester");
 
-    OutputStream os = new FileOutputStream(path);
+    OutputStream os = Files.newOutputStream(path);
     suggester.store(os);
     os.close();
 
-    InputStream is = new FileInputStream(path);
+    InputStream is = Files.newInputStream(path);
     suggester.load(is);
     is.close();
 
@@ -942,13 +958,14 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     assertEquals(4, results.get(1).value);
     assertEquals("a b", results.get(2).key);
     assertEquals(3, results.get(2).value);
+    a.close();
   }
 
   public void testDupSurfaceFormsMissingResults() throws Exception {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.SIMPLE, true);
         
         return new TokenStreamComponents(tokenizer) {
 
@@ -962,7 +979,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
           }
          
           @Override
-          protected void setReader(final Reader reader) throws IOException {
+          protected void setReader(final Reader reader) {
           }
         };
       }
@@ -982,16 +999,15 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     assertEquals(5, results.get(1).value);
 
     // Try again after save/load:
-    File tmpDir = createTempDir("AnalyzingSuggesterTest");
-    tmpDir.mkdir();
+    Path tmpDir = createTempDir("AnalyzingSuggesterTest");
 
-    File path = new File(tmpDir, "suggester");
+    Path path = tmpDir.resolve("suggester");
 
-    OutputStream os = new FileOutputStream(path);
+    OutputStream os = Files.newOutputStream(path);
     suggester.store(os);
     os.close();
 
-    InputStream is = new FileInputStream(path);
+    InputStream is = Files.newInputStream(path);
     suggester.load(is);
     is.close();
 
@@ -1001,13 +1017,14 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     assertEquals(6, results.get(0).value);
     assertEquals("nellie", results.get(1).key);
     assertEquals(5, results.get(1).value);
+    a.close();
   }
 
   public void testDupSurfaceFormsMissingResults2() throws Exception {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.SIMPLE, true);
         
         return new TokenStreamComponents(tokenizer) {
 
@@ -1031,7 +1048,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
           }
          
           @Override
-          protected void setReader(final Reader reader) throws IOException {
+          protected void setReader(final Reader reader) {
           }
         };
       }
@@ -1052,16 +1069,15 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     assertEquals(5, results.get(1).value);
 
     // Try again after save/load:
-    File tmpDir = createTempDir("AnalyzingSuggesterTest");
-    tmpDir.mkdir();
+    Path tmpDir = createTempDir("AnalyzingSuggesterTest");
 
-    File path = new File(tmpDir, "suggester");
+    Path path = tmpDir.resolve("suggester");
 
-    OutputStream os = new FileOutputStream(path);
+    OutputStream os = Files.newOutputStream(path);
     suggester.store(os);
     os.close();
 
-    InputStream is = new FileInputStream(path);
+    InputStream is = Files.newInputStream(path);
     suggester.load(is);
     is.close();
 
@@ -1071,13 +1087,14 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     assertEquals(6, results.get(0).value);
     assertEquals("b", results.get(1).key);
     assertEquals(5, results.get(1).value);
+    a.close();
   }
 
   public void test0ByteKeys() throws Exception {
     final Analyzer a = new Analyzer() {
         @Override
-        protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-          Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+        protected TokenStreamComponents createComponents(String fieldName) {
+          Tokenizer tokenizer = new MockTokenizer(MockTokenizer.SIMPLE, true);
         
           return new TokenStreamComponents(tokenizer) {
             int tokenStreamCounter = 0;
@@ -1104,7 +1121,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
             }
          
             @Override
-            protected void setReader(final Reader reader) throws IOException {
+            protected void setReader(final Reader reader) {
             }
           };
         }
@@ -1116,6 +1133,8 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
           new Input("a a", 50),
           new Input("a b", 50),
         }));
+    
+    a.close();
   }
 
   public void testDupSurfaceFormsMissingResults3() throws Exception {
@@ -1129,6 +1148,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
           new Input("a b", 5),
         }));
     assertEquals("[a a/7, a c/6, a b/5]", suggester.lookup("a", false, 3).toString());
+    a.close();
   }
 
   public void testEndingSpace() throws Exception {
@@ -1140,14 +1160,15 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
         }));
     assertEquals("[isla de muerta/8, i love lucy/7]", suggester.lookup("i", false, 3).toString());
     assertEquals("[i love lucy/7]", suggester.lookup("i ", false, 3).toString());
+    a.close();
   }
 
   public void testTooManyExpansions() throws Exception {
 
     final Analyzer a = new Analyzer() {
         @Override
-        protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-          Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+        protected TokenStreamComponents createComponents(String fieldName) {
+          Tokenizer tokenizer = new MockTokenizer(MockTokenizer.SIMPLE, true);
         
           return new TokenStreamComponents(tokenizer) {
             @Override
@@ -1160,7 +1181,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
             }
          
             @Override
-            protected void setReader(final Reader reader) throws IOException {
+            protected void setReader(final Reader reader) {
             }
           };
         }
@@ -1169,6 +1190,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     AnalyzingSuggester suggester = new AnalyzingSuggester(a, a, 0, 256, 1, true);
     suggester.build(new InputArrayIterator(new Input[] {new Input("a", 1)}));
     assertEquals("[a/1]", suggester.lookup("a", false, 1).toString());
+    a.close();
   }
   
   public void testIllegalLookupArgument() throws Exception {
@@ -1189,6 +1211,7 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
     } catch (IllegalArgumentException e) {
       // expected
     }
+    a.close();
   }
 
   static final Iterable<Input> shuffle(Input...values) {
@@ -1204,13 +1227,16 @@ public class AnalyzingSuggesterTest extends LuceneTestCase {
   public void testTooLongSuggestion() throws Exception {
     Analyzer a = new MockAnalyzer(random());
     AnalyzingSuggester suggester = new AnalyzingSuggester(a);
-    String bigString = TestUtil.randomSimpleString(random(), 60000, 60000);
+    String bigString = TestUtil.randomSimpleString(random(), 30000, 30000);
     try {
       suggester.build(new InputArrayIterator(new Input[] {
             new Input(bigString, 7)}));
       fail("did not hit expected exception");
+    } catch (StackOverflowError soe) {
+      // OK
     } catch (IllegalArgumentException iae) {
       // expected
     }
+    a.close();
   }
 }

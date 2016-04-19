@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 import java.nio.CharBuffer;
@@ -136,7 +136,7 @@ public class TestIndexWriterUnicode extends LuceneTestCase {
   }
 
   private void checkTermsOrder(IndexReader r, Set<String> allTerms, boolean isTop) throws IOException {
-    TermsEnum terms = MultiFields.getFields(r).terms("f").iterator(null);
+    TermsEnum terms = MultiFields.getFields(r).terms("f").iterator();
 
     BytesRefBuilder last = new BytesRefBuilder();
 
@@ -316,7 +316,7 @@ public class TestIndexWriterUnicode extends LuceneTestCase {
     IndexReader r = writer.getReader();
 
     // Test each sub-segment
-    for (AtomicReaderContext ctx : r.leaves()) {
+    for (LeafReaderContext ctx : r.leaves()) {
       checkTermsOrder(ctx.reader(), allTerms, false);
     }
     checkTermsOrder(r, allTerms, true);

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.synonym;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.synonym;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.synonym;
+
 
 import java.io.IOException;
 import java.io.Reader;
@@ -35,7 +35,6 @@ import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
 import org.apache.lucene.util.BytesRefHash;
 import org.apache.lucene.util.CharsRef;
-import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.CharsRefBuilder;
 import org.apache.lucene.util.IntsRef;
 import org.apache.lucene.util.IntsRefBuilder;
@@ -193,7 +192,7 @@ public class SynonymMap {
     }
     
     /**
-     * Add a phrase->phrase synonym mapping.
+     * Add a phrase-&gt;phrase synonym mapping.
      * Phrases are character sequences where words are
      * separated with character zero (U+0000).  Empty words
      * (two U+0000s in a row) are not allowed in the input nor

@@ -14,27 +14,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.request;
 
-import java.io.IOException;
-import java.util.*;
-import java.util.concurrent.*;
-
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.DocValues;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.Filter;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
-import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.CharsRefBuilder;
 import org.apache.lucene.util.PriorityQueue;
 import org.apache.lucene.util.UnicodeUtil;
-import org.apache.lucene.util.packed.PackedInts;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.FacetParams;
 import org.apache.solr.common.util.NamedList;
@@ -42,6 +35,16 @@ import org.apache.solr.schema.FieldType;
 import org.apache.solr.search.DocSet;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.util.BoundedTreeSet;
+
+import java.io.IOException;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletionService;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.Future;
 
 
 class PerSegmentSingleValuedFaceting {
@@ -56,12 +59,14 @@ class PerSegmentSingleValuedFaceting {
   boolean missing;
   String sort;
   String prefix;
+  String contains;
+  boolean ignoreCase;
 
   Filter baseSet;
 
   int nThreads;
 
-  public PerSegmentSingleValuedFaceting(SolrIndexSearcher searcher, DocSet docs, String fieldName, int offset, int limit, int mincount, boolean missing, String sort, String prefix) {
+  public PerSegmentSingleValuedFaceting(SolrIndexSearcher searcher, DocSet docs, String fieldName, int offset, int limit, int mincount, boolean missing, String sort, String prefix, String contains, boolean ignoreCase) {
     this.searcher = searcher;
     this.docs = docs;
     this.fieldName = fieldName;
@@ -71,6 +76,8 @@ class PerSegmentSingleValuedFaceting {
     this.missing = missing;
     this.sort = sort;
     this.prefix = prefix;
+    this.contains = contains;
+    this.ignoreCase = ignoreCase;
   }
 
   public void setNumThreads(int threads) {
@@ -85,7 +92,7 @@ class PerSegmentSingleValuedFaceting {
     // reuse the translation logic to go from top level set to per-segment set
     baseSet = docs.getTopFilter();
 
-    final List<AtomicReaderContext> leaves = searcher.getTopReaderContext().leaves();
+    final List<LeafReaderContext> leaves = searcher.getTopReaderContext().leaves();
     // The list of pending tasks that aren't immediately submitted
     // TODO: Is there a completion service, or a delegating executor that can
     // limit the number of concurrent tasks submitted to a bigger executor?
@@ -93,7 +100,7 @@ class PerSegmentSingleValuedFaceting {
 
     int threads = nThreads <= 0 ? Integer.MAX_VALUE : nThreads;
 
-    for (final AtomicReaderContext leave : leaves) {
+    for (final LeafReaderContext leave : leaves) {
       final SegFacet segFacet = new SegFacet(leave);
 
       Callable<SegFacet> task = new Callable<SegFacet>() {
@@ -155,7 +162,7 @@ class PerSegmentSingleValuedFaceting {
         } else {
           seg.pos = seg.startTermIndex;
         }
-        if (seg.pos < seg.endTermIndex) {
+        if (seg.pos < seg.endTermIndex && (mincount < 1 || seg.hasAnyCount)) {  
           seg.tenum = seg.si.termsEnum();
           seg.tenum.seekExact(seg.pos);
           seg.tempBR = seg.tenum.term();
@@ -175,31 +182,48 @@ class PerSegmentSingleValuedFaceting {
 
     while (queue.size() > 0) {
       SegFacet seg = queue.top();
-
+      
+      // if facet.contains specified, only actually collect the count if substring contained
+      boolean collect = contains == null || SimpleFacets.contains(seg.tempBR.utf8ToString(), contains, ignoreCase);
+      
       // we will normally end up advancing the term enum for this segment
       // while still using "val", so we need to make a copy since the BytesRef
       // may be shared across calls.
-      val.copyBytes(seg.tempBR);
-
+      if (collect) {
+        val.copyBytes(seg.tempBR);
+      }
+      
       int count = 0;
 
       do {
-        count += seg.counts[seg.pos - seg.startTermIndex];
+        if (collect) {
+          count += seg.counts[seg.pos - seg.startTermIndex];
+        }
 
-        // TODO: OPTIMIZATION...
         // if mincount>0 then seg.pos++ can skip ahead to the next non-zero entry.
-        seg.pos++;
+        do{
+          ++seg.pos;
+        }
+        while(  
+            (seg.pos < seg.endTermIndex)  //stop incrementing before we run off the end
+         && (seg.tenum.next() != null || true) //move term enum forward with position -- dont care about value 
+         && (mincount > 0) //only skip ahead if mincount > 0
+         && (seg.counts[seg.pos - seg.startTermIndex] == 0) //check zero count
+        );
+        
         if (seg.pos >= seg.endTermIndex) {
           queue.pop();
           seg = queue.top();
-        }  else {
-          seg.tempBR = seg.tenum.next();
+        } else {
+          seg.tempBR = seg.tenum.term();
           seg = queue.updateTop();
         }
       } while (seg != null && val.get().compareTo(seg.tempBR) == 0);
 
-      boolean stop = collector.collect(val.get(), count);
-      if (stop) break;
+      if (collect) {
+        boolean stop = collector.collect(val.get(), count);
+        if (stop) break;
+      }
     }
 
     NamedList<Integer> res = collector.getFacetCounts();
@@ -222,8 +246,8 @@ class PerSegmentSingleValuedFaceting {
   }
 
   class SegFacet {
-    AtomicReaderContext context;
-    SegFacet(AtomicReaderContext context) {
+    LeafReaderContext context;
+    SegFacet(LeafReaderContext context) {
       this.context = context;
     }
     
@@ -231,6 +255,10 @@ class PerSegmentSingleValuedFaceting {
     int startTermIndex;
     int endTermIndex;
     int[] counts;
+    
+    //whether this segment has any non-zero term counts
+    //used to ignore insignificant segments when mincount>0
+    boolean hasAnyCount = false; 
 
     int pos; // only used when merging
     TermsEnum tenum; // only used when merging
@@ -238,7 +266,7 @@ class PerSegmentSingleValuedFaceting {
     BytesRef tempBR = new BytesRef();
 
     void countTerms() throws IOException {
-      si = FieldCache.DEFAULT.getTermsIndex(context.reader(), fieldName);
+      si = DocValues.getSorted(context.reader(), fieldName);
       // SolrCore.log.info("reader= " + reader + "  FC=" + System.identityHashCode(si));
 
       if (prefix!=null) {
@@ -255,30 +283,32 @@ class PerSegmentSingleValuedFaceting {
         startTermIndex=-1;
         endTermIndex=si.getValueCount();
       }
-
       final int nTerms=endTermIndex-startTermIndex;
-      if (nTerms>0) {
-        // count collection array only needs to be as big as the number of terms we are
-        // going to collect counts for.
-        final int[] counts = this.counts = new int[nTerms];
-        DocIdSet idSet = baseSet.getDocIdSet(context, null);  // this set only includes live docs
-        DocIdSetIterator iter = idSet.iterator();
+      if (nTerms == 0) return;
 
+      // count collection array only needs to be as big as the number of terms we are
+      // going to collect counts for.
+      final int[] counts = this.counts = new int[nTerms];
+      DocIdSet idSet = baseSet.getDocIdSet(context, null);  // this set only includes live docs
+      DocIdSetIterator iter = idSet.iterator();
 
-        ////
+      if (prefix==null) {
+        // specialized version when collecting counts for all terms
         int doc;
-
-        if (prefix==null) {
-          // specialized version when collecting counts for all terms
-          while ((doc = iter.nextDoc()) < DocIdSetIterator.NO_MORE_DOCS) {
-            counts[1+si.getOrd(doc)]++;
-          }
-        } else {
-          // version that adjusts term numbers because we aren't collecting the full range
-          while ((doc = iter.nextDoc()) < DocIdSetIterator.NO_MORE_DOCS) {
-            int term = si.getOrd(doc);
-            int arrIdx = term-startTermIndex;
-            if (arrIdx>=0 && arrIdx<nTerms) counts[arrIdx]++;
+        while ((doc = iter.nextDoc()) < DocIdSetIterator.NO_MORE_DOCS) {
+          int t = 1+si.getOrd(doc);
+          hasAnyCount = hasAnyCount || t > 0; //counts[0] == missing counts
+          counts[t]++;
+        }
+      } else {
+        // version that adjusts term numbers because we aren't collecting the full range
+        int doc;
+        while ((doc = iter.nextDoc()) < DocIdSetIterator.NO_MORE_DOCS) {
+          int term = si.getOrd(doc);
+          int arrIdx = term-startTermIndex;
+          if (arrIdx>=0 && arrIdx<nTerms){
+            counts[arrIdx]++;
+            hasAnyCount = true;
           }
         }
       }

@@ -1,5 +1,3 @@
-package org.apache.lucene.search.vectorhighlight;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.vectorhighlight;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.vectorhighlight;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -43,10 +42,10 @@ public class IndexTimeSynonymTest extends AbstractTestCase {
   public void testFieldTermStackIndex1wSearch2terms() throws Exception {
     makeIndex1w();
 
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
     bq.add( tq( "Mac" ), Occur.SHOULD );
     bq.add( tq( "MacBook" ), Occur.SHOULD );
-    FieldQuery fq = new FieldQuery( bq, true, true );
+    FieldQuery fq = new FieldQuery( bq.build(), true, true );
     FieldTermStack stack = new FieldTermStack( reader, 0, F, fq );
     assertEquals( 1, stack.termList.size() );
     TermInfo ti = stack.pop();
@@ -86,10 +85,10 @@ public class IndexTimeSynonymTest extends AbstractTestCase {
   public void testFieldTermStackIndex1w2wSearch1term1phrase() throws Exception {
     makeIndex1w2w();
 
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
     bq.add( tq( "pc" ), Occur.SHOULD );
     bq.add( pqF( "personal", "computer" ), Occur.SHOULD );
-    FieldQuery fq = new FieldQuery( bq, true, true );
+    FieldQuery fq = new FieldQuery( bq.build(), true, true );
     FieldTermStack stack = new FieldTermStack( reader, 0, F, fq );
     assertEquals( 2, stack.termList.size() );
     TermInfo ti = stack.pop();
@@ -130,10 +129,10 @@ public class IndexTimeSynonymTest extends AbstractTestCase {
   public void testFieldTermStackIndex2w1wSearch1term1phrase() throws Exception {
     makeIndex2w1w();
 
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
     bq.add( tq( "pc" ), Occur.SHOULD );
     bq.add( pqF( "personal", "computer" ), Occur.SHOULD );
-    FieldQuery fq = new FieldQuery( bq, true, true );
+    FieldQuery fq = new FieldQuery( bq.build(), true, true );
     FieldTermStack stack = new FieldTermStack( reader, 0, F, fq );
     assertEquals( 2, stack.termList.size() );
     TermInfo ti = stack.pop();
@@ -170,10 +169,10 @@ public class IndexTimeSynonymTest extends AbstractTestCase {
   public void testFieldPhraseListIndex1w2wSearch1term1phrase() throws Exception {
     makeIndex1w2w();
 
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
     bq.add( tq( "pc" ), Occur.SHOULD );
     bq.add( pqF( "personal", "computer" ), Occur.SHOULD );
-    FieldQuery fq = new FieldQuery( bq, true, true );
+    FieldQuery fq = new FieldQuery( bq.build(), true, true );
     FieldTermStack stack = new FieldTermStack( reader, 0, F, fq );
     FieldPhraseList fpl = new FieldPhraseList( stack, fq );
     assertEquals( 1, fpl.phraseList.size() );
@@ -221,10 +220,10 @@ public class IndexTimeSynonymTest extends AbstractTestCase {
   public void testFieldPhraseListIndex2w1wSearch1term1phrase() throws Exception {
     makeIndex2w1w();
 
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
     bq.add( tq( "pc" ), Occur.SHOULD );
     bq.add( pqF( "personal", "computer" ), Occur.SHOULD );
-    FieldQuery fq = new FieldQuery( bq, true, true );
+    FieldQuery fq = new FieldQuery( bq.build(), true, true );
     FieldTermStack stack = new FieldTermStack( reader, 0, F, fq );
     FieldPhraseList fpl = new FieldPhraseList( stack, fq );
     assertEquals( 1, fpl.phraseList.size() );
@@ -295,8 +294,8 @@ public class IndexTimeSynonymTest extends AbstractTestCase {
     }
     
     @Override
-    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      Tokenizer ts = new Tokenizer(Token.TOKEN_ATTRIBUTE_FACTORY, reader) {
+    public TokenStreamComponents createComponents(String fieldName) {
+      Tokenizer ts = new Tokenizer(Token.TOKEN_ATTRIBUTE_FACTORY) {
         final AttributeImpl reusableToken = (AttributeImpl) addAttribute(CharTermAttribute.class);
         int p = 0;
         

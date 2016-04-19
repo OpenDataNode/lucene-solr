@@ -1,5 +1,3 @@
-package org.apache.lucene.util.fst;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,13 @@ package org.apache.lucene.util.fst;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util.fst;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 import org.apache.lucene.store.DataInput;
@@ -75,7 +77,7 @@ class BytesStore extends DataOutput implements Accountable {
     nextWrite = blocks.get(blocks.size()-1).length;
   }
 
-  /** Absolute write byte; you must ensure dest is < max
+  /** Absolute write byte; you must ensure dest is &lt; max
    *  position written so far. */
   public void writeByte(int dest, byte b) {
     int blockIndex = dest >> blockBits;
@@ -98,6 +100,8 @@ class BytesStore extends DataOutput implements Accountable {
     while (len > 0) {
       int chunk = blockSize - nextWrite;
       if (len <= chunk) {
+        assert b != null;
+        assert current != null;
         System.arraycopy(b, offset, current, nextWrite, len);
         nextWrite += len;
         break;
@@ -480,5 +484,14 @@ class BytesStore extends DataOutput implements Accountable {
     }
     return size;
   }
+  
+  @Override
+  public Collection<Accountable> getChildResources() {
+    return Collections.emptyList();
+  }
 
+  @Override
+  public String toString() {
+    return getClass().getSimpleName() + "(numBlocks=" + blocks.size() + ")";
+  }
 }

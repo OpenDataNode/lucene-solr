@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 import java.util.Collection;
@@ -42,7 +42,7 @@ public class TestSegmentReader extends LuceneTestCase {
     dir = newDirectory();
     DocHelper.setupDoc(testDoc);
     SegmentCommitInfo info = DocHelper.writeDoc(random(), dir, testDoc);
-    reader = new SegmentReader(info, DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR, IOContext.READ);
+    reader = new SegmentReader(info, IOContext.READ);
   }
   
   @Override
@@ -84,14 +84,14 @@ public class TestSegmentReader extends LuceneTestCase {
     for(FieldInfo fieldInfo : reader.getFieldInfos()) {
       final String name = fieldInfo.name;
       allFieldNames.add(name);
-      if (fieldInfo.isIndexed()) {
+      if (fieldInfo.getIndexOptions() != IndexOptions.NONE) {
         indexedFieldNames.add(name);
       } else {
         notIndexedFieldNames.add(name);
       }
       if (fieldInfo.hasVectors()) {
         tvFieldNames.add(name);
-      } else if (fieldInfo.isIndexed()) {
+      } else if (fieldInfo.getIndexOptions() != IndexOptions.NONE) {
         noTVFieldNames.add(name);
       }
     }
@@ -118,7 +118,7 @@ public class TestSegmentReader extends LuceneTestCase {
     for (String field : fields) {
       Terms terms = fields.terms(field);
       assertNotNull(terms);
-      TermsEnum termsEnum = terms.iterator(null);
+      TermsEnum termsEnum = terms.iterator();
       while(termsEnum.next() != null) {
         BytesRef term = termsEnum.term();
         assertTrue(term != null);
@@ -127,10 +127,9 @@ public class TestSegmentReader extends LuceneTestCase {
       }
     }
     
-    DocsEnum termDocs = TestUtil.docs(random(), reader,
+    PostingsEnum termDocs = TestUtil.docs(random(), reader,
         DocHelper.TEXT_FIELD_1_KEY,
         new BytesRef("field"),
-        MultiFields.getLiveDocs(reader),
         null,
         0);
     assertTrue(termDocs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
@@ -138,15 +137,13 @@ public class TestSegmentReader extends LuceneTestCase {
     termDocs = TestUtil.docs(random(), reader,
         DocHelper.NO_NORMS_KEY,
         new BytesRef(DocHelper.NO_NORMS_TEXT),
-        MultiFields.getLiveDocs(reader),
         null,
         0);
 
     assertTrue(termDocs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS);
 
     
-    DocsAndPositionsEnum positions = MultiFields.getTermPositionsEnum(reader,
-                                                                      MultiFields.getLiveDocs(reader),
+    PostingsEnum positions = MultiFields.getTermPositionsEnum(reader,
                                                                       DocHelper.TEXT_FIELD_1_KEY,
                                                                       new BytesRef("field"));
     // NOTE: prior rev of this test was failing to first
@@ -172,11 +169,11 @@ public class TestSegmentReader extends LuceneTestCase {
     checkNorms(reader);
   }
 
-  public static void checkNorms(AtomicReader reader) throws IOException {
+  public static void checkNorms(LeafReader reader) throws IOException {
     // test omit norms
     for (int i=0; i<DocHelper.fields.length; i++) {
       IndexableField f = DocHelper.fields[i];
-      if (f.fieldType().indexed()) {
+      if (f.fieldType().indexOptions() != IndexOptions.NONE) {
         assertEquals(reader.getNormValues(f.name()) != null, !f.fieldType().omitNorms());
         assertEquals(reader.getNormValues(f.name()) != null, !DocHelper.noNorms.containsKey(f.name()));
         if (reader.getNormValues(f.name()) == null) {
@@ -192,7 +189,7 @@ public class TestSegmentReader extends LuceneTestCase {
     Terms result = reader.getTermVectors(0).terms(DocHelper.TEXT_FIELD_2_KEY);
     assertNotNull(result);
     assertEquals(3, result.size());
-    TermsEnum termsEnum = result.iterator(null);
+    TermsEnum termsEnum = result.iterator();
     while(termsEnum.next() != null) {
       String term = termsEnum.term().utf8ToString();
       int freq = (int) termsEnum.totalTermFreq();

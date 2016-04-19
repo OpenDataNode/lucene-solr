@@ -1,5 +1,3 @@
-package org.apache.lucene.util.automaton;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.util.automaton;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util.automaton;
+
 
 import java.util.Iterator;
 import java.util.SortedSet;
@@ -28,7 +28,6 @@ import org.apache.lucene.util.UnicodeUtil;
  * <p>
  * Implements the algorithm described in:
  * Schulz and Mihov: Fast String Correction with Levenshtein Automata
- * <p>
  * @lucene.experimental
  */
 public class LevenshteinAutomata {
@@ -125,7 +124,6 @@ public class LevenshteinAutomata {
    * <li>There are no transitions to dead states.
    * <li>They are not minimal (some transitions could be combined).
    * </ul>
-   * </p>
    */
   public Automaton toAutomaton(int n) {
     return toAutomaton(n, "");
@@ -141,7 +139,6 @@ public class LevenshteinAutomata {
    * <li>There are no transitions to dead states.
    * <li>They are not minimal (some transitions could be combined).
    * </ul>
-   * </p>
    */
   public Automaton toAutomaton(int n, String prefix) {
     assert prefix != null;

@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,16 +14,15 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
 import java.io.IOException;
 import java.util.Random;
-import java.util.Set;
 
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.Term;
 
 /** Assertion-enabled query. */
-public class AssertingQuery extends Query {
+public final class AssertingQuery extends Query {
 
   private final Random random;
   private final Query in;
@@ -42,13 +39,8 @@ public class AssertingQuery extends Query {
   }
 
   @Override
-  public Weight createWeight(IndexSearcher searcher) throws IOException {
-    return AssertingWeight.wrap(new Random(random.nextLong()), in.createWeight(searcher));
-  }
-
-  @Override
-  public void extractTerms(Set<Term> terms) {
-    in.extractTerms(terms);
+  public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+    return new AssertingWeight(new Random(random.nextLong()), in.createWeight(searcher, needsScores), needsScores);
   }
 
   @Override
@@ -71,28 +63,16 @@ public class AssertingQuery extends Query {
   }
 
   @Override
-  public Query clone() {
-    return wrap(new Random(random.nextLong()), in.clone());
-  }
-
-  @Override
   public Query rewrite(IndexReader reader) throws IOException {
+    if (getBoost() != 1f) {
+      return super.rewrite(reader);
+    }
     final Query rewritten = in.rewrite(reader);
     if (rewritten == in) {
-      return this;
+      return super.rewrite(reader);
     } else {
       return wrap(new Random(random.nextLong()), rewritten);
     }
-  }
-
-  @Override
-  public float getBoost() {
-    return in.getBoost();
-  }
-
-  @Override
-  public void setBoost(float b) {
-    in.setBoost(b);
   }
 
 }

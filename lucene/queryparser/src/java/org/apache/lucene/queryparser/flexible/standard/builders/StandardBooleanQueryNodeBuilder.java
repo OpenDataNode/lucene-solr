@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.builders;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard.builders;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.builders;
 
 import java.util.List;
 
@@ -37,7 +36,7 @@ import org.apache.lucene.search.similarities.Similarity;
 /**
  * This builder does the same as the {@link BooleanQueryNodeBuilder}, but this
  * considers if the built {@link BooleanQuery} should have its coord disabled or
- * not. <br/>
+ * not. <br>
  * 
  * @see BooleanQueryNodeBuilder
  * @see BooleanQuery
@@ -53,7 +52,8 @@ public class StandardBooleanQueryNodeBuilder implements StandardQueryBuilder {
   public BooleanQuery build(QueryNode queryNode) throws QueryNodeException {
     StandardBooleanQueryNode booleanNode = (StandardBooleanQueryNode) queryNode;
 
-    BooleanQuery bQuery = new BooleanQuery(booleanNode.isDisableCoord());
+    BooleanQuery.Builder bQuery = new BooleanQuery.Builder();
+    bQuery.setDisableCoord(booleanNode.isDisableCoord());
     List<QueryNode> children = booleanNode.getChildren();
 
     if (children != null) {
@@ -81,7 +81,7 @@ public class StandardBooleanQueryNodeBuilder implements StandardQueryBuilder {
 
     }
 
-    return bQuery;
+    return bQuery.build();
 
   }
 

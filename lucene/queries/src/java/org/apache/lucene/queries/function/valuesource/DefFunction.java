@@ -1,4 +1,3 @@
-package org.apache.lucene.queries.function.valuesource;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,15 +14,15 @@ package org.apache.lucene.queries.function.valuesource;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queries.function.valuesource;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.queries.function.FunctionValues;
+import org.apache.lucene.queries.function.ValueSource;
+import org.apache.lucene.util.BytesRefBuilder;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.queries.function.FunctionValues;
-import org.apache.lucene.queries.function.ValueSource;
-import org.apache.lucene.util.BytesRef;
 
 /**
  * {@link ValueSource} implementation which only returns the values from the provided
@@ -43,7 +42,7 @@ public class DefFunction extends MultiFunction {
 
 
   @Override
-  public FunctionValues getValues(Map fcontext, AtomicReaderContext readerContext) throws IOException {
+  public FunctionValues getValues(Map fcontext, LeafReaderContext readerContext) throws IOException {
 
 
     return new Values(valsArr(sources, fcontext, readerContext)) {
@@ -100,7 +99,7 @@ public class DefFunction extends MultiFunction {
       }
 
       @Override
-      public boolean bytesVal(int doc, BytesRef target) {
+      public boolean bytesVal(int doc, BytesRefBuilder target) {
         return get(doc).bytesVal(doc, target);
       }
 

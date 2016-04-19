@@ -1,5 +1,3 @@
-package org.apache.lucene.benchmark.byTask.feeds;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.benchmark.byTask.feeds;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.benchmark.byTask.feeds;
+
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -184,7 +184,7 @@ public class DocMaker implements Closeable {
   private boolean storeBytes = false;
 
   private static class DateUtil {
-    public SimpleDateFormat parser = new SimpleDateFormat("dd-MMM-yyyy HH:mm:ss", Locale.ROOT);
+    public SimpleDateFormat parser = new SimpleDateFormat("dd-MMM-yyyy HH:mm:ss", Locale.ENGLISH);
     public Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("GMT"), Locale.ROOT);
     public ParsePosition pos = new ParsePosition(0);
     public DateUtil() {
@@ -231,7 +231,7 @@ public class DocMaker implements Closeable {
     
     // Set ID_FIELD
     FieldType ft = new FieldType(valType);
-    ft.setIndexed(true);
+    ft.setStored(true);
 
     Field idField = ds.getField(ID_FIELD, ft);
     int id;

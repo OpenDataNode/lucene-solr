@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.tr;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.tr;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.tr;
+
 
 import java.io.IOException;
 import java.io.Reader;
@@ -28,6 +28,7 @@ import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.snowball.SnowballFilter;
 import org.apache.lucene.analysis.standard.StandardFilter;
 import org.apache.lucene.analysis.standard.StandardTokenizer;
+import org.apache.lucene.analysis.standard.std40.StandardTokenizer40;
 import org.apache.lucene.analysis.util.CharArraySet;
 import org.apache.lucene.analysis.util.StopwordAnalyzerBase;
 import org.apache.lucene.util.Version;
@@ -80,14 +81,6 @@ public final class TurkishAnalyzer extends StopwordAnalyzerBase {
   public TurkishAnalyzer() {
     this(DefaultSetHolder.DEFAULT_STOP_SET);
   }
-
-  /**
-   * @deprecated Use {@link #TurkishAnalyzer()}
-   */
-  @Deprecated
-  public TurkishAnalyzer(Version matchVersion) {
-    this(matchVersion, DefaultSetHolder.DEFAULT_STOP_SET);
-  }
   
   /**
    * Builds an analyzer with the given stop words.
@@ -96,14 +89,6 @@ public final class TurkishAnalyzer extends StopwordAnalyzerBase {
    */
   public TurkishAnalyzer(CharArraySet stopwords) {
     this(stopwords, CharArraySet.EMPTY_SET);
-  }
-
-  /**
-   * @deprecated Use {@link #TurkishAnalyzer(CharArraySet)}
-   */
-  @Deprecated
-  public TurkishAnalyzer(Version matchVersion, CharArraySet stopwords) {
-    this(matchVersion, stopwords, CharArraySet.EMPTY_SET);
   }
 
   /**
@@ -120,16 +105,6 @@ public final class TurkishAnalyzer extends StopwordAnalyzerBase {
   }
 
   /**
-   * @deprecated Use {@link #TurkishAnalyzer(CharArraySet,CharArraySet)}
-   */
-  @Deprecated
-  public TurkishAnalyzer(Version matchVersion, CharArraySet stopwords, CharArraySet stemExclusionSet) {
-    super(matchVersion, stopwords);
-    this.stemExclusionSet = CharArraySet.unmodifiableSet(CharArraySet.copy(
-        matchVersion, stemExclusionSet));
-  }
-
-  /**
    * Creates a
    * {@link org.apache.lucene.analysis.Analyzer.TokenStreamComponents}
    * which tokenizes all the text in the provided {@link Reader}.
@@ -142,16 +117,22 @@ public final class TurkishAnalyzer extends StopwordAnalyzerBase {
    *         exclusion set is provided and {@link SnowballFilter}.
    */
   @Override
-  protected TokenStreamComponents createComponents(String fieldName,
-      Reader reader) {
-    final Tokenizer source = new StandardTokenizer(getVersion(), reader);
-    TokenStream result = new StandardFilter(getVersion(), source);
-    if(getVersion().onOrAfter(Version.LUCENE_4_8_0))
+  protected TokenStreamComponents createComponents(String fieldName) {
+    final Tokenizer source;
+    if (getVersion().onOrAfter(Version.LUCENE_4_7_0)) {
+      source = new StandardTokenizer();
+    } else {
+      source = new StandardTokenizer40();
+    }
+    TokenStream result = new StandardFilter(source);
+    if (getVersion().onOrAfter(Version.LUCENE_4_8_0)) {
       result = new ApostropheFilter(result);
+    }
     result = new TurkishLowerCaseFilter(result);
-    result = new StopFilter(getVersion(), result, stopwords);
-    if(!stemExclusionSet.isEmpty())
+    result = new StopFilter(result, stopwords);
+    if (!stemExclusionSet.isEmpty()) {
       result = new SetKeywordMarkerFilter(result, stemExclusionSet);
+    }
     result = new SnowballFilter(result, new TurkishStemmer());
     return new TokenStreamComponents(source, result);
   }

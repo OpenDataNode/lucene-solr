@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.path;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.path;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.path;
+
 
 import java.io.Reader;
 import java.io.StringReader;
@@ -34,7 +34,8 @@ public class TestPathHierarchyTokenizer extends BaseTokenStreamTestCase {
 
   public void testBasic() throws Exception {
     String path = "/a/b/c";
-    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), new StringReader(path), DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+    t.setReader(new StringReader(path));
     assertTokenStreamContents(t,
         new String[]{"/a", "/a/b", "/a/b/c"},
         new int[]{0, 0, 0},
@@ -45,7 +46,8 @@ public class TestPathHierarchyTokenizer extends BaseTokenStreamTestCase {
 
   public void testEndOfDelimiter() throws Exception {
     String path = "/a/b/c/";
-    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), new StringReader(path), DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+    t.setReader( new StringReader(path) );
     assertTokenStreamContents(t,
         new String[]{"/a", "/a/b", "/a/b/c", "/a/b/c/"},
         new int[]{0, 0, 0, 0},
@@ -56,7 +58,8 @@ public class TestPathHierarchyTokenizer extends BaseTokenStreamTestCase {
 
   public void testStartOfChar() throws Exception {
     String path = "a/b/c";
-    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), new StringReader(path), DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+    t.setReader( new StringReader(path) );
     assertTokenStreamContents(t,
         new String[]{"a", "a/b", "a/b/c"},
         new int[]{0, 0, 0},
@@ -67,7 +70,8 @@ public class TestPathHierarchyTokenizer extends BaseTokenStreamTestCase {
 
   public void testStartOfCharEndOfDelimiter() throws Exception {
     String path = "a/b/c/";
-    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), new StringReader(path), DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+    t.setReader( new StringReader(path) );
     assertTokenStreamContents(t,
         new String[]{"a", "a/b", "a/b/c", "a/b/c/"},
         new int[]{0, 0, 0, 0},
@@ -78,7 +82,8 @@ public class TestPathHierarchyTokenizer extends BaseTokenStreamTestCase {
 
   public void testOnlyDelimiter() throws Exception {
     String path = "/";
-    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), new StringReader(path), DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+    t.setReader( new StringReader(path) );
     assertTokenStreamContents(t,
         new String[]{"/"},
         new int[]{0},
@@ -89,7 +94,8 @@ public class TestPathHierarchyTokenizer extends BaseTokenStreamTestCase {
 
   public void testOnlyDelimiters() throws Exception {
     String path = "//";
-    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), new StringReader(path), DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+    t.setReader(new StringReader(path));
     assertTokenStreamContents(t,
         new String[]{"/", "//"},
         new int[]{0, 0},
@@ -100,7 +106,8 @@ public class TestPathHierarchyTokenizer extends BaseTokenStreamTestCase {
 
   public void testReplace() throws Exception {
     String path = "/a/b/c";
-    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), new StringReader(path), '/', '\\', DEFAULT_SKIP);
+    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), '/', '\\', DEFAULT_SKIP);
+    t.setReader(new StringReader(path));
     assertTokenStreamContents(t,
         new String[]{"\\a", "\\a\\b", "\\a\\b\\c"},
         new int[]{0, 0, 0},
@@ -111,7 +118,8 @@ public class TestPathHierarchyTokenizer extends BaseTokenStreamTestCase {
 
   public void testWindowsPath() throws Exception {
     String path = "c:\\a\\b\\c";
-    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), new StringReader(path), '\\', '\\', DEFAULT_SKIP);
+    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), '\\', '\\', DEFAULT_SKIP);
+    t.setReader(new StringReader(path));
     assertTokenStreamContents(t,
         new String[]{"c:", "c:\\a", "c:\\a\\b", "c:\\a\\b\\c"},
         new int[]{0, 0, 0, 0},
@@ -126,7 +134,8 @@ public class TestPathHierarchyTokenizer extends BaseTokenStreamTestCase {
     NormalizeCharMap normMap = builder.build();
     String path = "c:\\a\\b\\c";
     Reader cs = new MappingCharFilter(normMap, new StringReader(path));
-    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), cs, DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+    t.setReader(cs);
     assertTokenStreamContents(t,
         new String[]{"c:", "c:/a", "c:/a/b", "c:/a/b/c"},
         new int[]{0, 0, 0, 0},
@@ -137,7 +146,8 @@ public class TestPathHierarchyTokenizer extends BaseTokenStreamTestCase {
 
   public void testBasicSkip() throws Exception {
     String path = "/a/b/c";
-    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), new StringReader(path), DEFAULT_DELIMITER, DEFAULT_DELIMITER, 1);
+    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), DEFAULT_DELIMITER, DEFAULT_DELIMITER, 1);
+    t.setReader(new StringReader(path));
     assertTokenStreamContents(t,
         new String[]{"/b", "/b/c"},
         new int[]{2, 2},
@@ -148,7 +158,8 @@ public class TestPathHierarchyTokenizer extends BaseTokenStreamTestCase {
 
   public void testEndOfDelimiterSkip() throws Exception {
     String path = "/a/b/c/";
-    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), new StringReader(path), DEFAULT_DELIMITER, DEFAULT_DELIMITER, 1);
+    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), DEFAULT_DELIMITER, DEFAULT_DELIMITER, 1);
+    t.setReader(new StringReader(path));
     assertTokenStreamContents(t,
         new String[]{"/b", "/b/c", "/b/c/"},
         new int[]{2, 2, 2},
@@ -159,7 +170,8 @@ public class TestPathHierarchyTokenizer extends BaseTokenStreamTestCase {
 
   public void testStartOfCharSkip() throws Exception {
     String path = "a/b/c";
-    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), new StringReader(path), DEFAULT_DELIMITER, DEFAULT_DELIMITER, 1);
+    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), DEFAULT_DELIMITER, DEFAULT_DELIMITER, 1);
+    t.setReader(new StringReader(path));
     assertTokenStreamContents(t,
         new String[]{"/b", "/b/c"},
         new int[]{1, 1},
@@ -170,7 +182,8 @@ public class TestPathHierarchyTokenizer extends BaseTokenStreamTestCase {
 
   public void testStartOfCharEndOfDelimiterSkip() throws Exception {
     String path = "a/b/c/";
-    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), new StringReader(path), DEFAULT_DELIMITER, DEFAULT_DELIMITER, 1);
+    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), DEFAULT_DELIMITER, DEFAULT_DELIMITER, 1);
+    t.setReader(new StringReader(path));
     assertTokenStreamContents(t,
         new String[]{"/b", "/b/c", "/b/c/"},
         new int[]{1, 1, 1},
@@ -181,7 +194,8 @@ public class TestPathHierarchyTokenizer extends BaseTokenStreamTestCase {
 
   public void testOnlyDelimiterSkip() throws Exception {
     String path = "/";
-    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), new StringReader(path), DEFAULT_DELIMITER, DEFAULT_DELIMITER, 1);
+    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), DEFAULT_DELIMITER, DEFAULT_DELIMITER, 1);
+    t.setReader(new StringReader(path));
     assertTokenStreamContents(t,
         new String[]{},
         new int[]{},
@@ -192,7 +206,8 @@ public class TestPathHierarchyTokenizer extends BaseTokenStreamTestCase {
 
   public void testOnlyDelimitersSkip() throws Exception {
     String path = "//";
-    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), new StringReader(path), DEFAULT_DELIMITER, DEFAULT_DELIMITER, 1);
+    PathHierarchyTokenizer t = new PathHierarchyTokenizer(newAttributeFactory(), DEFAULT_DELIMITER, DEFAULT_DELIMITER, 1);
+    t.setReader( new StringReader(path));
     assertTokenStreamContents(t,
         new String[]{"/"},
         new int[]{1},
@@ -205,13 +220,14 @@ public class TestPathHierarchyTokenizer extends BaseTokenStreamTestCase {
   public void testRandomStrings() throws Exception {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new PathHierarchyTokenizer(newAttributeFactory(), reader, DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new PathHierarchyTokenizer(newAttributeFactory(), DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
         return new TokenStreamComponents(tokenizer, tokenizer);
       }    
     };
     // TODO: properly support positionLengthAttribute
     checkRandomData(random(), a, 1000*RANDOM_MULTIPLIER, 20, false, false);
+    a.close();
   }
   
   /** blast some random large strings through the analyzer */
@@ -219,12 +235,13 @@ public class TestPathHierarchyTokenizer extends BaseTokenStreamTestCase {
     Random random = random();
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new PathHierarchyTokenizer(newAttributeFactory(), reader, DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new PathHierarchyTokenizer(newAttributeFactory(), DEFAULT_DELIMITER, DEFAULT_DELIMITER, DEFAULT_SKIP);
         return new TokenStreamComponents(tokenizer, tokenizer);
       }    
     };
     // TODO: properly support positionLengthAttribute
     checkRandomData(random, a, 100*RANDOM_MULTIPLIER, 1027, false, false);
+    a.close();
   }
 }

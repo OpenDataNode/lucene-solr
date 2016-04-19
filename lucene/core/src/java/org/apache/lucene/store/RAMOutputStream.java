@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,17 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
+
 
 import java.io.IOException;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
 
 import org.apache.lucene.util.Accountable;
+import org.apache.lucene.util.Accountables;
 
 /**
  * A memory-resident {@link IndexOutput} implementation.
@@ -44,10 +47,17 @@ public class RAMOutputStream extends IndexOutput implements Accountable {
 
   /** Construct an empty output buffer. */
   public RAMOutputStream() {
-    this(new RAMFile(), false);
+    this("noname", new RAMFile(), false);
   }
 
+  /** Creates this, with no name. */
   public RAMOutputStream(RAMFile f, boolean checksum) {
+    this("noname", f, checksum);
+  }
+
+  /** Creates this, with specified name. */
+  public RAMOutputStream(String name, RAMFile f, boolean checksum) {
+    super("RAMOutputStream(name=\"" + name + "\")");
     file = f;
 
     // make sure that we switch to the
@@ -61,7 +71,7 @@ public class RAMOutputStream extends IndexOutput implements Accountable {
     }
   }
 
-  /** Copy the current contents of this buffer to the named output. */
+  /** Copy the current contents of this buffer to the provided {@link DataOutput}. */
   public void writeTo(DataOutput out) throws IOException {
     flush();
     final long end = file.length;
@@ -167,8 +177,8 @@ public class RAMOutputStream extends IndexOutput implements Accountable {
     }
   }
 
-  @Override
-  public void flush() throws IOException {
+  /** Forces any buffered output to be written. */
+  protected void flush() throws IOException {
     setFileLength();
   }
 
@@ -181,6 +191,11 @@ public class RAMOutputStream extends IndexOutput implements Accountable {
   @Override
   public long ramBytesUsed() {
     return (long) file.numBuffers() * (long) BUFFER_SIZE;
+  }
+  
+  @Override
+  public Collection<Accountable> getChildResources() {
+    return Collections.singleton(Accountables.namedAccountable("file", file));
   }
 
   @Override

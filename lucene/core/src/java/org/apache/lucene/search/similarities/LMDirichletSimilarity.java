@@ -1,5 +1,3 @@
-package org.apache.lucene.search.similarities;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,7 +14,10 @@ package org.apache.lucene.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.similarities;
 
+
+import java.util.List;
 import java.util.Locale;
 
 import org.apache.lucene.search.Explanation;
@@ -63,28 +64,28 @@ public class LMDirichletSimilarity extends LMSimilarity {
   
   @Override
   protected float score(BasicStats stats, float freq, float docLen) {
-    float score = stats.getTotalBoost() * (float)(Math.log(1 + freq /
+    float score = stats.getBoost() * (float)(Math.log(1 + freq /
         (mu * ((LMStats)stats).getCollectionProbability())) +
         Math.log(mu / (docLen + mu)));
     return score > 0.0f ? score : 0.0f;
   }
   
   @Override
-  protected void explain(Explanation expl, BasicStats stats, int doc,
+  protected void explain(List<Explanation> subs, BasicStats stats, int doc,
       float freq, float docLen) {
-    if (stats.getTotalBoost() != 1.0f) {
-      expl.addDetail(new Explanation(stats.getTotalBoost(), "boost"));
+    if (stats.getBoost() != 1.0f) {
+      subs.add(Explanation.match(stats.getBoost(), "boost"));
     }
 
-    expl.addDetail(new Explanation(mu, "mu"));
-    Explanation weightExpl = new Explanation();
-    weightExpl.setValue((float)Math.log(1 + freq /
-        (mu * ((LMStats)stats).getCollectionProbability())));
-    weightExpl.setDescription("term weight");
-    expl.addDetail(weightExpl);
-    expl.addDetail(new Explanation(
+    subs.add(Explanation.match(mu, "mu"));
+    Explanation weightExpl = Explanation.match(
+        (float)Math.log(1 + freq /
+        (mu * ((LMStats)stats).getCollectionProbability())),
+        "term weight");
+    subs.add(weightExpl);
+    subs.add(Explanation.match(
         (float)Math.log(mu / (docLen + mu)), "document norm"));
-    super.explain(expl, stats, doc, freq, docLen);
+    super.explain(subs, stats, doc, freq, docLen);
   }
 
   /** Returns the &mu; parameter. */

@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.idversion;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.codecs.idversion;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.idversion;
 
 import java.io.IOException;
 
@@ -36,10 +35,10 @@ import org.apache.lucene.util.IOUtils;
  *  created by {@link #longToBytes} during indexing.  At search time,
  *  the TermsEnum implementation {@link IDVersionSegmentTermsEnum}
  *  enables fast (using only the terms index when possible) lookup for
- *  whether a given ID was previously indexed with version > N (see
+ *  whether a given ID was previously indexed with version &gt; N (see
  *  {@link IDVersionSegmentTermsEnum#seekExact(BytesRef,long)}.
  *
- *  This is most effective if the app assigns monotonically
+ *  <p>This is most effective if the app assigns monotonically
  *  increasing global version to each indexed doc.  Then, during
  *  indexing, use {@link
  *  IDVersionSegmentTermsEnum#seekExact(BytesRef,long)} (along with
@@ -54,19 +53,16 @@ import org.apache.lucene.util.IOUtils;
  *  <p>NOTE: term vectors cannot be indexed with this field (not that
  *  you should really ever want to do this).
  *
- *  <p>NOTE: For a given identifier, if it is reindexed then its
- *  version must be higher than it was the last time it was indexed.
- *
  *  @lucene.experimental */
 
 public class IDVersionPostingsFormat extends PostingsFormat {
 
-  /** version must be >= this. */
+  /** version must be &gt;= this. */
   public static final long MIN_VERSION = 0;
 
   // TODO: we could delta encode instead, and keep the last bit:
 
-  /** version must be <= this, because we encode with ZigZag. */
+  /** version must be &lt;= this, because we encode with ZigZag. */
   public static final long MAX_VERSION = 0x3fffffffffffffffL;
 
   private final int minTermsInBlock;
@@ -80,11 +76,12 @@ public class IDVersionPostingsFormat extends PostingsFormat {
     super("IDVersion");
     this.minTermsInBlock = minTermsInBlock;
     this.maxTermsInBlock = maxTermsInBlock;
+    BlockTreeTermsWriter.validateSettings(minTermsInBlock, maxTermsInBlock);
   }
 
   @Override
   public FieldsConsumer fieldsConsumer(SegmentWriteState state) throws IOException {
-    PostingsWriterBase postingsWriter = new IDVersionPostingsWriter(state);
+    PostingsWriterBase postingsWriter = new IDVersionPostingsWriter(state.liveDocs);
     boolean success = false;
     try {
       FieldsConsumer ret = new VersionBlockTreeTermsWriter(state, 
@@ -105,12 +102,7 @@ public class IDVersionPostingsFormat extends PostingsFormat {
     PostingsReaderBase postingsReader = new IDVersionPostingsReader();
     boolean success = false;
      try {
-       FieldsProducer ret = new VersionBlockTreeTermsReader(state.directory,
-                                                            state.fieldInfos,
-                                                            state.segmentInfo,
-                                                            postingsReader,
-                                                            state.context,
-                                                            state.segmentSuffix);
+       FieldsProducer ret = new VersionBlockTreeTermsReader(postingsReader, state);
        success = true;
        return ret;
      } finally {

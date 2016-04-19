@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.miscellaneous;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,13 +14,15 @@ package org.apache.lucene.analysis.miscellaneous;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.miscellaneous;
+
 
 import java.io.Reader;
 import java.io.StringReader;
 
-import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.util.BaseTokenStreamFactoryTestCase;
+import org.apache.lucene.util.Version;
 
 /**
  * Simple tests to ensure this factory is working
@@ -30,7 +30,7 @@ import org.apache.lucene.analysis.util.BaseTokenStreamFactoryTestCase;
 public class TestTrimFilterFactory extends BaseTokenStreamFactoryTestCase {
   public void testTrimming() throws Exception {
     Reader reader = new StringReader("trim me    ");
-    TokenStream stream = new MockTokenizer(reader, MockTokenizer.KEYWORD, false);
+    TokenStream stream = keywordMockTokenizer(reader);
     stream = tokenFilterFactory("Trim").create(stream);
     assertTokenStreamContents(stream, new String[] { "trim me" });
   }
@@ -42,6 +42,29 @@ public class TestTrimFilterFactory extends BaseTokenStreamFactoryTestCase {
       fail();
     } catch (IllegalArgumentException expected) {
       assertTrue(expected.getMessage().contains("Unknown parameters"));
+    }
+  }
+  
+  public void test43Backcompat() throws Exception {
+    Reader reader = new StringReader("  foo ");
+    TokenStream stream = keywordMockTokenizer(reader);
+    stream = tokenFilterFactory("Trim", Version.LUCENE_4_3_1, "updateOffsets", "true").create(stream);
+    assertTrue(stream instanceof Lucene43TrimFilter);
+    assertTokenStreamContents(stream, new String[] {"foo"}, new int[] {2}, new int[] {5});
+    
+    try {
+      tokenFilterFactory("Trim", Version.LUCENE_4_4_0, "updateOffsets", "true");
+      fail();
+    } catch (IllegalArgumentException expected) {
+      assertTrue(expected.getMessage().contains("updateOffsets=true is not supported"));
+    }
+    tokenFilterFactory("Trim", Version.LUCENE_4_4_0, "updateOffsets", "false");
+
+    try {
+      tokenFilterFactory("Trim", "updateOffsets", "false");
+      fail();
+    } catch (IllegalArgumentException expected) {
+      assertTrue(expected.getMessage().contains("not a valid option"));
     }
   }
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.el;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.el;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.el;
+
 
 import java.io.Reader;
 import java.io.StringReader;
@@ -33,7 +33,7 @@ public class TestGreekLowerCaseFilterFactory extends BaseTokenStreamFactoryTestC
    */
   public void testNormalization() throws Exception {
     Reader reader = new StringReader("Μάϊος ΜΆΪΟΣ");
-    TokenStream stream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream stream = whitespaceMockTokenizer(reader);
     stream = tokenFilterFactory("GreekLowerCase").create(stream);
     assertTokenStreamContents(stream, new String[] { "μαιοσ", "μαιοσ" });
   }

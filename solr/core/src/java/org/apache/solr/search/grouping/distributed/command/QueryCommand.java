@@ -1,5 +1,3 @@
-package org.apache.solr.search.grouping.distributed.command;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.search.grouping.distributed.command;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.search.grouping.distributed.command;
 
 import org.apache.lucene.search.*;
 import org.apache.solr.request.SolrQueryRequest;
@@ -126,9 +125,9 @@ public class QueryCommand implements Command<QueryCommandResult> {
   @Override
   public List<Collector> create() throws IOException {
     if (sort == null || sort == Sort.RELEVANCE) {
-      collector = TopScoreDocCollector.create(docsToCollect, true);
+      collector = TopScoreDocCollector.create(docsToCollect);
     } else {
-      collector = TopFieldCollector.create(sort, docsToCollect, true, needScores, needScores, true);
+      collector = TopFieldCollector.create(sort, docsToCollect, true, needScores, needScores);
     }
     filterCollector = new FilterCollector(docSet, collector);
     return Arrays.asList((Collector) filterCollector);

@@ -14,11 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.search.spell;
 
 import java.io.IOException;
-import java.util.Comparator;
 import java.util.Set;
 
 import org.apache.lucene.index.IndexReader;
@@ -71,7 +69,7 @@ public class HighFrequencyDictionary implements Dictionary {
     HighFrequencyIterator() throws IOException {
       Terms terms = MultiFields.getTerms(reader, field);
       if (terms != null) {
-        termsEnum = terms.iterator(null);
+        termsEnum = terms.iterator();
       } else {
         termsEnum = null;
       }
@@ -100,15 +98,6 @@ public class HighFrequencyDictionary implements Dictionary {
         }
       }
       return  null;
-    }
-
-    @Override
-    public Comparator<BytesRef> getComparator() {
-      if (termsEnum == null) {
-        return null;
-      } else {
-        return termsEnum.getComparator();
-      }
     }
 
     @Override

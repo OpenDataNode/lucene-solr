@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.spans;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,15 @@ package org.apache.lucene.queryparser.flexible.spans;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.spans;
 
 import org.apache.lucene.queryparser.flexible.core.config.ConfigurationKey;
 import org.apache.lucene.queryparser.flexible.core.config.FieldConfig;
 import org.apache.lucene.queryparser.flexible.core.config.QueryConfigHandler;
 
 /**
- * This query config handler only adds the {@link UniqueFieldAttribute} to it.<br/>
- * <br/>
+ * This query config handler only adds the {@link UniqueFieldAttribute} to it.<br>
+ * <br>
  * 
  * It does not return any configuration for a field in specific.
  */

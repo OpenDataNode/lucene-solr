@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update;
 
 import org.apache.lucene.util.BytesRef;
@@ -62,9 +61,9 @@ public class DeleteUpdateCommand extends UpdateCommand {
       IndexSchema schema = req.getSchema();
       SchemaField sf = schema.getUniqueKeyField();
       if (sf != null && id != null) {
-        BytesRef b = new BytesRef();
+        BytesRefBuilder b = new BytesRefBuilder();
         sf.getType().readableToIndexed(id, b);
-        indexedId = b;
+        indexedId = b.get();
       }
     }
     return indexedId;
@@ -75,7 +74,7 @@ public class DeleteUpdateCommand extends UpdateCommand {
       IndexSchema schema = req.getSchema();
       SchemaField sf = schema.getUniqueKeyField();
       if (sf != null) {
-        CharsRef ref = new CharsRef();
+        CharsRefBuilder ref = new CharsRefBuilder();
         sf.getType().indexedToReadable(indexedId, ref);
         id = ref.toString();
       }
@@ -108,6 +107,8 @@ public class DeleteUpdateCommand extends UpdateCommand {
     if (indexedId!=null) sb.append(",indexedId=").append(getId());
     if (query != null) sb.append(",query=`").append(query).append('`');
     sb.append(",commitWithin=").append(commitWithin);
+    if (route != null)
+      sb.append(",_route_=").append(route);
      sb.append('}');
      return sb.toString();
   }

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.miscellaneous;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.miscellaneous;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.miscellaneous;
+
 
 import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
@@ -63,7 +63,6 @@ public class WordDelimiterFilterFactory extends TokenFilterFactory implements Re
   /** Creates a new WordDelimiterFilterFactory */
   public WordDelimiterFilterFactory(Map<String, String> args) {
     super(args);
-    assureMatchVersion();
     int flags = 0;
     if (getInt(args, "generateWordParts", 1) != 0) {
       flags |= GENERATE_WORD_PARTS;
@@ -119,7 +118,7 @@ public class WordDelimiterFilterFactory extends TokenFilterFactory implements Re
   @Override
   public TokenFilter create(TokenStream input) {
     if (luceneMatchVersion.onOrAfter(Version.LUCENE_4_8_0)) {
-      return new WordDelimiterFilter(luceneMatchVersion, input, typeTable == null ? WordDelimiterIterator.DEFAULT_WORD_DELIM_TABLE : typeTable,
+      return new WordDelimiterFilter(input, typeTable == null ? WordDelimiterIterator.DEFAULT_WORD_DELIM_TABLE : typeTable,
                                    flags, protectedWords);
     } else {
       return new Lucene47WordDelimiterFilter(input, typeTable == null ? WordDelimiterIterator.DEFAULT_WORD_DELIM_TABLE : typeTable,

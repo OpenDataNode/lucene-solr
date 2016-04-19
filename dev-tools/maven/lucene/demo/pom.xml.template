@@ -37,9 +37,9 @@
     <module-path>${relative-top-level}/${module-directory}</module-path>
   </properties>
   <scm>
-    <connection>scm:svn:${vc-anonymous-base-url}/${module-directory}</connection>
-    <developerConnection>scm:svn:${vc-dev-base-url}/${module-directory}</developerConnection>
-    <url>${vc-browse-base-url}/${module-directory}</url>
+    <connection>scm:git:${vc-anonymous-base-url}</connection>
+    <developerConnection>scm:git:${vc-dev-base-url}</developerConnection>
+    <url>${vc-browse-base-url};f=${module-directory}</url>
   </scm>
   <dependencies>
     <dependency> 
@@ -75,27 +75,8 @@
         <artifactId>forbiddenapis</artifactId>
         <executions>
           <execution>
-            <id>lucene-shared-check-forbidden-apis</id>
-            <phase>none</phase> <!-- Block inherited execution -->
-          </execution>
-          <execution>
-            <id>check-forbidden-apis</id>
-            <configuration>
-              <!-- disallow undocumented classes like sun.misc.Unsafe: -->
-              <internalRuntimeForbidden>true</internalRuntimeForbidden>
-              <bundledSignatures>
-                <bundledSignature>jdk-unsafe</bundledSignature>
-                <bundledSignature>jdk-deprecated</bundledSignature>
-                <!-- demo has mostly command-line programs, so don't do the jdk-system-out check -->
-                <!-- <bundledSignature>jdk-system-out</bundledSignature> -->
-              </bundledSignatures>
-              <signaturesFiles>
-                <signaturesFile>${top-level}/lucene/tools/forbiddenApis/base.txt</signaturesFile>
-              </signaturesFiles>
-            </configuration>
-            <goals>
-              <goal>check</goal>
-            </goals>
+            <id>lucene-shared-check-sysout-forbidden-apis</id>
+            <phase>none</phase>  <!-- Block inherited execution -->
           </execution>
         </executions>
       </plugin>

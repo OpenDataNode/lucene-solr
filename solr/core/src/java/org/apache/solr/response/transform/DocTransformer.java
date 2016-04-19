@@ -14,26 +14,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.response.transform;
 
 import java.io.IOException;
+import java.util.Set;
 
 import org.apache.solr.common.SolrDocument;
-import org.apache.solr.request.SolrQueryRequest;
+import org.apache.solr.response.QueryResponseWriter;
+import org.apache.solr.search.SolrIndexSearcher;
 
 /**
  * A DocTransformer can add, remove or alter a Document before it is written out to the Response.  For instance, there are implementations
  * that can put explanations inline with a document, add constant values and mark items as being artificially boosted (see {@link org.apache.solr.handler.component.QueryElevationComponent})
  *
- * <p/>
+ * <p>
  * New instance for each request
  *
  * @see TransformerFactory
  *
  */
-public abstract class DocTransformer
-{
+public abstract class DocTransformer {
+  protected  TransformContext context;
   /**
    *
    * @return The name of the transformer
@@ -45,7 +46,10 @@ public abstract class DocTransformer
    * @param context The {@link org.apache.solr.response.transform.TransformContext} stores information about the current state of things in Solr that may be
    * useful for doing transformations.
    */
-  public void setContext( TransformContext context ) {}
+  public void setContext( TransformContext context ) {
+    this.context = context;
+
+  }
 
   /**
    * This is where implementations do the actual work
@@ -57,6 +61,19 @@ public abstract class DocTransformer
    */
   public abstract void transform(SolrDocument doc, int docid) throws IOException;
 
+  /**
+   * When a transformer needs access to fields that are not automatically derived from the
+   * input fields names, this option lets us explicitly say the field names that we hope
+   * will be in the SolrDocument.  These fields will be requested from the
+   * {@link SolrIndexSearcher} but may or may not be returned in the final
+   * {@link QueryResponseWriter}
+   * 
+   * @return a list of extra lucene fields
+   */
+  public String[] getExtraRequestFields() {
+    return null;
+  }
+  
   @Override
   public String toString() {
     return getName();

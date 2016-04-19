@@ -1,5 +1,3 @@
-package org.apache.lucene.replicator;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.replicator;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.replicator;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -37,7 +36,7 @@ public class SessionTokenTest extends ReplicatorTestCase {
   @Test
   public void testSerialization() throws IOException {
     Directory dir = newDirectory();
-    IndexWriterConfig conf = new IndexWriterConfig(TEST_VERSION_CURRENT, null);
+    IndexWriterConfig conf = new IndexWriterConfig(null);
     conf.setIndexDeletionPolicy(new SnapshotDeletionPolicy(conf.getIndexDeletionPolicy()));
     IndexWriter writer = new IndexWriter(dir, conf);
     writer.addDocument(new Document());
@@ -57,8 +56,9 @@ public class SessionTokenTest extends ReplicatorTestCase {
     List<RevisionFile> files1 = session1.sourceFiles.values().iterator().next();
     List<RevisionFile> files2 = session2.sourceFiles.values().iterator().next();
     assertEquals(files1, files2);
-    
-    IOUtils.close(writer, dir);
+
+    writer.close();
+    IOUtils.close(dir);
   }
   
 }

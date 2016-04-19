@@ -1,5 +1,3 @@
-package org.apache.lucene.spatial.bbox;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,24 +14,27 @@ package org.apache.lucene.spatial.bbox;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.spatial.bbox;
 
-import com.spatial4j.core.shape.Rectangle;
-import org.apache.lucene.index.AtomicReaderContext;
+import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.docvalues.DoubleDocValues;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.IndexSearcher;
 
-import java.io.IOException;
-import java.util.Map;
+import com.spatial4j.core.shape.Rectangle;
 
 /**
  * A base class for calculating a spatial relevance rank per document from a provided
  * {@link ValueSource} in which {@link FunctionValues#objectVal(int)} returns a {@link
  * com.spatial4j.core.shape.Rectangle}.
- * <p/>
- * Implementers: remember to implement equals & hashCode if you have
+ * <p>
+ * Implementers: remember to implement equals and hashCode if you have
  * fields!
  *
  * @lucene.experimental
@@ -60,7 +61,7 @@ public abstract class BBoxSimilarityValueSource extends ValueSource {
   protected abstract String similarityDescription();
 
   @Override
-  public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+  public FunctionValues getValues(Map context, LeafReaderContext readerContext) throws IOException {
 
     final FunctionValues shapeValues = bboxValueSource.getValues(context, readerContext);
 
@@ -81,10 +82,10 @@ public abstract class BBoxSimilarityValueSource extends ValueSource {
       public Explanation explain(int doc) {
         final Rectangle rect = (Rectangle) shapeValues.objectVal(doc);
         if (rect == null)
-          return new Explanation(0, "no rect");
-        Explanation exp = new Explanation();
-        score(rect, exp);
-        return exp;
+          return Explanation.noMatch("no rect");
+        AtomicReference<Explanation> explanation = new AtomicReference<>();
+        score(rect, explanation);
+        return explanation.get();
       }
     };
   }
@@ -95,7 +96,7 @@ public abstract class BBoxSimilarityValueSource extends ValueSource {
    * @param exp Optional diagnostic holder.
    * @return a score.
    */
-  protected abstract double score(Rectangle rect, Explanation exp);
+  protected abstract double score(Rectangle rect, AtomicReference<Explanation> exp);
 
   @Override
   public boolean equals(Object o) {

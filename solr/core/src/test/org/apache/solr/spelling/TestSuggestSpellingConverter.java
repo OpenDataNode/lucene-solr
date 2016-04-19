@@ -1,5 +1,3 @@
-package org.apache.solr.spelling;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.spelling;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.spelling;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -48,8 +47,8 @@ public class TestSuggestSpellingConverter extends BaseTokenStreamTestCase {
     // lowercases, removes field names, other syntax, collapses runs of whitespace, etc.
     converter.setAnalyzer(new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new KeywordTokenizer(reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new KeywordTokenizer();
         TokenStream filter = new PatternReplaceFilter(tokenizer, 
             Pattern.compile("([^\\p{L}\\p{M}\\p{N}\\p{Cs}]*[\\p{L}\\p{M}\\p{N}\\p{Cs}\\_]+:)|([^\\p{L}\\p{M}\\p{N}\\p{Cs}])+"), " ", true);
         filter = new LowerCaseFilter(filter);

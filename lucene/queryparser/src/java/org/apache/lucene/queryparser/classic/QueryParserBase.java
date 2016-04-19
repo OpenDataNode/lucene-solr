@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.queryparser.classic;
 
 import java.io.IOException;
@@ -30,11 +29,13 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.queryparser.classic.QueryParser.Operator;
 import org.apache.lucene.queryparser.flexible.standard.CommonQueryParserConfiguration;
 import org.apache.lucene.search.*;
+import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery.TooManyClauses;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.QueryBuilder;
-import org.apache.lucene.util.Version;
+import org.apache.lucene.util.automaton.RegExp;
+
+import static org.apache.lucene.util.automaton.Operations.DEFAULT_MAX_DETERMINIZED_STATES;
 
 /** This class is overridden by QueryParser in QueryParser.jj
  * and acts to separate the majority of the Java code from the .jj grammar file. 
@@ -63,7 +64,7 @@ public abstract class QueryParserBase extends QueryBuilder implements CommonQuer
   Operator operator = OR_OPERATOR;
 
   boolean lowercaseExpandedTerms = true;
-  MultiTermQuery.RewriteMethod multiTermRewriteMethod = MultiTermQuery.CONSTANT_SCORE_AUTO_REWRITE_DEFAULT;
+  MultiTermQuery.RewriteMethod multiTermRewriteMethod = MultiTermQuery.CONSTANT_SCORE_REWRITE;
   boolean allowLeadingWildcard = false;
 
   protected String field;
@@ -83,6 +84,7 @@ public abstract class QueryParserBase extends QueryBuilder implements CommonQuer
   boolean analyzeRangeTerms = false;
 
   boolean autoGeneratePhraseQueries;
+  int maxDeterminizedStates = DEFAULT_MAX_DETERMINIZED_STATES;
 
   // So the generated QueryParser(CharStream) won't error out
   protected QueryParserBase() {
@@ -90,17 +92,9 @@ public abstract class QueryParserBase extends QueryBuilder implements CommonQuer
   }
 
   /** Initializes a query parser.  Called by the QueryParser constructor
-   *  @param matchVersion  Lucene version to match. See <a href="QueryParser.html#version">here</a>.
    *  @param f  the default field for query terms.
    *  @param a   used to find terms in the query text.
    */
-  public void init(Version matchVersion, String f, Analyzer a) {
-    init(f, a);
-    if (matchVersion.onOrAfter(Version.LUCENE_3_1) == false) {
-      setAutoGeneratePhraseQueries(true);
-    }
-  }
-
   public void init(String f, Analyzer a) {
     setAnalyzer(a);
     field = f;
@@ -121,20 +115,14 @@ public abstract class QueryParserBase extends QueryBuilder implements CommonQuer
     try {
       // TopLevelQuery is a Query followed by the end-of-input (EOF)
       Query res = TopLevelQuery(field);
-      return res!=null ? res : newBooleanQuery(false);
+      return res!=null ? res : newBooleanQuery(false).build();
     }
-    catch (ParseException tme) {
+    catch (ParseException | TokenMgrError tme) {
       // rethrow to include the original query:
       ParseException e = new ParseException("Cannot parse '" +query+ "': " + tme.getMessage());
       e.initCause(tme);
       throw e;
-    }
-    catch (TokenMgrError tme) {
-      ParseException e = new ParseException("Cannot parse '" +query+ "': " + tme.getMessage());
-      e.initCause(tme);
-      throw e;
-    }
-    catch (BooleanQuery.TooManyClauses tmc) {
+    } catch (BooleanQuery.TooManyClauses tmc) {
       ParseException e = new ParseException("Cannot parse '" +query+ "': too many boolean clauses");
       e.initCause(tmc);
       throw e;
@@ -248,7 +236,7 @@ public abstract class QueryParserBase extends QueryBuilder implements CommonQuer
    * Sets the boolean operator of the QueryParser.
    * In default mode (<code>OR_OPERATOR</code>) terms without any modifiers
    * are considered optional: for example <code>capital of Hungary</code> is equal to
-   * <code>capital OR of OR Hungary</code>.<br/>
+   * <code>capital OR of OR Hungary</code>.<br>
    * In <code>AND_OPERATOR</code> mode terms are considered to be in conjunction: the
    * above mentioned query is parsed as <code>capital AND of AND Hungary</code>
    */
@@ -284,7 +272,7 @@ public abstract class QueryParserBase extends QueryBuilder implements CommonQuer
   }
 
   /**
-   * By default QueryParser uses {@link org.apache.lucene.search.MultiTermQuery#CONSTANT_SCORE_AUTO_REWRITE_DEFAULT}
+   * By default QueryParser uses {@link org.apache.lucene.search.MultiTermQuery#CONSTANT_SCORE_REWRITE}
    * when creating a {@link PrefixQuery}, {@link WildcardQuery} or {@link TermRangeQuery}. This implementation is generally preferable because it
    * a) Runs faster b) Does not have the scarcity of terms unduly influence score
    * c) avoids any {@link TooManyClauses} exception.
@@ -408,6 +396,24 @@ public abstract class QueryParserBase extends QueryBuilder implements CommonQuer
     return analyzeRangeTerms;
   }
 
+  /**
+   * @param maxDeterminizedStates the maximum number of states that
+   *   determinizing a regexp query can result in.  If the query results in any
+   *   more states a TooComplexToDeterminizeException is thrown.
+   */
+  public void setMaxDeterminizedStates(int maxDeterminizedStates) {
+    this.maxDeterminizedStates = maxDeterminizedStates;
+  }
+
+  /**
+   * @return the maximum number of states that determinizing a regexp query
+   *   can result in.  If the query results in any more states a
+   *   TooComplexToDeterminizeException is thrown.
+   */
+  public int getMaxDeterminizedStates() {
+    return maxDeterminizedStates;
+  }
+
   protected void addClause(List<BooleanClause> clauses, int conj, int mods, Query q) {
     boolean required, prohibited;
 
@@ -416,7 +422,7 @@ public abstract class QueryParserBase extends QueryBuilder implements CommonQuer
     if (clauses.size() > 0 && conj == CONJ_AND) {
       BooleanClause c = clauses.get(clauses.size()-1);
       if (!c.isProhibited())
-        c.setOccur(BooleanClause.Occur.MUST);
+        clauses.set(clauses.size() - 1, new BooleanClause(c.getQuery(), Occur.MUST));
     }
 
     if (clauses.size() > 0 && operator == AND_OPERATOR && conj == CONJ_OR) {
@@ -426,7 +432,7 @@ public abstract class QueryParserBase extends QueryBuilder implements CommonQuer
       // this modification a OR b would parsed as +a OR b
       BooleanClause c = clauses.get(clauses.size()-1);
       if (!c.isProhibited())
-        c.setOccur(BooleanClause.Occur.SHOULD);
+        clauses.set(clauses.size() - 1, new BooleanClause(c.getQuery(), Occur.SHOULD));
     }
 
     // We might have been passed a null query; the term might have been
@@ -487,7 +493,15 @@ public abstract class QueryParserBase extends QueryBuilder implements CommonQuer
     Query query = getFieldQuery(field, queryText, true);
 
     if (query instanceof PhraseQuery) {
-      ((PhraseQuery) query).setSlop(slop);
+      PhraseQuery.Builder builder = new PhraseQuery.Builder();
+      builder.setSlop(slop);
+      PhraseQuery pq = (PhraseQuery) query;
+      org.apache.lucene.index.Term[] terms = pq.getTerms();
+      int[] positions = pq.getPositions();
+      for (int i = 0; i < terms.length; ++i) {
+        builder.add(terms[i], positions[i]);
+      }
+      query = builder.build();
     }
     if (query instanceof MultiPhraseQuery) {
       ((MultiPhraseQuery) query).setSlop(slop);
@@ -563,7 +577,8 @@ public abstract class QueryParserBase extends QueryBuilder implements CommonQuer
    * @return new RegexpQuery instance
    */
   protected Query newRegexpQuery(Term regexp) {
-    RegexpQuery query = new RegexpQuery(regexp);
+    RegexpQuery query = new RegexpQuery(regexp, RegExp.ALL,
+      maxDeterminizedStates);
     query.setRewriteMethod(multiTermRewriteMethod);
     return query;
   }
@@ -591,25 +606,20 @@ public abstract class QueryParserBase extends QueryBuilder implements CommonQuer
   protected BytesRef analyzeMultitermTerm(String field, String part, Analyzer analyzerIn) {
     if (analyzerIn == null) analyzerIn = getAnalyzer();
 
-    TokenStream source = null;
-    try {
-      source = analyzerIn.tokenStream(field, part);
+    try (TokenStream source = analyzerIn.tokenStream(field, part)) {
       source.reset();
       
       TermToBytesRefAttribute termAtt = source.getAttribute(TermToBytesRefAttribute.class);
-      BytesRef bytes = termAtt.getBytesRef();
 
       if (!source.incrementToken())
         throw new IllegalArgumentException("analyzer returned no terms for multiTerm term: " + part);
-      termAtt.fillBytesRef();
+      BytesRef bytes = BytesRef.deepCopyOf(termAtt.getBytesRef());
       if (source.incrementToken())
         throw new IllegalArgumentException("analyzer returned too many terms for multiTerm term: " + part);
       source.end();
-      return BytesRef.deepCopyOf(bytes);
+      return bytes;
     } catch (IOException e) {
       throw new RuntimeException("Error analyzing multiTerm term: " + part, e);
-    } finally {
-      IOUtils.closeWhileHandlingException(source);
     }
   }
 
@@ -658,7 +668,7 @@ public abstract class QueryParserBase extends QueryBuilder implements CommonQuer
    * @return new WildcardQuery instance
    */
   protected Query newWildcardQuery(Term t) {
-    WildcardQuery query = new WildcardQuery(t);
+    WildcardQuery query = new WildcardQuery(t, maxDeterminizedStates);
     query.setRewriteMethod(multiTermRewriteMethod);
     return query;
   }
@@ -700,11 +710,11 @@ public abstract class QueryParserBase extends QueryBuilder implements CommonQuer
     if (clauses.size()==0) {
       return null; // all clause words were filtered away by the analyzer.
     }
-    BooleanQuery query = newBooleanQuery(disableCoord);
+    BooleanQuery.Builder query = newBooleanQuery(disableCoord);
     for(final BooleanClause clause: clauses) {
       query.add(clause);
     }
-    return query;
+    return query.build();
   }
 
   /**
@@ -890,7 +900,7 @@ public abstract class QueryParserBase extends QueryBuilder implements CommonQuer
 
       // avoid boosting null queries, such as those caused by stop words
       if (q != null) {
-        q.setBoost(f);
+        q = new BoostQuery(q, f);
       }
     }
     return q;

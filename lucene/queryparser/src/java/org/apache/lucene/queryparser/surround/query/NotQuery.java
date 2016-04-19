@@ -1,4 +1,3 @@
-package org.apache.lucene.queryparser.surround.query;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.lucene.queryparser.surround.query;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.lucene.queryparser.surround.query;
 import java.util.List;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.BooleanQuery;
@@ -30,13 +29,13 @@ public class NotQuery extends ComposedQuery {
   @Override
   public Query makeLuceneQueryFieldNoBoost(String fieldName, BasicQueryFactory qf) {
     List<Query> luceneSubQueries = makeLuceneSubQueriesField(fieldName, qf);
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
     bq.add( luceneSubQueries.get(0), BooleanClause.Occur.MUST);
     SrndBooleanQuery.addQueriesToBoolean(bq,
             // FIXME: do not allow weights on prohibited subqueries.
             luceneSubQueries.subList(1, luceneSubQueries.size()),
             // later subqueries: not required, prohibited
             BooleanClause.Occur.MUST_NOT);
-    return bq;
+    return bq.build();
   }
 }

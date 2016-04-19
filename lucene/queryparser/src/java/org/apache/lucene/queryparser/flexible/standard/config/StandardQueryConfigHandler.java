@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.config;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard.config;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.config;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -38,7 +37,7 @@ import org.apache.lucene.search.MultiTermQuery.RewriteMethod;
  * This query configuration handler is used for almost every processor defined
  * in the {@link StandardQueryNodeProcessorPipeline} processor pipeline. It holds
  * configuration methods that reproduce the configuration methods that could be set on the old
- * lucene 2.4 QueryParser class. <br/>
+ * lucene 2.4 QueryParser class.
  * 
  * @see StandardQueryNodeProcessorPipeline
  */
@@ -120,7 +119,7 @@ public class StandardQueryConfigHandler extends QueryConfigHandler {
      * is <code>null</code>
      * 
      * @see StandardQueryParser#setMultiFields(CharSequence[])
-     * @see StandardQueryParser#getMultiFields(CharSequence[])
+     * @see StandardQueryParser#getMultiFields()
      */
     final public static ConfigurationKey<CharSequence[]> MULTI_FIELDS = ConfigurationKey.newInstance();
     
@@ -208,7 +207,7 @@ public class StandardQueryConfigHandler extends QueryConfigHandler {
     set(ConfigurationKeys.FIELD_BOOST_MAP, new LinkedHashMap<String, Float>());
     set(ConfigurationKeys.FUZZY_CONFIG, new FuzzyConfig());
     set(ConfigurationKeys.LOCALE, Locale.getDefault());
-    set(ConfigurationKeys.MULTI_TERM_REWRITE_METHOD, MultiTermQuery.CONSTANT_SCORE_AUTO_REWRITE_DEFAULT);
+    set(ConfigurationKeys.MULTI_TERM_REWRITE_METHOD, MultiTermQuery.CONSTANT_SCORE_REWRITE);
     set(ConfigurationKeys.FIELD_DATE_RESOLUTION_MAP, new HashMap<CharSequence, DateTools.Resolution>());
     
   }

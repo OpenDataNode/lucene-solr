@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.xml;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.xml;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.xml;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
@@ -74,11 +73,8 @@ public class TestQueryTemplateManager extends LuceneTestCase {
 
 
   public void testFormTransforms() throws SAXException, IOException, ParserConfigurationException, TransformerException, ParserException {
-    // Sun 1.5 suffers from http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6240963
-    if (Constants.JAVA_VENDOR.startsWith("Sun") && Constants.JAVA_VERSION.startsWith("1.5")) {
-      String defLang = Locale.getDefault().getLanguage();
-      assumeFalse("Sun JRE 1.5 suffers from http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6240963 under Turkish locale", defLang.equals("tr") || defLang.equals("az"));
-    }
+    assumeFalse("test temporarily disabled on J9, see https://issues.apache.org/jira/browse/LUCENE-6556",
+                 Constants.JAVA_VENDOR.startsWith("IBM"));
     //Cache all the query templates we will be referring to.
     QueryTemplateManager qtm = new QueryTemplateManager();
     qtm.addQueryTemplate("albumBooleanQuery", getClass().getResourceAsStream("albumBooleanQuery.xsl"));
@@ -98,7 +94,7 @@ public class TestQueryTemplateManager extends LuceneTestCase {
       Query q = builder.getQuery(doc.getDocumentElement());
 
       //Run the query
-      int h = searcher.search(q, null, 1000).totalHits;
+      int h = searcher.search(q, 1000).totalHits;
 
       //Check we have the expected number of results
       int expectedHits = Integer.parseInt(queryFormProperties.getProperty("expectedMatches"));

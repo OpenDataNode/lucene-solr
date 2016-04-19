@@ -1,5 +1,3 @@
-package org.apache.lucene.search.grouping;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,11 @@ package org.apache.lucene.search.grouping;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.grouping;
 
 import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.SimpleCollector;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.PriorityQueue;
 
@@ -30,7 +30,7 @@ import java.util.*;
  *
  * @lucene.experimental
  */
-public abstract class AbstractGroupFacetCollector extends Collector {
+public abstract class AbstractGroupFacetCollector extends SimpleCollector {
 
   protected final String groupField;
   protected final String facetField;
@@ -109,8 +109,8 @@ public abstract class AbstractGroupFacetCollector extends Collector {
   }
 
   @Override
-  public boolean acceptsDocsOutOfOrder() {
-    return true;
+  public boolean needsScores() {
+    return false;
   }
 
   /**

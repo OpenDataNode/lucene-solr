@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.search;
 
 import org.apache.lucene.analysis.Analyzer;
@@ -24,7 +23,6 @@ import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.BytesRef;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
-import org.apache.solr.schema.DateField;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
 import org.apache.solr.request.SolrQueryRequest;
@@ -35,7 +33,6 @@ import static org.apache.solr.common.params.CursorMarkParams.CURSOR_MARK_START;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Collection;
 import java.util.Collections;
@@ -64,7 +61,7 @@ public class CursorMarkTest extends SolrTestCaseJ4 {
     final IndexSchema schema = req.getSchema();
 
     final String randomSortString = CursorPagingTest.buildRandomSort(allFieldNames);
-    final SortSpec ss = QueryParsing.parseSortSpec(randomSortString, req);
+    final SortSpec ss = SortSpecParsing.parseSortSpec(randomSortString, req);
 
     final CursorMark previous = new CursorMark(schema, ss);
     previous.parseSerializedTotem(CURSOR_MARK_START);
@@ -76,7 +73,7 @@ public class CursorMarkTest extends SolrTestCaseJ4 {
 
     try {
       // append to our random sort string so we know it has wrong num clauses
-      final SortSpec otherSort = QueryParsing.parseSortSpec(randomSortString+",id asc", req);
+      final SortSpec otherSort = SortSpecParsing.parseSortSpec(randomSortString+",id asc", req);
       CursorMark trash = previous.createNext(Arrays.<Object>asList
                                              (buildRandomSortObjects(otherSort)));
       fail("didn't fail on next with incorrect num of sortvalues");
@@ -90,7 +87,7 @@ public class CursorMarkTest extends SolrTestCaseJ4 {
     final IndexSchema schema = req.getSchema();
 
     try {
-      final SortSpec ss = QueryParsing.parseSortSpec("str desc, score desc", req);
+      final SortSpec ss = SortSpecParsing.parseSortSpec("str desc, score desc", req);
       final CursorMark totem = new CursorMark(schema, ss);
       fail("no failure from sort that doesn't include uniqueKey field");
     } catch (SolrException e) {
@@ -100,7 +97,7 @@ public class CursorMarkTest extends SolrTestCaseJ4 {
 
     for (final String dir : Arrays.asList("asc", "desc")) {
       try {
-        final SortSpec ss = QueryParsing.parseSortSpec("score " + dir, req);
+        final SortSpec ss = SortSpecParsing.parseSortSpec("score " + dir, req);
         final CursorMark totem = new CursorMark(schema, ss);
         fail("no failure from score only sort: " + dir);
       } catch (SolrException e) {
@@ -109,7 +106,7 @@ public class CursorMarkTest extends SolrTestCaseJ4 {
       }
       
       try {
-        final SortSpec ss = QueryParsing.parseSortSpec("_docid_ "+dir+", id desc", req);
+        final SortSpec ss = SortSpecParsing.parseSortSpec("_docid_ "+dir+", id desc", req);
         final CursorMark totem = new CursorMark(schema, ss);
         fail("no failure from sort that includes _docid_: " + dir);
       } catch (SolrException e) {
@@ -123,7 +120,7 @@ public class CursorMarkTest extends SolrTestCaseJ4 {
   public void testGarbageParsing() throws IOException {
     final SolrQueryRequest req = req();
     final IndexSchema schema = req.getSchema();
-    final SortSpec ss = QueryParsing.parseSortSpec("str asc, float desc, id asc", req);
+    final SortSpec ss = SortSpecParsing.parseSortSpec("str asc, float desc, id asc", req);
     final CursorMark totem = new CursorMark(schema, ss);
 
     // totem string that isn't even valid base64
@@ -155,7 +152,7 @@ public class CursorMarkTest extends SolrTestCaseJ4 {
 
     // totem string from sort with diff num clauses
     try {
-      final SortSpec otherSort = QueryParsing.parseSortSpec("double desc, id asc", req);
+      final SortSpec otherSort = SortSpecParsing.parseSortSpec("double desc, id asc", req);
       final CursorMark otherTotem = new CursorMark(schema, otherSort);
       otherTotem.setSortValues(Arrays.<Object>asList(buildRandomSortObjects(otherSort)));
       
@@ -178,7 +175,7 @@ public class CursorMarkTest extends SolrTestCaseJ4 {
     final int numRandomSorts = atLeast(50);
     final int numRandomValIters = atLeast(10);
     for (int i = 0; i < numRandomSorts; i++) {
-      final SortSpec ss = QueryParsing.parseSortSpec
+      final SortSpec ss = SortSpecParsing.parseSortSpec
         (CursorPagingTest.buildRandomSort(allFieldNames), req);
       final CursorMark totemIn = new CursorMark(schema, ss);
       final CursorMark totemOut = new CursorMark(schema, ss);
@@ -232,54 +229,16 @@ public class CursorMarkTest extends SolrTestCaseJ4 {
           byte[] randBytes = new byte[TestUtil.nextInt(random(), 1, 50)];
           random().nextBytes(randBytes);
           val = new BytesRef(randBytes);
-        } else if (fieldName.startsWith("bcd")) {
-          if (fieldName.startsWith("bcd_long")) {           // BCDLongField
-            val = Long.toString(random().nextLong());
-            val = sf.getType().toInternal((String)val);
-            val = sf.getType().unmarshalSortValue(val);
-          } else {                                          // BCDIntField & BCDStrField
-            val = Integer.toString(random().nextInt());
-            val = sf.getType().toInternal((String)val);
-            val = sf.getType().unmarshalSortValue(val);
-          }
         } else if (fieldName.contains("int")) {
           val = random().nextInt();                         // TrieIntField
-          if (fieldName.startsWith("legacy")) {             // IntField
-            val = Integer.toString((Integer)val);
-            if (fieldName.startsWith("legacy_sortable")) {  // SortableIntField
-              val = sf.getType().unmarshalSortValue(val);
-            }
-          }
         } else if (fieldName.contains("long")) {
           val = random().nextLong();                        // TrieLongField
-          if (fieldName.startsWith("legacy")) {             // LongField
-            val = Long.toString((Long)val);
-            if (fieldName.startsWith("legacy_sortable")) {  // SortableLongField
-              val = sf.getType().unmarshalSortValue(val);
-            }
-          }
         } else if (fieldName.contains("float")) {
           val = random().nextFloat() * random().nextInt();  // TrieFloatField
-          if (fieldName.startsWith("legacy")) {             // FloatField
-            val = Float.toString((Float)val);
-            if (fieldName.startsWith("legacy_sortable")) {  // SortableFloatField
-              val = sf.getType().unmarshalSortValue(val);
-            }
-          }
         } else if (fieldName.contains("double")) {
           val = random().nextDouble() * random().nextInt(); // TrieDoubleField
-          if (fieldName.startsWith("legacy")) {             // DoubleField
-            val = Double.toString((Double)val);
-            if (fieldName.startsWith("legacy_sortable")) {  // SortableDoubleField
-              val = sf.getType().unmarshalSortValue(val);
-            }
-          }
         } else if (fieldName.contains("date")) {
           val = random().nextLong();                        // TrieDateField
-          if (fieldName.startsWith("legacy_date")) {        // DateField
-            val = ((DateField)sf.getType()).toInternal(new Date((Long)val));
-            val = sf.getType().unmarshalSortValue(val);
-          }
         } else if (fieldName.startsWith("currency")) {
           val = random().nextDouble();
         } else if (fieldName.startsWith("uuid")) {
@@ -307,10 +266,9 @@ public class CursorMarkTest extends SolrTestCaseJ4 {
     String term = TestUtil.randomRealisticUnicodeString(random());
     try (TokenStream ts = analyzer.tokenStream("fake", term)) {
       TermToBytesRefAttribute termAtt = ts.addAttribute(TermToBytesRefAttribute.class);
-      val = termAtt.getBytesRef();
       ts.reset();
       assertTrue(ts.incrementToken());
-      termAtt.fillBytesRef();
+      val = BytesRef.deepCopyOf(termAtt.getBytesRef());
       assertFalse(ts.incrementToken());
       ts.end();
     }

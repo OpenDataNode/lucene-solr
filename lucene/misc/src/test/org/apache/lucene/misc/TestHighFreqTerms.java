@@ -1,5 +1,3 @@
-package org.apache.lucene.misc;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.misc;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.misc;
 
 import java.util.Random;
 
@@ -28,12 +27,10 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.TestUtil;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 
-@SuppressCodecs("Lucene3x")
 public class TestHighFreqTerms extends LuceneTestCase {
  
   private static IndexWriter writer =null;
@@ -44,7 +41,7 @@ public class TestHighFreqTerms extends LuceneTestCase {
   public static void setUpClass() throws Exception {
     dir = newDirectory();
     writer = new IndexWriter(dir, newIndexWriterConfig(random(),
-       TEST_VERSION_CURRENT, new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false))
+       new MockAnalyzer(random(), MockTokenizer.WHITESPACE, false))
        .setMaxBufferedDocs(2));
     indexDocs(writer);
     reader = DirectoryReader.open(dir);

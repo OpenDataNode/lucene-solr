@@ -1,5 +1,3 @@
-package org.apache.lucene.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,13 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
+
 
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Objects;
 import java.util.LinkedHashMap;
 import java.util.Set;
 import java.util.ServiceConfigurationError;
@@ -41,6 +42,9 @@ public final class NamedSPILoader<S extends NamedSPILoader.NamedSPI> implements 
     this.clazz = clazz;
     // if clazz' classloader is not a parent of the given one, we scan clazz's classloader, too:
     final ClassLoader clazzClassloader = clazz.getClassLoader();
+    if (classloader == null) {
+      classloader = clazzClassloader;
+    }
     if (clazzClassloader != null && !SPIClassIterator.isParentClassLoader(clazzClassloader, classloader)) {
       reload(clazzClassloader);
     }
@@ -58,7 +62,8 @@ public final class NamedSPILoader<S extends NamedSPILoader.NamedSPI> implements 
    * <p><em>This method is expensive and should only be called for discovery
    * of new service providers on the given classpath/classloader!</em>
    */
-  public synchronized void reload(ClassLoader classloader) {
+  public void reload(ClassLoader classloader) {
+    Objects.requireNonNull(classloader, "classloader");
     final LinkedHashMap<String,S> services = new LinkedHashMap<>(this.services);
     final SPIClassIterator<S> loader = SPIClassIterator.get(clazz, classloader);
     while (loader.hasNext()) {
@@ -106,9 +111,9 @@ public final class NamedSPILoader<S extends NamedSPILoader.NamedSPI> implements 
   public S lookup(String name) {
     final S service = services.get(name);
     if (service != null) return service;
-    throw new IllegalArgumentException("A SPI class of type "+clazz.getName()+" with name '"+name+"' does not exist. "+
-     "You need to add the corresponding JAR file supporting this SPI to your classpath."+
-     "The current classpath supports the following names: "+availableServices());
+    throw new IllegalArgumentException("An SPI class of type "+clazz.getName()+" with name '"+name+"' does not exist."+
+     "  You need to add the corresponding JAR file supporting this SPI to your classpath."+
+     "  The current classpath supports the following names: "+availableServices());
   }
 
   public Set<String> availableServices() {

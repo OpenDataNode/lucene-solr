@@ -1,4 +1,3 @@
-package org.apache.solr.rest.schema.analysis;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.rest.schema.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.rest.schema.analysis;
 import java.util.Map;
 import java.util.Set;
 
@@ -25,8 +24,6 @@ import org.apache.lucene.analysis.util.CharArraySet;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.rest.ManagedResource;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * TokenFilterFactory that uses the ManagedWordSetResource implementation
@@ -34,8 +31,6 @@ import org.slf4j.LoggerFactory;
  */
 public class ManagedStopFilterFactory extends BaseManagedTokenFilterFactory {
 
-  public static final Logger log = LoggerFactory.getLogger(ManagedStopFilterFactory.class);
-  
   // this only gets changed once during core initialization and not every
   // time an update is made to the underlying managed word set.
   private CharArraySet stopWords = null;

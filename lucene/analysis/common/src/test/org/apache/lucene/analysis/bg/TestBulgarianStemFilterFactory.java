@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.bg;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.bg;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.bg;
+
 
 import java.io.Reader;
 import java.io.StringReader;
@@ -34,7 +34,7 @@ public class TestBulgarianStemFilterFactory extends BaseTokenStreamFactoryTestCa
    */
   public void testStemming() throws Exception {
     Reader reader = new StringReader("компютри");
-    Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    Tokenizer tokenizer = whitespaceMockTokenizer(reader);
     TokenStream stream = tokenFilterFactory("BulgarianStem").create(tokenizer);
     assertTokenStreamContents(stream, new String[] { "компютр" });
   }

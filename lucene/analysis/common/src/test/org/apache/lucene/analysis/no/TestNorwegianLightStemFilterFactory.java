@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.no;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.no;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.no;
+
 
 import java.io.Reader;
 import java.io.StringReader;
@@ -30,7 +30,7 @@ import org.apache.lucene.analysis.util.BaseTokenStreamFactoryTestCase;
 public class TestNorwegianLightStemFilterFactory extends BaseTokenStreamFactoryTestCase {
   public void testStemming() throws Exception {
     Reader reader = new StringReader("epler eple");
-    TokenStream stream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream stream = whitespaceMockTokenizer(reader);
     stream = tokenFilterFactory("NorwegianLightStem").create(stream);
     assertTokenStreamContents(stream, new String[] { "epl", "epl" });
   }
@@ -38,7 +38,7 @@ public class TestNorwegianLightStemFilterFactory extends BaseTokenStreamFactoryT
   /** Test stemming with variant set explicitly to Bokmål */
   public void testBokmaalStemming() throws Exception {
     Reader reader = new StringReader("epler eple");
-    TokenStream stream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream stream = whitespaceMockTokenizer(reader);
     stream = tokenFilterFactory("NorwegianLightStem", "variant", "nb").create(stream);
     assertTokenStreamContents(stream, new String[] { "epl", "epl" });
   }
@@ -46,7 +46,7 @@ public class TestNorwegianLightStemFilterFactory extends BaseTokenStreamFactoryT
   /** Test stemming with variant set explicitly to Nynorsk */
   public void testNynorskStemming() throws Exception {
     Reader reader = new StringReader("gutar gutane");
-    TokenStream stream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream stream = whitespaceMockTokenizer(reader);
     stream = tokenFilterFactory("NorwegianLightStem", "variant", "nn").create(stream);
     assertTokenStreamContents(stream, new String[] { "gut", "gut" });
   }

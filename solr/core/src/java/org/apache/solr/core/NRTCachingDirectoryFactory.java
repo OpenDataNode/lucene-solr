@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.core;
 
 import java.io.File;
@@ -22,6 +21,7 @@ import java.io.IOException;
 
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.store.LockFactory;
 import org.apache.lucene.store.NRTCachingDirectory;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
@@ -50,8 +50,9 @@ public class NRTCachingDirectoryFactory extends StandardDirectoryFactory {
   }
 
   @Override
-  protected Directory create(String path, DirContext dirContext) throws IOException {
-    return new NRTCachingDirectory(FSDirectory.open(new File(path)), maxMergeSizeMB, maxCachedMB);
+  protected Directory create(String path, LockFactory lockFactory, DirContext dirContext) throws IOException {
+    // we pass NoLockFactory, because the real lock factory is set later by injectLockFactory:
+    return new NRTCachingDirectory(FSDirectory.open(new File(path).toPath(), lockFactory), maxMergeSizeMB, maxCachedMB);
   }
   
   @Override

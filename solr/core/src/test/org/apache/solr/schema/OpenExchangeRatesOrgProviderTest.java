@@ -1,4 +1,3 @@
-package org.apache.solr.schema;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,16 +14,17 @@ package org.apache.solr.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.schema;
+import java.util.HashMap;
+import java.util.Map;
 
-import org.apache.solr.SolrTestCaseJ4;
 import org.apache.lucene.analysis.util.ResourceLoader;
+import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.SolrException;
+import org.apache.solr.common.util.SuppressForbidden;
 import org.apache.solr.core.SolrResourceLoader;
 import org.junit.Before;
 import org.junit.Test;
-
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * Tests currency field type.
@@ -47,7 +47,7 @@ public class OpenExchangeRatesOrgProviderTest extends SolrTestCaseJ4 {
     mockParams.put(OpenExchangeRatesOrgProvider.PARAM_RATES_FILE_LOCATION, 
                    "open-exchange-rates.json");  
     oerp = new OpenExchangeRatesOrgProvider();
-    loader = new SolrResourceLoader("solr/collection1");
+    loader = new SolrResourceLoader(TEST_PATH().resolve("collection1"));
   }
   
   @Test
@@ -86,6 +86,7 @@ public class OpenExchangeRatesOrgProviderTest extends SolrTestCaseJ4 {
     assertEquals("USD", oerp.rates.getBaseCurrency());
   }
 
+  @SuppressForbidden(reason = "Needs currentTimeMillis to construct rates file contents")
   @Test
   public void testReload() {
     // reminder: interval is in minutes

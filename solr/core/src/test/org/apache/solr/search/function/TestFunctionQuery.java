@@ -14,20 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.search.function;
-
-import org.apache.lucene.codecs.Codec;
-import org.apache.lucene.index.FieldInvertState;
-import org.apache.lucene.search.FieldCache;
-import org.apache.lucene.search.similarities.DefaultSimilarity;
-import org.apache.lucene.search.similarities.TFIDFSimilarity;
-import org.apache.solr.SolrTestCaseJ4;
-import org.apache.solr.common.params.SolrParams;
-import org.apache.solr.common.util.NamedList;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.junit.Ignore;
 
 import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
@@ -37,6 +24,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
+
+import org.apache.lucene.index.FieldInvertState;
+import org.apache.lucene.search.similarities.DefaultSimilarity;
+import org.apache.lucene.search.similarities.TFIDFSimilarity;
+import org.apache.solr.SolrTestCaseJ4;
+import org.junit.BeforeClass;
+import org.junit.Test;
 
 /**
  * Tests some basic functionality of Solr while demonstrating good
@@ -50,7 +44,8 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
 
   
   String base = "external_foo_extf";
-  static long start = System.currentTimeMillis();
+
+  static long start = System.nanoTime();
   
   void makeExternalFile(String field, String contents) {
     String dir = h.getCore().getDataDir();
@@ -120,7 +115,7 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
     List<String> tests = new ArrayList<>();
 
     // Construct xpaths like the following:
-    // "//doc[./float[@name='foo_pf']='10.0' and ./float[@name='score']='10.0']"
+    // "//doc[./float[@name='foo_f']='10.0' and ./float[@name='score']='10.0']"
 
     for (int i=0; i<results.length; i+=2) {
       String xpath = "//doc[./float[@name='" + "id" + "']='"
@@ -202,13 +197,10 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
     singleTest(field,"sum(query($v1,5),query($v1,7))",
             Arrays.asList("v1","\0:[* TO *]"),  88,12
             );
-
-    FieldCache.DEFAULT.purgeAllCaches();   // avoid FC insanity
   }
 
   @Test
   public void testFunctions() {
-    doTest("foo_pf");  // a plain float field
     doTest("foo_f");  // a sortable float field
     doTest("foo_tf");  // a trie float field
   }
@@ -284,9 +276,7 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
 
       singleTest(field, "\0", answers);
       // System.out.println("Done test "+i);
-    }
-
-    FieldCache.DEFAULT.purgeAllCaches();   // avoid FC insanity    
+    }  
   }
 
   @Test
@@ -423,17 +413,12 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
            ,"*//doc[1]/float[.='120.0']"
            ,"*//doc[2]/float[.='121.0']"
     );
-
-
-    FieldCache.DEFAULT.purgeAllCaches();   // avoid FC insanity
   }
 
   /**
    * test collection-level term stats (new in 4.x indexes)
    */
-  public void testTotalTermFreq() throws Exception {
-    assumeFalse("PreFlex codec does not support collection-level term stats", "Lucene3x".equals(Codec.getDefault().getName()));
-
+  public void testTotalTermFreq() throws Exception {  
     clearIndex();
     
     assertU(adoc("id","1", "a_tdt","2009-08-31T12:10:10.123Z", "b_tdt","2009-08-31T12:10:10.124Z"));
@@ -565,6 +550,29 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
     assertQ(req("fl", "*,score", "q", "{!func}strdist(x_s, 'foit', edit)", "fq", "id:1"), "//float[@name='score']='0.75'");
     assertQ(req("fl", "*,score", "q", "{!func}strdist(x_s, 'foit', jw)", "fq", "id:1"), "//float[@name='score']='0.8833333'");
     assertQ(req("fl", "*,score", "q", "{!func}strdist(x_s, 'foit', ngram, 2)", "fq", "id:1"), "//float[@name='score']='0.875'");
+
+    // strdist on a missing valuesource should itself by missing, so the ValueSourceAugmenter 
+    // should supress it...
+    assertQ(req("q", "id:1",
+                "fl", "good:strdist(x_s, 'toil', edit)", 
+                "fl", "bad1:strdist(missing1_s, missing2_s, edit)", 
+                "fl", "bad2:strdist(missing1_s, 'something', edit)", 
+                "fl", "bad3:strdist(missing1_s, x_s, edit)")
+            , "//float[@name='good']='0.75'"
+            , "count(//float[starts-with(@name,'bad')])=0"
+            );
+
+    // in a query context, there is always a number...
+    //
+    // if a ValueSource is missing, it is maximally distant from every other
+    // value source *except* for another missing value source 
+    // ie: strdist(null,null)==1 but strdist(null,anything)==0
+    assertQ(req("fl","score","fq", "id:1", "q", "{!func}strdist(missing1_s, missing2_s, edit)"), 
+            "//float[@name='score']='1.0'");
+    assertQ(req("fl","score","fq", "id:1", "q", "{!func}strdist(missing1_s, x_s, edit)"), 
+            "//float[@name='score']='0.0'");
+    assertQ(req("fl","score","fq", "id:1", "q", "{!func}strdist(missing1_s, 'const', edit)"), 
+            "//float[@name='score']='0.0'");
   }
 
   public void dofunc(String func, double val) throws Exception {
@@ -643,9 +651,7 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
     assertU(adoc("id", "10000")); // will get same reader if no index change
     assertU(commit());   
     singleTest(fieldAsFunc, "sqrt(\0)");
-    assertTrue(orig != FileFloatSource.onlyForTesting);
-
-    FieldCache.DEFAULT.purgeAllCaches();   // avoid FC insanity    
+    assertTrue(orig != FileFloatSource.onlyForTesting);  
   }
 
   /**
@@ -670,9 +676,7 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
                100,100,  -4,-4,  0,0,  10,10,  25,25,  5,5,  77,77,  1,1);
     singleTest(fieldAsFunc, "sqrt(\0)", 
                100,10,  25,5,  0,0,   1,1);
-    singleTest(fieldAsFunc, "log(\0)",  1,0);
-
-    FieldCache.DEFAULT.purgeAllCaches();   // avoid FC insanity    
+    singleTest(fieldAsFunc, "log(\0)",  1,0); 
   }
 
     @Test
@@ -723,12 +727,17 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
 
   @Test
   public void testPseudoFieldFunctions() throws Exception {
-    assertU(adoc("id", "1", "text", "hello", "foo_s","A"));
+    assertU(adoc("id", "1", "text", "hello", "foo_s","A", "yak_i", "32"));
     assertU(adoc("id", "2"));
     assertU(commit());
 
-    assertJQ(req("q", "id:1", "fl", "a:1,b:2.0,c:'X',d:{!func}foo_s,e:{!func}bar_s")  // if exists() is false, no pseudo-field should be added
-        , "/response/docs/[0]=={'a':1, 'b':2.0,'c':'X','d':'A'}");
+    // if exists() is false, no pseudo-field should be added
+    assertJQ(req("q", "id:1", "fl", "a:1,b:2.0,c:'X',d:{!func}foo_s,e:{!func}bar_s")  
+             , "/response/docs/[0]=={'a':1, 'b':2.0,'c':'X','d':'A'}");
+    assertJQ(req("q", "id:1", "fl", "a:sum(yak_i,bog_i),b:mul(yak_i,bog_i),c:min(yak_i,bog_i)")  
+             , "/response/docs/[0]=={ 'c':32.0 }");
+    assertJQ(req("q", "id:1", "fl", "a:sum(yak_i,def(bog_i,42)), b:max(yak_i,bog_i)")  
+             , "/response/docs/[0]=={ 'a': 74.0, 'b':32.0 }");
   }
 
   public void testMissingFieldFunctionBehavior() throws Exception {
@@ -744,7 +753,6 @@ public class TestFunctionQuery extends SolrTestCaseJ4 {
     
     for (String suffix : new String[] {"s", "b", "dt", "tdt",
                                        "i", "l", "f", "d", 
-                                       "pi", "pl", "pf", "pd",
                                        "ti", "tl", "tf", "td"    }) {
       final String field = "no__vals____" + suffix;
       assertQ(req("q","id:1",

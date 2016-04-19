@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler.dataimport;
 
 import java.util.Properties;
@@ -23,17 +22,15 @@ import java.util.Properties;
  * <p>
  * Provides data from a source with a given query.
  * </p>
- * <p/>
  * <p>
  * Implementation of this abstract class must provide a default no-arg constructor
  * </p>
- * <p/>
  * <p>
  * Refer to <a
  * href="http://wiki.apache.org/solr/DataImportHandler">http://wiki.apache.org/solr/DataImportHandler</a>
  * for more details.
  * </p>
- * <p/>
+ * <p>
  * <b>This API is experimental and may change in the future.</b>
  *
  * @since solr 1.3
@@ -43,7 +40,7 @@ public abstract class DataSource<T> {
   /**
    * Initializes the DataSource with the <code>Context</code> and
    * initialization properties.
-   * <p/>
+   * <p>
    * This is invoked by the <code>DataImporter</code> after creating an
    * instance of this class.
    */

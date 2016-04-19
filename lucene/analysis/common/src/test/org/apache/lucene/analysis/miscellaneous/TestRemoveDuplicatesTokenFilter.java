@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.analysis.miscellaneous;
 
 import org.apache.lucene.analysis.Analyzer;
@@ -33,7 +32,6 @@ import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.TestUtil;
 
 import java.io.IOException;
-import java.io.Reader;
 import java.util.Iterator;
 import java.util.Arrays;
 
@@ -156,26 +154,28 @@ public class TestRemoveDuplicatesTokenFilter extends BaseTokenStreamTestCase {
       
       final Analyzer analyzer = new Analyzer() {
         @Override
-        protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-          Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.SIMPLE, true);
+        protected TokenStreamComponents createComponents(String fieldName) {
+          Tokenizer tokenizer = new MockTokenizer(MockTokenizer.SIMPLE, true);
           TokenStream stream = new SynonymFilter(tokenizer, map, ignoreCase);
           return new TokenStreamComponents(tokenizer, new RemoveDuplicatesTokenFilter(stream));
         }
       };
 
       checkRandomData(random(), analyzer, 200);
+      analyzer.close();
     }
   }
   
   public void testEmptyTerm() throws IOException {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new KeywordTokenizer(reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new KeywordTokenizer();
         return new TokenStreamComponents(tokenizer, new RemoveDuplicatesTokenFilter(tokenizer));
       }
     };
     checkOneTerm(a, "", "");
+    a.close();
   }
 
 }

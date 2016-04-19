@@ -1,5 +1,3 @@
-package org.apache.lucene.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
+
 
 import java.io.IOException;
 
@@ -24,11 +24,10 @@ import org.apache.lucene.document.DoubleField; // javadocs
 import org.apache.lucene.document.FloatField; // javadocs
 import org.apache.lucene.document.IntField; // javadocs
 import org.apache.lucene.document.LongField; // javadocs
-import org.apache.lucene.index.FilterAtomicReader;
+import org.apache.lucene.index.FilterLeafReader;
 import org.apache.lucene.index.FilteredTermsEnum;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
-import org.apache.lucene.search.NumericRangeFilter;
 import org.apache.lucene.search.NumericRangeQuery; // for javadocs
 
 /**
@@ -57,7 +56,7 @@ import org.apache.lucene.search.NumericRangeQuery; // for javadocs
  * <p>For easy usage, the trie algorithm is implemented for indexing inside
  * {@link NumericTokenStream} that can index <code>int</code>, <code>long</code>,
  * <code>float</code>, and <code>double</code>. For querying,
- * {@link NumericRangeQuery} and {@link NumericRangeFilter} implement the query part
+ * {@link NumericRangeQuery} implements the query part
  * for the same data types.
  *
  * <p>This class can also be used, to generate lexicographically sortable (according to
@@ -74,7 +73,7 @@ public final class NumericUtils {
   /**
    * The default precision step used by {@link LongField},
    * {@link DoubleField}, {@link NumericTokenStream}, {@link
-   * NumericRangeQuery}, and {@link NumericRangeFilter}.
+   * NumericRangeQuery}.
    */
   public static final int PRECISION_STEP_DEFAULT = 16;
   
@@ -93,7 +92,7 @@ public final class NumericUtils {
   /**
    * The maximum term length (used for <code>byte[]</code> buffer size)
    * for encoding <code>long</code> values.
-   * @see #longToPrefixCodedBytes
+   * @see #longToPrefixCoded
    */
   public static final int BUF_SIZE_LONG = 63/7 + 2;
 
@@ -106,7 +105,7 @@ public final class NumericUtils {
   /**
    * The maximum term length (used for <code>byte[]</code> buffer size)
    * for encoding <code>int</code> values.
-   * @see #intToPrefixCodedBytes
+   * @see #intToPrefixCoded
    */
   public static final int BUF_SIZE_INT = 31/7 + 2;
 
@@ -117,34 +116,40 @@ public final class NumericUtils {
    * @param val the numeric value
    * @param shift how many bits to strip from the right
    * @param bytes will contain the encoded value
+   * @deprecated Use {@link #longToPrefixCoded} instead.
+   */
+  @Deprecated
+  public static void longToPrefixCodedBytes(final long val, final int shift, final BytesRefBuilder bytes) {
+    longToPrefixCoded(val, shift, bytes);
+  }
+
+  /**
+   * Returns prefix coded bits after reducing the precision by <code>shift</code> bits.
+   * This is method is used by {@link NumericTokenStream}.
+   * After encoding, {@code bytes.offset} will always be 0.
+   * @param val the numeric value
+   * @param shift how many bits to strip from the right
+   * @param bytes will contain the encoded value
+   * @deprecated Use {@link #intToPrefixCoded} instead.
+   */
+  @Deprecated
+  public static void intToPrefixCodedBytes(final int val, final int shift, final BytesRefBuilder bytes) {
+    intToPrefixCoded(val, shift, bytes);
+  }
+
+  /**
+   * Returns prefix coded bits after reducing the precision by <code>shift</code> bits.
+   * This is method is used by {@link NumericTokenStream}.
+   * After encoding, {@code bytes.offset} will always be 0.
+   * @param val the numeric value
+   * @param shift how many bits to strip from the right
+   * @param bytes will contain the encoded value
    */
   public static void longToPrefixCoded(final long val, final int shift, final BytesRefBuilder bytes) {
-    longToPrefixCodedBytes(val, shift, bytes);
-  }
-
-  /**
-   * Returns prefix coded bits after reducing the precision by <code>shift</code> bits.
-   * This is method is used by {@link NumericTokenStream}.
-   * After encoding, {@code bytes.offset} will always be 0.
-   * @param val the numeric value
-   * @param shift how many bits to strip from the right
-   * @param bytes will contain the encoded value
-   */
-  public static void intToPrefixCoded(final int val, final int shift, final BytesRefBuilder bytes) {
-    intToPrefixCodedBytes(val, shift, bytes);
-  }
-
-  /**
-   * Returns prefix coded bits after reducing the precision by <code>shift</code> bits.
-   * This is method is used by {@link NumericTokenStream}.
-   * After encoding, {@code bytes.offset} will always be 0.
-   * @param val the numeric value
-   * @param shift how many bits to strip from the right
-   * @param bytes will contain the encoded value
-   */
-  public static void longToPrefixCodedBytes(final long val, final int shift, final BytesRefBuilder bytes) {
-    if ((shift & ~0x3f) != 0)  // ensure shift is 0..63
-      throw new IllegalArgumentException("Illegal shift value, must be 0..63");
+    // ensure shift is 0..63
+    if ((shift & ~0x3f) != 0) {
+      throw new IllegalArgumentException("Illegal shift value, must be 0..63; got shift=" + shift);
+    }
     int nChars = (((63-shift)*37)>>8) + 1;    // i/7 is the same as (i*37)>>8 for i in 0..63
     bytes.setLength(nChars+1);   // one extra for the byte that contains the shift info
     bytes.grow(BUF_SIZE_LONG);
@@ -168,9 +173,11 @@ public final class NumericUtils {
    * @param shift how many bits to strip from the right
    * @param bytes will contain the encoded value
    */
-  public static void intToPrefixCodedBytes(final int val, final int shift, final BytesRefBuilder bytes) {
-    if ((shift & ~0x1f) != 0)  // ensure shift is 0..31
-      throw new IllegalArgumentException("Illegal shift value, must be 0..31");
+  public static void intToPrefixCoded(final int val, final int shift, final BytesRefBuilder bytes) {
+    // ensure shift is 0..31
+    if ((shift & ~0x1f) != 0) {
+      throw new IllegalArgumentException("Illegal shift value, must be 0..31; got shift=" + shift);
+    }
     int nChars = (((31-shift)*37)>>8) + 1;    // i/7 is the same as (i*37)>>8 for i in 0..63
     bytes.setLength(nChars+1);   // one extra for the byte that contains the shift info
     bytes.grow(NumericUtils.BUF_SIZE_LONG);  // use the max
@@ -216,7 +223,7 @@ public final class NumericUtils {
    * This method can be used to decode a term's value.
    * @throws NumberFormatException if the supplied {@link BytesRef} is
    * not correctly prefix encoded.
-   * @see #longToPrefixCodedBytes
+   * @see #longToPrefixCoded
    */
   public static long prefixCodedToLong(final BytesRef val) {
     long sortableBits = 0L;
@@ -240,7 +247,7 @@ public final class NumericUtils {
    * This method can be used to decode a term's value.
    * @throws NumberFormatException if the supplied {@link BytesRef} is
    * not correctly prefix encoded.
-   * @see #intToPrefixCodedBytes
+   * @see #intToPrefixCoded
    */
   public static int prefixCodedToInt(final BytesRef val) {
     int sortableBits = 0;
@@ -425,8 +432,8 @@ public final class NumericUtils {
      */
     public void addRange(final long min, final long max, final int shift) {
       final BytesRefBuilder minBytes = new BytesRefBuilder(), maxBytes = new BytesRefBuilder();
-      longToPrefixCodedBytes(min, shift, minBytes);
-      longToPrefixCodedBytes(max, shift, maxBytes);
+      longToPrefixCoded(min, shift, minBytes);
+      longToPrefixCoded(max, shift, maxBytes);
       addRange(minBytes.get(), maxBytes.get());
     }
   
@@ -454,8 +461,8 @@ public final class NumericUtils {
      */
     public void addRange(final int min, final int max, final int shift) {
       final BytesRefBuilder minBytes = new BytesRefBuilder(), maxBytes = new BytesRefBuilder();
-      intToPrefixCodedBytes(min, shift, minBytes);
-      intToPrefixCodedBytes(max, shift, maxBytes);
+      intToPrefixCoded(min, shift, minBytes);
+      intToPrefixCoded(max, shift, maxBytes);
       addRange(minBytes.get(), maxBytes.get());
     }
   
@@ -532,51 +539,63 @@ public final class NumericUtils {
   }
 
   private static Terms intTerms(Terms terms) {
-    return new FilterAtomicReader.FilterTerms(terms) {
+    return new FilterLeafReader.FilterTerms(terms) {
         @Override
-        public TermsEnum iterator(TermsEnum reuse) throws IOException {
-          return filterPrefixCodedInts(in.iterator(reuse));
+        public TermsEnum iterator() throws IOException {
+          return filterPrefixCodedInts(in.iterator());
         }
       };
   }
 
   private static Terms longTerms(Terms terms) {
-    return new FilterAtomicReader.FilterTerms(terms) {
+    return new FilterLeafReader.FilterTerms(terms) {
         @Override
-        public TermsEnum iterator(TermsEnum reuse) throws IOException {
-          return filterPrefixCodedLongs(in.iterator(reuse));
+        public TermsEnum iterator() throws IOException {
+          return filterPrefixCodedLongs(in.iterator());
         }
       };
   }
     
-  /** Returns the minimum int value indexed into this
-   *  numeric field. */
-  public static int getMinInt(Terms terms) throws IOException {
+  /**
+   * Returns the minimum int value indexed into this
+   * numeric field or null if no terms exist.
+   */
+  public static Integer getMinInt(Terms terms) throws IOException {
     // All shift=0 terms are sorted first, so we don't need
     // to filter the incoming terms; we can just get the
-    // min: 
-    return NumericUtils.prefixCodedToInt(terms.getMin());
+    // min:
+    BytesRef min = terms.getMin();
+    return (min != null) ? NumericUtils.prefixCodedToInt(min) : null;
   }
 
-  /** Returns the maximum int value indexed into this
-   *  numeric field. */
-  public static int getMaxInt(Terms terms) throws IOException {
-    return NumericUtils.prefixCodedToInt(intTerms(terms).getMax());
+  /**
+   * Returns the maximum int value indexed into this
+   * numeric field or null if no terms exist.
+   */
+  public static Integer getMaxInt(Terms terms) throws IOException {
+    BytesRef max = intTerms(terms).getMax();
+    return (max != null) ? NumericUtils.prefixCodedToInt(max) : null;
   }
 
-  /** Returns the minimum long value indexed into this
-   *  numeric field. */
-  public static long getMinLong(Terms terms) throws IOException {
+  /**
+   * Returns the minimum long value indexed into this
+   * numeric field or null if no terms exist.
+   */
+  public static Long getMinLong(Terms terms) throws IOException {
     // All shift=0 terms are sorted first, so we don't need
     // to filter the incoming terms; we can just get the
-    // min: 
-    return NumericUtils.prefixCodedToLong(terms.getMin());
+    // min:
+    BytesRef min = terms.getMin();
+    return (min != null) ? NumericUtils.prefixCodedToLong(min) : null;
   }
 
-  /** Returns the maximum long value indexed into this
-   *  numeric field. */
-  public static long getMaxLong(Terms terms) throws IOException {
-    return NumericUtils.prefixCodedToLong(longTerms(terms).getMax());
+  /**
+   * Returns the maximum long value indexed into this
+   * numeric field or null if no terms exist.
+   */
+  public static Long getMaxLong(Terms terms) throws IOException {
+    BytesRef max = longTerms(terms).getMax();
+    return (max != null) ? NumericUtils.prefixCodedToLong(max) : null;
   }
   
 }

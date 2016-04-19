@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,13 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -75,7 +75,7 @@ public class TestSimilarityProvider extends LuceneTestCase {
   public void testBasics() throws Exception {
     // sanity check of norms writer
     // TODO: generalize
-    AtomicReader slow = SlowCompositeReaderWrapper.wrap(reader);
+    LeafReader slow = SlowCompositeReaderWrapper.wrap(reader);
     NumericDocValues fooNorms = slow.getNormValues("foo");
     NumericDocValues barNorms = slow.getNormValues("bar");
     for (int i = 0; i < slow.maxDoc(); i++) {

@@ -1,5 +1,3 @@
-package org.apache.solr.common.params;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,7 +14,7 @@ package org.apache.solr.common.params;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.common.params;
 
 /**
  * Parameters used with the QueryElevationComponent
@@ -32,7 +30,7 @@ public interface QueryElevationParams {
   /**
    * The name of the field that editorial results will be written out as when using the QueryElevationComponent, which
    * automatically configures the EditorialMarkerFactory.  The default name is "elevated"
-   * <br/>
+   * <br>
    * See http://wiki.apache.org/solr/DocTransformers
    */
   String EDITORIAL_MARKER_FIELD_NAME = "editorialMarkerFieldName";
@@ -40,7 +38,7 @@ public interface QueryElevationParams {
    * The name of the field that excluded editorial results will be written out as when using the QueryElevationComponent, which
    * automatically configures the EditorialMarkerFactory.  The default name is "excluded".  This is only used
    * when {@link #MARK_EXCLUDES} is set to true at query time.
-   * <br/>
+   * <br>
    * See http://wiki.apache.org/solr/DocTransformers
    */
   String EXCLUDE_MARKER_FIELD_NAME = "excludeMarkerFieldName";

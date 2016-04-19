@@ -1,5 +1,3 @@
-package org.apache.solr.common.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,12 @@ package org.apache.solr.common.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.common.cloud;
 
+import org.apache.solr.common.util.Utils;
 import org.noggit.JSONUtil;
 import org.noggit.JSONWriter;
 
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -47,22 +46,11 @@ public class ZkNodeProps implements JSONWriter.Writable {
    * key2, value2, ..., keyN, valueN
    */
   public ZkNodeProps(String... keyVals) {
-    this( makeMap((Object[])keyVals) );
+    this( Utils.makeMap((Object[]) keyVals) );
   }
 
   public static ZkNodeProps fromKeyVals(Object... keyVals)  {
-    return new ZkNodeProps( makeMap(keyVals) );
-  }
-
-  public static Map<String,Object> makeMap(Object... keyVals) {
-    if ((keyVals.length & 0x01) != 0) {
-      throw new IllegalArgumentException("arguments should be key,value");
-    }
-    Map<String,Object> propMap = new LinkedHashMap<>(keyVals.length>>1);
-    for (int i = 0; i < keyVals.length; i+=2) {
-      propMap.put(keyVals[i].toString(), keyVals[i+1]);
-    }
-    return propMap;
+    return new ZkNodeProps( Utils.makeMap(keyVals) );
   }
 
 
@@ -89,7 +77,7 @@ public class ZkNodeProps implements JSONWriter.Writable {
    * Create Replica from json string that is typically stored in zookeeper.
    */
   public static ZkNodeProps load(byte[] bytes) {
-    Map<String, Object> props = (Map<String, Object>) ZkStateReader.fromJSON(bytes);
+    Map<String, Object> props = (Map<String, Object>) Utils.fromJSON(bytes);
     return new ZkNodeProps(props);
   }
 
@@ -150,5 +138,10 @@ public class ZkNodeProps implements JSONWriter.Writable {
     Object o = propMap.get(key);
     if(o==null) return b;
     return Boolean.parseBoolean(o.toString());
+  }
+
+  @Override
+  public boolean equals(Object that) {
+    return that instanceof ZkNodeProps && ((ZkNodeProps)that).propMap.equals(this.propMap);
   }
 }

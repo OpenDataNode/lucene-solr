@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.common.util;
 
 import java.io.File;
@@ -29,7 +28,6 @@ import java.nio.charset.StandardCharsets;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.solr.SolrTestCaseJ4;
-import org.apache.lucene.util.TestUtil;
 import org.apache.solr.core.SolrResourceLoader;
 
 /**
@@ -47,9 +45,9 @@ public class ContentStreamTest extends SolrTestCaseJ4
 
   public void testFileStream() throws IOException 
   {
-    InputStream is = new SolrResourceLoader(null, null).openResource( "solrj/README" );
+    InputStream is = new SolrResourceLoader().openResource( "solrj/README" );
     assertNotNull( is );
-    File file = new File(createTempDir(), "README");
+    File file = new File(createTempDir().toFile(), "README");
     FileOutputStream os = new FileOutputStream(file);
     IOUtils.copy(is, os);
     os.close();
@@ -76,9 +74,9 @@ public class ContentStreamTest extends SolrTestCaseJ4
 
   public void testURLStream() throws IOException 
   {
-    InputStream is = new SolrResourceLoader(null, null).openResource( "solrj/README" );
+    InputStream is = new SolrResourceLoader().openResource( "solrj/README" );
     assertNotNull( is );
-    File file = new File(createTempDir(), "README");
+    File file = new File(createTempDir().toFile(), "README");
     FileOutputStream os = new FileOutputStream(file);
     IOUtils.copy(is, os);
     os.close();

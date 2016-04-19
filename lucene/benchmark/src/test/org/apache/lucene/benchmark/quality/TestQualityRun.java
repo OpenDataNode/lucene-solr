@@ -1,5 +1,3 @@
-package org.apache.lucene.benchmark.quality;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.benchmark.quality;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.benchmark.quality;
+
 
 import org.apache.lucene.benchmark.BenchmarkTestCase;
 import org.apache.lucene.benchmark.quality.trec.TrecJudge;
@@ -26,10 +26,8 @@ import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.util.LuceneTestCase.SuppressSysoutChecks;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
@@ -73,7 +71,7 @@ public class TestQualityRun extends BenchmarkTestCase {
     // validate topics & judgments match each other
     judge.validateData(qqs, logger);
     
-    Directory dir = newFSDirectory(new File(getWorkDir(),"index"));
+    Directory dir = newFSDirectory(getWorkDir().resolve("index"));
     IndexReader reader = DirectoryReader.open(dir);
     IndexSearcher searcher = new IndexSearcher(reader);
 

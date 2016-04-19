@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.search;
 
 
@@ -43,7 +42,7 @@ public interface DocList extends DocSet {
    * Returns the total number of matches for the search
    * (as opposed to just the number collected according
    * to <code>offset()</code> and <code>size()</code>).
-   * Hence it's always true that matches() >= size()
+   * Hence it's always true that matches() &gt;= size()
    * @return number of matches for the search(query &amp; any filters)
    */
   public int matches();

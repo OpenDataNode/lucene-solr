@@ -18,12 +18,12 @@
 
 <config>
   <xi:include href="solrconfig.snippet.randomindexconfig.xml" xmlns:xi="http://www.w3.org/2001/XInclude"/>
-   <luceneMatchVersion>${tests.luceneMatchVersion:LUCENE_CURRENT}</luceneMatchVersion>
+   <luceneMatchVersion>${tests.luceneMatchVersion:LATEST}</luceneMatchVersion>
   <!--  The DirectoryFactory to use for indexes.
         solr.StandardDirectoryFactory, the default, is filesystem based.
         solr.RAMDirectoryFactory is memory based and not persistent. -->
   <dataDir>${solr.data.dir:}</dataDir>
-  <directoryFactory name="DirectoryFactory" class="${solr.directoryFactory:solr.RAMDirectoryFactory}"/>
+  <directoryFactory name="DirectoryFactory" class="solr.NRTCachingDirectoryFactory"/>
 
   <updateHandler class="solr.DirectUpdateHandler2"/>
 
@@ -31,7 +31,7 @@
 
   <searchComponent class="solr.SuggestComponent" name="suggest">
     
-  	<!-- Suggest component (default index based dictionary) -->
+    <!-- Suggest component (default index based dictionary) -->
     <lst name="suggester">
       <str name="name">suggest_fuzzy_with_high_freq_dict</str>
       <str name="lookupImpl">FuzzyLookupFactory</str>
@@ -40,11 +40,10 @@
       <str name="suggestAnalyzerFieldType">text</str>
       <str name="buildOnCommit">true</str>
 
-      <!-- Suggester properties -->
       <float name="threshold">0.0</float>
     </lst>
-	
-	<!-- Suggest component (default file based dictionary) -->
+  
+  <!-- Suggest component (default file based dictionary) -->
     <lst name="suggester">
       <str name="name">suggest_fuzzy_file_based</str>
       <str name="lookupImpl">FuzzyLookupFactory</str>
@@ -54,19 +53,19 @@
       <str name="buildOnCommit">true</str>
     </lst>
 
-	<!-- Suggest component (Document Dictionary) -->
+  <!-- Suggest component (Document Dictionary) -->
     <lst name="suggester">
       <str name="name">suggest_fuzzy_doc_dict</str>
       <str name="lookupImpl">FuzzyLookupFactory</str>
       <str name="dictionaryImpl">DocumentDictionaryFactory</str>
       <str name="field">cat</str>
       <str name="weightField">price</str>
-      <str name="storeDir">suggest_fuzzy_doc_dict_payload</str>
       <str name="suggestAnalyzerFieldType">text</str>
       <str name="buildOnCommit">true</str>
+      <str name="buildOnStartup">false</str>
     </lst>
 
-	<!-- Suggest component (Document Expression Dictionary) -->
+  <!-- Suggest component (Document Expression Dictionary) -->
     <lst name="suggester">
       <str name="name">suggest_fuzzy_doc_expr_dict</str>
       <str name="dictionaryImpl">DocumentExpressionDictionaryFactory</str>
@@ -79,6 +78,57 @@
       <str name="suggestAnalyzerFieldType">text</str>
       <str name="buildOnCommit">true</str>
     </lst>
+     
+    <!-- Suggest component (Document Dictionary) that is built on startup-->
+    <lst name="suggester">
+      <str name="name">suggest_fuzzy_doc_dict_build_startup</str>
+      <str name="lookupImpl">FuzzyLookupFactory</str>
+      <str name="dictionaryImpl">DocumentDictionaryFactory</str>
+      <str name="field">cat</str>
+      <str name="weightField">price</str>
+      <str name="suggestAnalyzerFieldType">text</str>
+      <str name="buildOnCommit">false</str>
+      <str name="buildOnStartup">true</str>
+    </lst>
+    
+    <!-- Suggest component (Document Dictionary) only builds manually-->
+    <lst name="suggester">
+      <str name="name">suggest_fuzzy_doc_manal_build</str>
+      <str name="lookupImpl">FuzzyLookupFactory</str>
+      <str name="dictionaryImpl">DocumentDictionaryFactory</str>
+      <str name="field">cat</str>
+      <str name="weightField">price</str>
+      <str name="suggestAnalyzerFieldType">text</str>
+      <str name="buildOnCommit">false</str>
+      <str name="buildOnStartup">false</str>
+      <str name="storeDir">suggest_fuzzy_doc_manal_build</str>
+    </lst>
+    
+    <!-- Suggest component (Document Dictionary) only builds manually and
+         has the default buildOnStartup behavior -->
+    <lst name="suggester">
+      <str name="name">suggest_doc_default_startup</str>
+      <str name="lookupImpl">AnalyzingLookupFactory</str>
+      <str name="dictionaryImpl">DocumentDictionaryFactory</str>
+      <str name="field">cat</str>
+      <str name="weightField">price</str>
+      <str name="suggestAnalyzerFieldType">text</str>
+      <str name="buildOnCommit">false</str>
+      <str name="storeDir">suggest_doc_default_startup</str>
+    </lst>
+    
+    <!-- Suggest component (Document Dictionary) only builds manually and
+         has the default buildOnStartup behavior with no storeDir -->
+    <lst name="suggester">
+      <str name="name">suggest_doc_default_startup_no_store</str>
+      <str name="lookupImpl">AnalyzingLookupFactory</str>
+      <str name="dictionaryImpl">DocumentDictionaryFactory</str>
+      <str name="field">cat</str>
+      <str name="weightField">price</str>
+      <str name="suggestAnalyzerFieldType">text</str>
+      <str name="buildOnCommit">false</str>
+    </lst>
+    
   </searchComponent>
 
   <requestHandler name="/suggest" class="org.apache.solr.handler.component.SearchHandler">
@@ -89,7 +139,7 @@
       <str>suggest</str>
     </arr>
   </requestHandler>
-  
-  <requestHandler name="/update" class="solr.UpdateRequestHandler" />
+
+  <query><useColdSearcher>false</useColdSearcher></query>
 
 </config>

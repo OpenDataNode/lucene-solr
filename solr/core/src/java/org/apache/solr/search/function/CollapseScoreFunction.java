@@ -14,12 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.search.function;
 
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.FunctionValues;
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.solr.search.CollapsingQParserPlugin.CollapseScore;
 import java.util.Map;
 import java.io.IOException;
@@ -42,7 +41,7 @@ public class CollapseScoreFunction extends ValueSource {
     return 1213241257;
   }
 
-  public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+  public FunctionValues getValues(Map context, LeafReaderContext readerContext) throws IOException {
     return new CollapseScoreFunctionValues(context);
   }
 
@@ -52,6 +51,7 @@ public class CollapseScoreFunction extends ValueSource {
 
     public CollapseScoreFunctionValues(Map context) {
       this.cscore = (CollapseScore) context.get("CSCORE");
+      assert null != this.cscore;
     }
 
     public int intVal(int doc) {

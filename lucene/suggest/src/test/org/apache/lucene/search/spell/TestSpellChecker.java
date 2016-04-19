@@ -1,5 +1,3 @@
-package org.apache.lucene.search.spell;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.spell;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.spell;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -27,6 +26,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -47,6 +47,7 @@ import org.apache.lucene.util.NamedThreadFactory;
 public class TestSpellChecker extends LuceneTestCase {
   private SpellCheckerMock spellChecker;
   private Directory userindex, spellindex;
+  private Analyzer analyzer;
   private List<IndexSearcher> searchers;
 
   @Override
@@ -55,8 +56,8 @@ public class TestSpellChecker extends LuceneTestCase {
     
     //create a user index
     userindex = newDirectory();
-    IndexWriter writer = new IndexWriter(userindex, new IndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(random())));
+    analyzer = new MockAnalyzer(random());
+    IndexWriter writer = new IndexWriter(userindex, new IndexWriterConfig(analyzer));
 
     for (int i = 0; i < 1000; i++) {
       Document doc = new Document();
@@ -100,6 +101,7 @@ public class TestSpellChecker extends LuceneTestCase {
     if (!spellChecker.isClosed())
       spellChecker.close();
     spellindex.close();
+    analyzer.close();
     super.tearDown();
   }
 

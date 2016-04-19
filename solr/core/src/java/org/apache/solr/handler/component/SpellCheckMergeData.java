@@ -1,5 +1,3 @@
-package org.apache.solr.handler.component;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,14 @@ package org.apache.solr.handler.component;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.component;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.lucene.search.spell.SuggestWord;
 import org.apache.solr.client.solrj.response.SpellCheckResponse;
@@ -39,5 +40,14 @@ public class SpellCheckMergeData {
   // alternative string -> corresponding SuggestWord object
   public Map<String, SuggestWord> suggestedVsWord = new HashMap<>();
   public Map<String, SpellCheckCollation> collations = new HashMap<>();
+  //The original terms from the user's query.
+  public Set<String> originalTerms = null;
   public int totalNumberShardResponses = 0;
+  
+  public boolean isOriginalToQuery(String term) {
+    if(originalTerms==null) {
+      return true;
+    }
+    return originalTerms.contains(term);
+  }
 }

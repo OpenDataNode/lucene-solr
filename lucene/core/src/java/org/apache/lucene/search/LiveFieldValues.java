@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -33,6 +33,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *  the same time by two threads, because in this case you
  *  cannot in general know which thread "won". */
 
+// TODO: should this class handle deletions better...?
 public abstract class LiveFieldValues<S,T> implements ReferenceManager.RefreshListener, Closeable {
 
   private volatile Map<String,T> current = new ConcurrentHashMap<>();
@@ -40,6 +41,7 @@ public abstract class LiveFieldValues<S,T> implements ReferenceManager.RefreshLi
   private final ReferenceManager<S> mgr;
   private final T missingValue;
 
+  /** The missingValue must be non-null. */
   public LiveFieldValues(ReferenceManager<S> mgr, T missingValue) {
     this.missingValue = missingValue;
     this.mgr = mgr;
@@ -124,7 +126,7 @@ public abstract class LiveFieldValues<S,T> implements ReferenceManager.RefreshLi
     }
   }
 
-  /** This is called when the id/value was already flushed & opened
+  /** This is called when the id/value was already flushed and opened
    *  in an NRT IndexSearcher.  You must implement this to
    *  go look up the value (eg, via doc values, field cache,
    *  stored fields, etc.). */

@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,31 +14,29 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
-import org.apache.lucene.document.TextField;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 
 /**
  * Test indexing and searching some byte[] terms
  */
-@SuppressCodecs("Lucene3x")
 public class TestBinaryTerms extends LuceneTestCase {
   public void testBinary() throws IOException {    
     Directory dir = newDirectory();
     RandomIndexWriter iw = new RandomIndexWriter(random(), dir);
     BytesRef bytes = new BytesRef(2);
-    BinaryTokenStream tokenStream = new BinaryTokenStream(bytes);
     
     for (int i = 0; i < 256; i++) {
       bytes.bytes[0] = (byte) i;
@@ -49,8 +45,8 @@ public class TestBinaryTerms extends LuceneTestCase {
       Document doc = new Document();
       FieldType customType = new FieldType();
       customType.setStored(true);
-      doc.add(new Field("id", "" + i, customType));
-      doc.add(new TextField("bytes", tokenStream));
+      doc.add(newField("id", "" + i, customType));
+      doc.add(newStringField("bytes", bytes, Field.Store.NO));
       iw.addDocument(doc);
     }
     

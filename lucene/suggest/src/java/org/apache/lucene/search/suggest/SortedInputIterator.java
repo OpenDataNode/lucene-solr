@@ -1,5 +1,3 @@
-package org.apache.lucene.search.suggest;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,11 @@ package org.apache.lucene.search.suggest;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.suggest;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Set;
@@ -40,8 +40,8 @@ import org.apache.lucene.util.OfflineSorter.ByteSequencesWriter;
 public class SortedInputIterator implements InputIterator {
   
   private final InputIterator source;
-  private File tempInput;
-  private File tempSorted;
+  private Path tempInput;
+  private Path tempSorted;
   private final ByteSequencesReader reader;
   private final Comparator<BytesRef> comparator;
   private final boolean hasPayloads;
@@ -128,11 +128,6 @@ public class SortedInputIterator implements InputIterator {
   }
 
   @Override
-  public Comparator<BytesRef> getComparator() {
-    return tieBreakByCostComparator;
-  }
-
-  @Override
   public boolean hasContexts() {
     return hasContexts;
   }
@@ -167,22 +162,15 @@ public class SortedInputIterator implements InputIterator {
       if (cmp != 0) {
         return cmp;
       }
-      if (leftCost < rightCost) {
-        return -1;
-      } else if (leftCost > rightCost) {
-        return 1;
-      } else {
-        return 0;
-      }
-
+      return Long.compare(leftCost, rightCost);
     }
   };
   
   private ByteSequencesReader sort() throws IOException {
     String prefix = getClass().getSimpleName();
-    File directory = OfflineSorter.defaultTempDir();
-    tempInput = File.createTempFile(prefix, ".input", directory);
-    tempSorted = File.createTempFile(prefix, ".sorted", directory);
+    Path directory = OfflineSorter.getDefaultTempDir();
+    tempInput = Files.createTempFile(directory, prefix, ".input");
+    tempSorted = Files.createTempFile(directory, prefix, ".sorted");
     
     final OfflineSorter.ByteSequencesWriter writer = new OfflineSorter.ByteSequencesWriter(tempInput);
     boolean success = false;
@@ -214,12 +202,16 @@ public class SortedInputIterator implements InputIterator {
   }
   
   private void close() throws IOException {
-    IOUtils.close(reader);
-    if (tempInput != null) {
-      tempInput.delete();
-    }
-    if (tempSorted != null) {
-      tempSorted.delete();
+    boolean success = false;
+    try {
+      IOUtils.close(reader);
+      success = true;
+    } finally {
+      if (success) {
+        IOUtils.deleteFilesIfExist(tempInput, tempSorted);
+      } else {
+        IOUtils.deleteFilesIgnoringExceptions(tempInput, tempSorted);
+      }
     }
   }
   

@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,11 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
 
-import java.io.File;
+
 import java.io.IOException;
+import java.nio.file.Path;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -32,11 +32,10 @@ import org.apache.lucene.store.FilterDirectory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.TestUtil;
 
 public class TestCrashCausesCorruptIndex extends LuceneTestCase  {
 
-  File path;
+  Path path;
     
   /**
    * LUCENE-3627: This test fails.
@@ -71,7 +70,7 @@ public class TestCrashCausesCorruptIndex extends LuceneTestCase  {
     // writes segments_1:
     indexWriter.commit();
             
-    crashAfterCreateOutput.setCrashAfterCreateOutput("segments_2");
+    crashAfterCreateOutput.setCrashAfterCreateOutput("pending_segments_2");
     indexWriter.addDocument(getDocument());
     try {
       // tries to write segments_2 but hits fake exc:
@@ -151,7 +150,6 @@ public class TestCrashCausesCorruptIndex extends LuceneTestCase  {
 
     public CrashAfterCreateOutput(Directory realDirectory) throws IOException {
       super(realDirectory);
-      setLockFactory(realDirectory.getLockFactory());
     }
         
     public void setCrashAfterCreateOutput(String name) {

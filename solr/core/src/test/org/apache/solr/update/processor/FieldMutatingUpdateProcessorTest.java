@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update.processor;
 
 import java.util.LinkedHashSet;
@@ -196,16 +195,13 @@ public class FieldMutatingUpdateProcessorTest extends UpdateProcessorTestBase {
                    doc(f("id", "1111"),
                        f("foo_t", " string1 "),
                        f("foo_s", " string2 "),
-                       f("bar_dt", " string3 "),
-                       f("bar_pdt", " string4 ")));
+                       f("bar_dt", " string3 ")));
 
     assertNotNull(d);
 
     assertEquals(" string1 ", d.getFieldValue("foo_t"));
     assertEquals("string2", d.getFieldValue("foo_s"));
     assertEquals("string3", d.getFieldValue("bar_dt"));
-    assertEquals("string4", d.getFieldValue("bar_pdt"));
-
   }
 
   public void testTrimMultipleRules() throws Exception {
@@ -214,16 +210,13 @@ public class FieldMutatingUpdateProcessorTest extends UpdateProcessorTestBase {
                    doc(f("id", "1111"),
                        f("foo_t", " string1 "),
                        f("foo_s", " string2 "),
-                       f("bar_dt", " string3 "),
-                       f("foo_pdt", " string4 ")));
+                       f("bar_dt", " string3 ")));
 
     assertNotNull(d);
 
     assertEquals(" string1 ", d.getFieldValue("foo_t"));
     assertEquals("string2", d.getFieldValue("foo_s"));
     assertEquals(" string3 ", d.getFieldValue("bar_dt"));
-    assertEquals("string4", d.getFieldValue("foo_pdt"));
-
   }
 
   public void testTrimExclusions() throws Exception {
@@ -232,24 +225,20 @@ public class FieldMutatingUpdateProcessorTest extends UpdateProcessorTestBase {
                    doc(f("id", "1111"),
                        f("foo_t", " string1 "),
                        f("foo_s", " string2 "),
-                       f("bar_dt", " string3 "),
-                       f("foo_pdt", " string4 ")));
+                       f("bar_dt", " string3 ")));
 
     assertNotNull(d);
 
     assertEquals(" string1 ", d.getFieldValue("foo_t"));
     assertEquals("string2", d.getFieldValue("foo_s"));
     assertEquals("string3", d.getFieldValue("bar_dt"));
-    assertEquals("string4", d.getFieldValue("foo_pdt"));
 
     d = processAdd("trim-many", 
                    doc(f("id", "1111"),
                        f("foo_t", " string1 "),
                        f("foo_s", " string2 "),
                        f("bar_dt", " string3 "),
-                       f("bar_HOSS_s", " string4 "),
-                       f("foo_pdt", " string5 "),
-                       f("foo_HOSS_pdt", " string6 ")));
+                       f("bar_HOSS_s", " string4 ")));
 
     assertNotNull(d);
 
@@ -257,17 +246,13 @@ public class FieldMutatingUpdateProcessorTest extends UpdateProcessorTestBase {
     assertEquals("string2", d.getFieldValue("foo_s"));
     assertEquals("string3", d.getFieldValue("bar_dt"));
     assertEquals(" string4 ", d.getFieldValue("bar_HOSS_s"));
-    assertEquals("string5", d.getFieldValue("foo_pdt"));
-    assertEquals(" string6 ", d.getFieldValue("foo_HOSS_pdt"));
 
     d = processAdd("trim-few", 
                    doc(f("id", "1111"),
                        f("foo_t", " string1 "),
                        f("foo_s", " string2 "),
                        f("bar_dt", " string3 "),
-                       f("bar_HOSS_s", " string4 "),
-                       f("foo_pdt", " string5 "),
-                       f("foo_HOSS_pdt", " string6 ")));
+                       f("bar_HOSS_s", " string4 ")));
 
     assertNotNull(d);
 
@@ -275,17 +260,13 @@ public class FieldMutatingUpdateProcessorTest extends UpdateProcessorTestBase {
     assertEquals("string2", d.getFieldValue("foo_s"));
     assertEquals(" string3 ", d.getFieldValue("bar_dt"));
     assertEquals(" string4 ", d.getFieldValue("bar_HOSS_s"));
-    assertEquals(" string5 ", d.getFieldValue("foo_pdt"));
-    assertEquals(" string6 ", d.getFieldValue("foo_HOSS_pdt"));
 
     d = processAdd("trim-some", 
                    doc(f("id", "1111"),
                        f("foo_t", " string1 "),
                        f("foo_s", " string2 "),
                        f("bar_dt", " string3 "),
-                       f("bar_HOSS_s", " string4 "),
-                       f("foo_pdt", " string5 "),
-                       f("foo_HOSS_pdt", " string6 ")));
+                       f("bar_HOSS_s", " string4 ")));
 
     assertNotNull(d);
 
@@ -293,8 +274,6 @@ public class FieldMutatingUpdateProcessorTest extends UpdateProcessorTestBase {
     assertEquals("string2", d.getFieldValue("foo_s"));
     assertEquals("string3", d.getFieldValue("bar_dt"));
     assertEquals("string4", d.getFieldValue("bar_HOSS_s"));
-    assertEquals("string5", d.getFieldValue("foo_pdt"));
-    assertEquals(" string6 ", d.getFieldValue("foo_HOSS_pdt"));
   }
 
   public void testRemoveBlanks() throws Exception {
@@ -748,119 +727,6 @@ public class FieldMutatingUpdateProcessorTest extends UpdateProcessorTestBase {
 
   }
 
-  public void testCloneField() throws Exception {
-
-    SolrInputDocument d = null;
-
-    // regardless of chain, all of these should be equivilent
-    for (String chain : Arrays.asList("clone-single", "clone-multi", 
-                                      "clone-array","clone-selector" )) {
-
-      // simple clone
-      d = processAdd(chain,       
-                     doc(f("id", "1111"),
-                         f("source0_s", "NOT COPIED"),
-                         f("source1_s", "123456789", "", 42, "abcd")));
-      assertNotNull(chain, d);
-      assertEquals(chain,
-                   Arrays.asList("123456789", "", 42, "abcd"), 
-                   d.getFieldValues("source1_s"));
-      assertEquals(chain,
-                   Arrays.asList("123456789", "", 42, "abcd"), 
-                   d.getFieldValues("dest_s"));
-
-      // append to existing values, preserve boost
-      d = processAdd(chain,       
-                     doc(f("id", "1111"),
-                         field("dest_s", 2.3f, "orig1", "orig2"),
-                         f("source0_s", "NOT COPIED"),
-                         f("source1_s", "123456789", "", 42, "abcd")));
-      assertNotNull(chain, d);
-      assertEquals(chain,
-                   Arrays.asList("123456789", "", 42, "abcd"), 
-                   d.getFieldValues("source1_s"));
-      assertEquals(chain,
-                   Arrays.asList("orig1", "orig2", "123456789", "", 42, "abcd"),
-                   d.getFieldValues("dest_s"));
-      assertEquals(chain + ": dest boost changed", 
-                   2.3f, d.getField("dest_s").getBoost(), 0.0f);
-    }
-
-    // should be equivilent for any chain matching source1_s and source2_s
-    for (String chain : Arrays.asList("clone-multi",
-                                      "clone-array","clone-selector" )) {
-
-      // simple clone
-      d = processAdd(chain,       
-                     doc(f("id", "1111"),
-                         f("source0_s", "NOT COPIED"),
-                         f("source1_s", "123456789", "", 42, "abcd"),
-                         f("source2_s", "xxx", 999)));
-      assertNotNull(chain, d);
-      assertEquals(chain,
-                   Arrays.asList("123456789", "", 42, "abcd"), 
-                   d.getFieldValues("source1_s"));
-      assertEquals(chain,
-                   Arrays.asList("xxx", 999),
-                   d.getFieldValues("source2_s"));
-      assertEquals(chain,
-                   Arrays.asList("123456789", "", 42, "abcd", "xxx", 999), 
-                   d.getFieldValues("dest_s"));
-
-      // append to existing values, preserve boost
-      d = processAdd(chain,       
-                     doc(f("id", "1111"),
-                         field("dest_s", 2.3f, "orig1", "orig2"),
-                         f("source0_s", "NOT COPIED"),
-                         f("source1_s", "123456789", "", 42, "abcd"),
-                         f("source2_s", "xxx", 999)));
-      assertNotNull(chain, d);
-      assertEquals(chain,
-                   Arrays.asList("123456789", "", 42, "abcd"), 
-                   d.getFieldValues("source1_s"));
-      assertEquals(chain,
-                   Arrays.asList("xxx", 999),
-                   d.getFieldValues("source2_s"));
-      assertEquals(chain,
-                   Arrays.asList("orig1", "orig2", 
-                                 "123456789", "", 42, "abcd",
-                                 "xxx", 999),
-                   d.getFieldValues("dest_s"));
-      assertEquals(chain + ": dest boost changed", 
-                   2.3f, d.getField("dest_s").getBoost(), 0.0f);
-    }
-  }
-
-  public void testCloneFieldExample() throws Exception {
-
-    SolrInputDocument d = null;
-
-    // test example from the javadocs
-    d = processAdd("multiple-clones",       
-                   doc(f("id", "1111"),
-                       f("category", "misc"),
-                       f("authors", "Isaac Asimov", "John Brunner"),
-                       f("editors", "John W. Campbell"),
-                       f("store1_price", 87),
-                       f("store2_price", 78),
-                       f("list_price", 1000)));
-    assertNotNull(d);
-    assertEquals("misc",d.getFieldValue("category"));
-    assertEquals("misc",d.getFieldValue("category_s"));
-    assertEquals(Arrays.asList("Isaac Asimov", "John Brunner"),
-                 d.getFieldValues("authors"));
-    assertEquals(Arrays.asList("John W. Campbell"),
-                 d.getFieldValues("editors"));
-    assertEquals(Arrays.asList("Isaac Asimov", "John Brunner", 
-                               "John W. Campbell"),
-                 d.getFieldValues("contributors"));
-    assertEquals(87,d.getFieldValue("store1_price"));
-    assertEquals(78,d.getFieldValue("store2_price"));
-    assertEquals(1000,d.getFieldValue("list_price"));
-    assertEquals(Arrays.asList(87, 78),
-                 d.getFieldValues("all_prices"));
-
-  } 
 
   public void testCountValues() throws Exception {
 
@@ -912,47 +778,6 @@ public class FieldMutatingUpdateProcessorTest extends UpdateProcessorTestBase {
     
 
 
-  } 
-
-  public void testCloneCombinations() throws Exception {
-
-    SolrInputDocument d = null;
-
-    // maxChars
-    d = processAdd("clone-max-chars",
-                   doc(f("id", "1111"),
-                       f("field1", "text")));
-    assertNotNull(d);
-    assertEquals("text",d.getFieldValue("field1"));
-    assertEquals("tex",d.getFieldValue("toField"));
-
-    // move
-    d = processAdd("clone-move",
-                   doc(f("id", "1111"),
-                       f("field1", "text")));
-    assertNotNull(d);
-    assertEquals("text",d.getFieldValue("toField"));
-    assertFalse(d.containsKey("field1"));
-
-    // replace
-    d = processAdd("clone-replace",
-                   doc(f("id", "1111"),
-                       f("toField", "IGNORED"),
-                       f("field1", "text")));
-    assertNotNull(d);
-    assertEquals("text", d.getFieldValue("field1"));
-    assertEquals("text", d.getFieldValue("toField"));
-
-    // append
-    d = processAdd("clone-append",
-                   doc(f("id", "1111"),
-                       f("toField", "aaa"),
-                       f("field1", "bbb"),
-                       f("field2", "ccc")));
-    assertNotNull(d);
-    assertEquals("bbb", d.getFieldValue("field1"));
-    assertEquals("ccc", d.getFieldValue("field2"));
-    assertEquals("aaa; bbb; ccc", d.getFieldValue("toField"));
   } 
 
   public void testConcatDefaults() throws Exception {

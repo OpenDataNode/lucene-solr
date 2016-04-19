@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.ja;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,10 @@ package org.apache.lucene.analysis.ja;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.ja;
+
 
 import java.io.IOException;
-import java.io.Reader;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
@@ -29,13 +28,25 @@ import org.apache.lucene.analysis.miscellaneous.SetKeywordMarkerFilter;
 import org.apache.lucene.analysis.util.CharArraySet;
 
 public class TestJapaneseBaseFormFilter extends BaseTokenStreamTestCase {
-  private Analyzer analyzer = new Analyzer() {
-    @Override
-    protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      Tokenizer tokenizer = new JapaneseTokenizer(newAttributeFactory(), reader, null, true, JapaneseTokenizer.DEFAULT_MODE);
-      return new TokenStreamComponents(tokenizer, new JapaneseBaseFormFilter(tokenizer));
-    }
-  };
+  private Analyzer analyzer;
+  
+  @Override
+  public void setUp() throws Exception {
+    super.setUp();
+    analyzer = new Analyzer() {
+      @Override
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new JapaneseTokenizer(newAttributeFactory(), null, true, JapaneseTokenizer.DEFAULT_MODE);
+        return new TokenStreamComponents(tokenizer, new JapaneseBaseFormFilter(tokenizer));
+      }
+    };
+  }
+  
+  @Override
+  public void tearDown() throws Exception {
+    analyzer.close();
+    super.tearDown();
+  }
   
   public void testBasics() throws IOException {
     assertAnalyzesTo(analyzer, "それはまだ実験段階にあります",
@@ -47,8 +58,8 @@ public class TestJapaneseBaseFormFilter extends BaseTokenStreamTestCase {
     final CharArraySet exclusionSet = new CharArraySet(asSet("あり"), false);
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer source = new JapaneseTokenizer(newAttributeFactory(), reader, null, true, JapaneseTokenizer.DEFAULT_MODE);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer source = new JapaneseTokenizer(newAttributeFactory(), null, true, JapaneseTokenizer.DEFAULT_MODE);
         TokenStream sink = new SetKeywordMarkerFilter(source, exclusionSet);
         return new TokenStreamComponents(source, new JapaneseBaseFormFilter(sink));
       }
@@ -56,6 +67,7 @@ public class TestJapaneseBaseFormFilter extends BaseTokenStreamTestCase {
     assertAnalyzesTo(a, "それはまだ実験段階にあります",
         new String[] { "それ", "は", "まだ", "実験", "段階", "に", "あり", "ます"  }
     );
+    a.close();
   }
   
   public void testEnglish() throws IOException {
@@ -70,11 +82,12 @@ public class TestJapaneseBaseFormFilter extends BaseTokenStreamTestCase {
   public void testEmptyTerm() throws IOException {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new KeywordTokenizer(reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new KeywordTokenizer();
         return new TokenStreamComponents(tokenizer, new JapaneseBaseFormFilter(tokenizer));
       }
     };
     checkOneTerm(a, "", "");
+    a.close();
   }
 }

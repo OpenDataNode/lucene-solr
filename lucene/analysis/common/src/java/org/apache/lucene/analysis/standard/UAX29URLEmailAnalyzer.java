@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.standard;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,17 +14,21 @@ package org.apache.lucene.analysis.standard;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.standard;
 
-import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.analysis.core.LowerCaseFilter;
-import org.apache.lucene.analysis.core.StopAnalyzer;
-import org.apache.lucene.analysis.core.StopFilter;
-import org.apache.lucene.analysis.util.CharArraySet;
-import org.apache.lucene.analysis.util.StopwordAnalyzerBase;
-import org.apache.lucene.util.Version;
 
 import java.io.IOException;
 import java.io.Reader;
+
+import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.core.LowerCaseFilter;
+import org.apache.lucene.analysis.core.StopAnalyzer;
+import org.apache.lucene.analysis.core.StopFilter;
+import org.apache.lucene.analysis.standard.std40.UAX29URLEmailTokenizer40;
+import org.apache.lucene.analysis.util.CharArraySet;
+import org.apache.lucene.analysis.util.StopwordAnalyzerBase;
+import org.apache.lucene.util.Version;
 
 /**
  * Filters {@link org.apache.lucene.analysis.standard.UAX29URLEmailTokenizer}
@@ -34,12 +36,6 @@ import java.io.Reader;
  * {@link org.apache.lucene.analysis.core.LowerCaseFilter} and
  * {@link org.apache.lucene.analysis.core.StopFilter}, using a list of
  * English stop words.
- *
- * <a name="version"/>
- * <p>
- *   You may specify the {@link org.apache.lucene.util.Version}
- *   compatibility when creating UAX29URLEmailAnalyzer
- * </p>
  */
 public final class UAX29URLEmailAnalyzer extends StopwordAnalyzerBase {
   
@@ -58,14 +54,6 @@ public final class UAX29URLEmailAnalyzer extends StopwordAnalyzerBase {
     super(stopWords);
   }
 
-  /**
-   * @deprecated Use {@link #UAX29URLEmailAnalyzer(CharArraySet)}
-   */
-  @Deprecated
-  public UAX29URLEmailAnalyzer(Version matchVersion, CharArraySet stopWords) {
-    super(matchVersion, stopWords);
-  }
-
   /** Builds an analyzer with the default stop words ({@link
    * #STOP_WORDS_SET}).
    */
@@ -73,27 +61,11 @@ public final class UAX29URLEmailAnalyzer extends StopwordAnalyzerBase {
     this(STOP_WORDS_SET);
   }
 
-  /**
-   * @deprecated Use {@link #UAX29URLEmailAnalyzer()}
-   */
-  @Deprecated
-  public UAX29URLEmailAnalyzer(Version matchVersion) {
-    this(matchVersion, STOP_WORDS_SET);
-  }
-
   /** Builds an analyzer with the stop words from the given reader.
    * @see org.apache.lucene.analysis.util.WordlistLoader#getWordSet(java.io.Reader)
    * @param stopwords Reader to read stop words from */
   public UAX29URLEmailAnalyzer(Reader stopwords) throws IOException {
     this(loadStopwordSet(stopwords));
-  }
-
-  /**
-   * @deprecated Use {@link #UAX29URLEmailAnalyzer(Reader)}
-   */
-  @Deprecated
-  public UAX29URLEmailAnalyzer(Version matchVersion, Reader stopwords) throws IOException {
-    this(matchVersion, loadStopwordSet(stopwords, matchVersion));
   }
 
   /**
@@ -114,16 +86,28 @@ public final class UAX29URLEmailAnalyzer extends StopwordAnalyzerBase {
   }
 
   @Override
-  protected TokenStreamComponents createComponents(final String fieldName, final Reader reader) {
-    final UAX29URLEmailTokenizer src = new UAX29URLEmailTokenizer(getVersion(), reader);
-    src.setMaxTokenLength(maxTokenLength);
-    TokenStream tok = new StandardFilter(getVersion(), src);
-    tok = new LowerCaseFilter(getVersion(), tok);
-    tok = new StopFilter(getVersion(), tok, stopwords);
+  protected TokenStreamComponents createComponents(final String fieldName) {
+    final Tokenizer src;
+    if (getVersion().onOrAfter(Version.LUCENE_4_7_0)) {
+      src = new UAX29URLEmailTokenizer();
+      ((UAX29URLEmailTokenizer)src).setMaxTokenLength(maxTokenLength);
+    } else {
+      src = new UAX29URLEmailTokenizer40();
+      ((UAX29URLEmailTokenizer40)src).setMaxTokenLength(maxTokenLength);
+    }
+
+    TokenStream tok = new StandardFilter(src);
+    tok = new LowerCaseFilter(tok);
+    tok = new StopFilter(tok, stopwords);
     return new TokenStreamComponents(src, tok) {
       @Override
-      protected void setReader(final Reader reader) throws IOException {
-        src.setMaxTokenLength(UAX29URLEmailAnalyzer.this.maxTokenLength);
+      protected void setReader(final Reader reader) {
+        int m = UAX29URLEmailAnalyzer.this.maxTokenLength;
+        if (src instanceof UAX29URLEmailTokenizer) {
+          ((UAX29URLEmailTokenizer)src).setMaxTokenLength(m);
+        } else {
+          ((UAX29URLEmailTokenizer40)src).setMaxTokenLength(m);
+        }
         super.setReader(reader);
       }
     };

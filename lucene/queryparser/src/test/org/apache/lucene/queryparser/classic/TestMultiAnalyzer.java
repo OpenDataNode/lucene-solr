@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.classic;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.classic;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.classic;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -125,8 +124,8 @@ public class TestMultiAnalyzer extends BaseTokenStreamTestCase {
   private class MultiAnalyzer extends Analyzer {
 
     @Override
-    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      Tokenizer result = new MockTokenizer(reader, MockTokenizer.WHITESPACE, true);
+    public TokenStreamComponents createComponents(String fieldName) {
+      Tokenizer result = new MockTokenizer(MockTokenizer.WHITESPACE, true);
       return new TokenStreamComponents(result, new TestFilter(result));
     }
   }
@@ -196,8 +195,8 @@ public class TestMultiAnalyzer extends BaseTokenStreamTestCase {
   private class PosIncrementAnalyzer extends Analyzer {
 
     @Override
-    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      Tokenizer result = new MockTokenizer(reader, MockTokenizer.WHITESPACE, true);
+    public TokenStreamComponents createComponents(String fieldName) {
+      Tokenizer result = new MockTokenizer(MockTokenizer.WHITESPACE, true);
       return new TokenStreamComponents(result, new TestPosIncrementFilter(result));
     }
   }

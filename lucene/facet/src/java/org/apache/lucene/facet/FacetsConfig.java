@@ -1,5 +1,3 @@
-package org.apache.lucene.facet;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.facet;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -111,7 +110,7 @@ public class FacetsConfig {
   }
   
   /** Get the current configuration for a dimension. */
-  public synchronized DimConfig getDimConfig(String dimName) {
+  public DimConfig getDimConfig(String dimName) {
     DimConfig ft = fieldTypes.get(dimName);
     if (ft == null) {
       ft = getDefaultDimConfig();
@@ -120,7 +119,7 @@ public class FacetsConfig {
   }
 
   /** Pass {@code true} if this dimension is hierarchical
-   *  (has depth > 1 paths). */
+   *  (has depth &gt; 1 paths). */
   public synchronized void setHierarchical(String dimName, boolean v) {
     DimConfig ft = fieldTypes.get(dimName);
     if (ft == null) {
@@ -295,6 +294,9 @@ public class FacetsConfig {
         result.add(field);
       }
     }
+
+    //System.out.println("all indexed: " + allIndexedFields);
+    //System.out.println("all stored: " + allStoredFields);
 
     return result;
   }

@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -29,11 +29,9 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
 
-@SuppressCodecs("Lucene3x")
 public class TestSortRescorer extends LuceneTestCase {
   IndexSearcher searcher;
   DirectoryReader reader;
@@ -103,7 +101,7 @@ public class TestSortRescorer extends LuceneTestCase {
 
     // Confirm the explanation breaks out the individual
     // sort fields:
-    assertTrue(expl.contains("= sort field <int: \"popularity\">! value=20"));
+    assertTrue(expl, expl.contains("= sort field <int: \"popularity\">! value=20"));
 
     // Confirm the explanation includes first pass details:
     assertTrue(expl.contains("= first pass score"));

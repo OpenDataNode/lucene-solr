@@ -1,5 +1,3 @@
-package org.apache.lucene.search.spans;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,19 +14,15 @@ package org.apache.lucene.search.spans;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.spans;
+
 
 import java.io.IOException;
-import java.util.Map;
-import java.util.Set;
+import java.util.Objects;
 
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.Term;
-import org.apache.lucene.index.TermContext;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.util.Bits;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.util.ToStringUtils;
 
 /**
@@ -67,20 +61,20 @@ import org.apache.lucene.util.ToStringUtils;
  * </pre>
  * to search for 'studentfirstname:james studentsurname:jones' and find 
  * teacherid 1 without matching teacherid 2 (which has a 'james' in position 0 
- * and 'jones' in position 1). </p>
+ * and 'jones' in position 1).
  * 
  * <p>Note: as {@link #getField()} returns the masked field, scoring will be 
  * done using the Similarity and collection statistics of the field name supplied,
  * but with the term statistics of the real field. This may lead to exceptions,
- * poor performance, and unexpected scoring behaviour.</p>
+ * poor performance, and unexpected scoring behaviour.
  */
-public class FieldMaskingSpanQuery extends SpanQuery {
-  private SpanQuery maskedQuery;
-  private String field;
+public final class FieldMaskingSpanQuery extends SpanQuery {
+  private final SpanQuery maskedQuery;
+  private final String field;
     
   public FieldMaskingSpanQuery(SpanQuery maskedQuery, String maskedField) {
-    this.maskedQuery = maskedQuery;
-    this.field = maskedField;
+    this.maskedQuery = Objects.requireNonNull(maskedQuery);
+    this.field = Objects.requireNonNull(maskedField);
   }
 
   @Override
@@ -94,37 +88,25 @@ public class FieldMaskingSpanQuery extends SpanQuery {
 
   // :NOTE: getBoost and setBoost are not proxied to the maskedQuery
   // ...this is done to be more consistent with things like SpanFirstQuery
-  
-  @Override
-  public Spans getSpans(AtomicReaderContext context, Bits acceptDocs, Map<Term,TermContext> termContexts) throws IOException {
-    return maskedQuery.getSpans(context, acceptDocs, termContexts);
-  }
 
   @Override
-  public void extractTerms(Set<Term> terms) {
-    maskedQuery.extractTerms(terms);
-  }  
-
-  @Override
-  public Weight createWeight(IndexSearcher searcher) throws IOException {
-    return maskedQuery.createWeight(searcher);
+  public SpanWeight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+    return maskedQuery.createWeight(searcher, needsScores);
   }
 
   @Override
   public Query rewrite(IndexReader reader) throws IOException {
+    if (getBoost() != 1f) {
+      return super.rewrite(reader);
+    }
     FieldMaskingSpanQuery clone = null;
 
     SpanQuery rewritten = (SpanQuery) maskedQuery.rewrite(reader);
     if (rewritten != maskedQuery) {
-      clone = (FieldMaskingSpanQuery) this.clone();
-      clone.maskedQuery = rewritten;
+      return new FieldMaskingSpanQuery(rewritten, field);
     }
 
-    if (clone != null) {
-      return clone;
-    } else {
-      return this;
-    }
+    return super.rewrite(reader);
   }
 
   @Override
@@ -133,27 +115,27 @@ public class FieldMaskingSpanQuery extends SpanQuery {
     buffer.append("mask(");
     buffer.append(maskedQuery.toString(field));
     buffer.append(")");
-    buffer.append(ToStringUtils.boost(getBoost()));
     buffer.append(" as ");
     buffer.append(this.field);
+    buffer.append(ToStringUtils.boost(getBoost()));
     return buffer.toString();
   }
   
   @Override
   public boolean equals(Object o) {
-    if (!(o instanceof FieldMaskingSpanQuery))
+    if (! super.equals(o)) {
       return false;
+    }
     FieldMaskingSpanQuery other = (FieldMaskingSpanQuery) o;
     return (this.getField().equals(other.getField())
-            && (this.getBoost() == other.getBoost())
             && this.getMaskedQuery().equals(other.getMaskedQuery()));
 
   }
   
   @Override
   public int hashCode() {
-    return getMaskedQuery().hashCode()
-      ^ getField().hashCode()
-      ^ Float.floatToRawIntBits(getBoost());
+    return super.hashCode()
+          ^ getMaskedQuery().hashCode()
+          ^ getField().hashCode();
   }
 }

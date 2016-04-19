@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.pattern;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.pattern;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.pattern;
+
 
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
@@ -31,7 +31,7 @@ public class TestPatternReplaceFilterFactory extends BaseTokenStreamFactoryTestC
 
   public void testReplaceAll() throws Exception {
     Reader reader = new StringReader("aabfooaabfooabfoob ab caaaaaaaaab");
-    TokenStream stream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream stream = whitespaceMockTokenizer(reader);
     stream = tokenFilterFactory("PatternReplace",
         "pattern", "a*b",
         "replacement", "-").create(stream);

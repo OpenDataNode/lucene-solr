@@ -1,5 +1,3 @@
-package org.apache.solr.handler.dataimport;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.handler.dataimport;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.dataimport;
 
 import java.util.Iterator;
 import java.util.Map;
@@ -35,7 +34,6 @@ public interface DIHCache extends Iterable<Map<String,Object>> {
    * Opens the cache using the specified properties. The {@link Context}
    * includes any parameters needed by the cache impl. This must be called
    * before any read/write operations are permitted.
-   * <p>
    */
   public void open(Context context);
   

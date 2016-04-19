@@ -1,4 +1,3 @@
-package org.apache.solr.rest.schema;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,8 +14,7 @@ package org.apache.solr.rest.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
+package org.apache.solr.rest.schema;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.CommonParams;
 import org.apache.solr.rest.GETable;
@@ -30,6 +28,7 @@ import org.restlet.resource.ResourceException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.invoke.MethodHandles;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -43,7 +42,7 @@ import static org.apache.solr.common.SolrException.ErrorCode;
 
 /**
  * This class responds to requests at /solr/(corename)/schema/copyfields
- * <p/>
+ * <p>
  *
  * To restrict the set of copyFields in the response, specify one or both
  * of the following as query parameters, with values as space and/or comma
@@ -59,7 +58,7 @@ import static org.apache.solr.common.SolrException.ErrorCode;
  * in dest.fl and also match any of the sources in source.fl.
  */
 public class CopyFieldCollectionResource extends BaseFieldResource implements GETable, POSTable {
-  private static final Logger log = LoggerFactory.getLogger(CopyFieldCollectionResource.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   private static final String SOURCE_FIELD_LIST = IndexSchema.SOURCE + "." + CommonParams.FL;
   private static final String DESTINATION_FIELD_LIST = IndexSchema.DESTINATION + "." + CommonParams.FL;
 
@@ -168,11 +167,12 @@ public class CopyFieldCollectionResource extends BaseFieldResource implements GE
               log.error(message.toString().trim());
               throw new SolrException(ErrorCode.BAD_REQUEST, message.toString().trim());
             }
+            IndexSchema newSchema = null;
             boolean success = false;
             while (!success) {
               try {
                 synchronized (oldSchema.getSchemaUpdateLock()) {
-                  IndexSchema newSchema = oldSchema.addCopyFields(fieldsToCopy);
+                  newSchema = oldSchema.addCopyFields(fieldsToCopy,true);
                   if (null != newSchema) {
                     getSolrCore().setLatestSchema(newSchema);
                     success = true;
@@ -185,6 +185,7 @@ public class CopyFieldCollectionResource extends BaseFieldResource implements GE
                   oldSchema = (ManagedIndexSchema)getSolrCore().getLatestSchema();
               }
             }
+            waitForSchemaUpdateToPropagate(newSchema);
           }
         }
       }

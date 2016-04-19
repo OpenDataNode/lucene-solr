@@ -1,5 +1,3 @@
-package org.apache.solr.response.transform;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,12 @@ package org.apache.solr.response.transform;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.response.transform;
 
 import java.util.Set;
 
-import org.apache.lucene.document.Field;
-import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.params.SolrParams;
+import org.apache.solr.handler.component.QueryElevationComponent;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.schema.FieldType;
 import org.apache.solr.schema.SchemaField;
@@ -40,8 +38,7 @@ public class ElevatedMarkerFactory extends TransformerFactory
   }
 }
 
-class MarkTransformer extends BaseEditorialTransformer
-{
+class MarkTransformer extends BaseEditorialTransformer {
 
   MarkTransformer(String name, String idFieldName, FieldType ft) {
     super(name, idFieldName, ft);
@@ -49,7 +46,7 @@ class MarkTransformer extends BaseEditorialTransformer
 
   @Override
   protected Set<String> getIdSet() {
-    return (Set<String>) context.req.getContext().get("BOOSTED");
+    return (Set<String>) context.req.getContext().get(QueryElevationComponent.BOOSTED);
   }
 }
 

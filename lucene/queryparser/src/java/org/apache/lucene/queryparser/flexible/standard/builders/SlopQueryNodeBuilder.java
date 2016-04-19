@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.builders;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard.builders;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.builders;
 
 import org.apache.lucene.queryparser.flexible.core.QueryNodeException;
 import org.apache.lucene.queryparser.flexible.core.builders.QueryTreeBuilder;
@@ -45,7 +44,15 @@ public class SlopQueryNodeBuilder implements StandardQueryBuilder {
         QueryTreeBuilder.QUERY_TREE_BUILDER_TAGID);
 
     if (query instanceof PhraseQuery) {
-      ((PhraseQuery) query).setSlop(phraseSlopNode.getValue());
+      PhraseQuery.Builder builder = new PhraseQuery.Builder();
+      builder.setSlop(phraseSlopNode.getValue());
+      PhraseQuery pq = (PhraseQuery) query;
+      org.apache.lucene.index.Term[] terms = pq.getTerms();
+      int[] positions = pq.getPositions();
+      for (int i = 0; i < terms.length; ++i) {
+        builder.add(terms[i], positions[i]);
+      }
+      query = builder.build();
 
     } else {
       ((MultiPhraseQuery) query).setSlop(phraseSlopNode.getValue());

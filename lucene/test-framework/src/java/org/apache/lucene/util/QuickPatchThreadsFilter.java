@@ -1,7 +1,3 @@
-package org.apache.lucene.util;
-
-import com.carrotsearch.randomizedtesting.ThreadFilter;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -18,24 +14,32 @@ import com.carrotsearch.randomizedtesting.ThreadFilter;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
+
+import com.carrotsearch.randomizedtesting.ThreadFilter;
 
 /**
  * Last minute patches.
- * TODO: remove when integrated in system filters in rr.
  */
 public class QuickPatchThreadsFilter implements ThreadFilter {
   static final boolean isJ9;
   
   static {
-    isJ9 = System.getProperty("java.vm.info", "<?>").contains("IBM J9");
+    isJ9 = Constants.JAVA_VENDOR.startsWith("IBM");
   }
 
   @Override
   public boolean reject(Thread t) {
     if (isJ9) {
+      // LUCENE-6518
+      if ("ClassCache Reaper".equals(t.getName())) {
+        return true;
+      }
+
+      // LUCENE-4736
       StackTraceElement [] stack = t.getStackTrace();
       if (stack.length > 0 && stack[stack.length - 1].getClassName().equals("java.util.Timer$TimerImpl")) {
-        return true; // LUCENE-4736
+        return true;
       }
     }
     return false;

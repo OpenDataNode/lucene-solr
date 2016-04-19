@@ -14,17 +14,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.schema;
 
-import org.apache.lucene.queries.function.ValueSource;
-import org.apache.lucene.queries.function.valuesource.LiteralValueSource;
-import org.apache.lucene.index.IndexableField;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.SortField;
+import java.io.IOException;
+
 import com.spatial4j.core.context.SpatialContext;
+import com.spatial4j.core.distance.DistanceUtils;
 import com.spatial4j.core.io.GeohashUtils;
 import com.spatial4j.core.shape.Point;
+import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.queries.function.ValueSource;
+import org.apache.lucene.queries.function.valuesource.LiteralValueSource;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.SortField;
+import org.apache.lucene.uninverting.UninvertingReader.Type;
 import org.apache.solr.response.TextResponseWriter;
 import org.apache.solr.search.QParser;
 import org.apache.solr.search.SolrConstantScoreQuery;
@@ -32,9 +35,6 @@ import org.apache.solr.search.SpatialOptions;
 import org.apache.solr.search.function.ValueSourceRangeFilter;
 import org.apache.solr.search.function.distance.GeohashHaversineFunction;
 import org.apache.solr.util.SpatialUtils;
-
-
-import java.io.IOException;
 
 /**
  * This is a class that represents a <a
@@ -46,6 +46,15 @@ public class GeoHashField extends FieldType implements SpatialQueryable {
   @Override
   public SortField getSortField(SchemaField field, boolean top) {
     return getStringSort(field, top);
+  }
+  
+  @Override
+  public Type getUninversionType(SchemaField sf) {
+    if (sf.multiValued()) {
+      return Type.SORTED_SET_BINARY;
+    } else {
+      return Type.SORTED;
+    }
   }
 
     //QUESTION: Should we do a fast and crude one?  Or actually check distances
@@ -79,8 +88,13 @@ public class GeoHashField extends FieldType implements SpatialQueryable {
 
   @Override
   public ValueSource getValueSource(SchemaField field, QParser parser) {
-    field.checkFieldCacheSource(parser);
+    field.checkFieldCacheSource();
     return new StrFieldSource(field.name);
+  }
+
+  @Override
+  public double getSphereRadius() {
+    return DistanceUtils.EARTH_MEAN_RADIUS_KM;
   }
 
 }

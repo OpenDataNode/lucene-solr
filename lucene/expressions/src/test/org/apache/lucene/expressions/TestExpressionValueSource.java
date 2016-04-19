@@ -1,5 +1,3 @@
-package org.apache.lucene.expressions;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.expressions;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.expressions;
+
 
 import java.util.HashMap;
 
@@ -24,7 +24,7 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.expressions.js.JavascriptCompiler;
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.RandomIndexWriter;
@@ -35,9 +35,7 @@ import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 
-@SuppressCodecs("Lucene3x")
 public class TestExpressionValueSource extends LuceneTestCase {
   DirectoryReader reader;
   Directory dir;
@@ -87,7 +85,7 @@ public class TestExpressionValueSource extends LuceneTestCase {
     ValueSource vs = expr.getValueSource(bindings);
     
     assertEquals(1, reader.leaves().size());
-    AtomicReaderContext leaf = reader.leaves().get(0);
+    LeafReaderContext leaf = reader.leaves().get(0);
     FunctionValues values = vs.getValues(new HashMap<String,Object>(), leaf);
     
     assertEquals(10, values.doubleVal(0), 0);
@@ -125,22 +123,24 @@ public class TestExpressionValueSource extends LuceneTestCase {
     ValueSource vs = expr.getValueSource(bindings);
     
     assertEquals(1, reader.leaves().size());
-    AtomicReaderContext leaf = reader.leaves().get(0);
+    LeafReaderContext leaf = reader.leaves().get(0);
     FunctionValues values = vs.getValues(new HashMap<String,Object>(), leaf);
     
     // everything
     ValueSourceScorer scorer = values.getRangeScorer(leaf.reader(), "4", "40", true, true);
-    assertEquals(-1, scorer.docID());
-    assertEquals(0, scorer.nextDoc());
-    assertEquals(1, scorer.nextDoc());
-    assertEquals(2, scorer.nextDoc());
-    assertEquals(DocIdSetIterator.NO_MORE_DOCS, scorer.nextDoc());
+    DocIdSetIterator iter = scorer.iterator();
+    assertEquals(-1, iter.docID());
+    assertEquals(0, iter.nextDoc());
+    assertEquals(1, iter.nextDoc());
+    assertEquals(2, iter.nextDoc());
+    assertEquals(DocIdSetIterator.NO_MORE_DOCS, iter.nextDoc());
 
     // just the first doc
     scorer = values.getRangeScorer(leaf.reader(), "4", "40", false, false);
+    iter = scorer.iterator();
     assertEquals(-1, scorer.docID());
-    assertEquals(0, scorer.nextDoc());
-    assertEquals(DocIdSetIterator.NO_MORE_DOCS, scorer.nextDoc());
+    assertEquals(0, iter.nextDoc());
+    assertEquals(DocIdSetIterator.NO_MORE_DOCS, iter.nextDoc());
   }
   
   public void testEquals() throws Exception {

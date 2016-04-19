@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,16 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
 
-import java.io.File;
+
+import java.io.EOFException;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Random;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -31,7 +36,6 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.util.English;
 import org.apache.lucene.util.IOUtils;
-import org.apache.lucene.util.TestUtil;
 
 /**
  * JUnit testcase to test RAMDirectory. RAMDirectory itself is used in many testcases,
@@ -40,19 +44,19 @@ import org.apache.lucene.util.TestUtil;
 public class TestRAMDirectory extends BaseDirectoryTestCase {
   
   @Override
-  protected Directory getDirectory(File path) {
+  protected Directory getDirectory(Path path) {
     return new RAMDirectory();
   }
   
   // add enough document so that the index will be larger than RAMDirectory.READ_BUFFER_SIZE
   private final int docsToAdd = 500;
 
-  private File buildIndex() throws IOException {
-    File path = createTempDir("buildIndex");
+  private Path buildIndex() throws IOException {
+    Path path = createTempDir("buildIndex");
     
     Directory dir = newFSDirectory(path);
     IndexWriter writer = new IndexWriter(dir, new IndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(random())).setOpenMode(OpenMode.CREATE));
+        new MockAnalyzer(random())).setOpenMode(OpenMode.CREATE));
     // add some documents
     Document doc = null;
     for (int i = 0; i < docsToAdd; i++) {
@@ -69,23 +73,24 @@ public class TestRAMDirectory extends BaseDirectoryTestCase {
   
   // LUCENE-1468
   public void testCopySubdir() throws Throwable {
-    File path = createTempDir("testsubdir");
-    Directory fsDir = null;
+    Path path = createTempDir("testsubdir");
+    FSDirectory fsDir = null;
     try {
-      path.mkdirs();
-      new File(path, "subdir").mkdirs();
-      fsDir = newFSDirectory(path);
-      assertEquals(0, new RAMDirectory(fsDir, newIOContext(random())).listAll().length);
+      Files.createDirectory(path.resolve("subdir"));
+      fsDir = new SimpleFSDirectory(path);
+      RAMDirectory ramDir = new RAMDirectory(fsDir, newIOContext(random()));
+      List<String> files = Arrays.asList(ramDir.listAll());
+      assertFalse(files.contains("subdir"));
     } finally {
-      TestUtil.rm(path);
       IOUtils.close(fsDir);
+      IOUtils.rm(path);
     }
   }
 
   public void testRAMDirectory () throws IOException {
-    File indexDir = buildIndex();
+    Path indexDir = buildIndex();
     
-    Directory dir = newFSDirectory(indexDir);
+    FSDirectory dir = new SimpleFSDirectory(indexDir);
     MockDirectoryWrapper ramDir = new MockDirectoryWrapper(random(), new RAMDirectory(dir, newIOContext(random())));
     
     // close the underlaying directory
@@ -116,14 +121,14 @@ public class TestRAMDirectory extends BaseDirectoryTestCase {
   
   public void testRAMDirectorySize() throws IOException, InterruptedException {
 
-    File indexDir = buildIndex();
+    Path indexDir = buildIndex();
       
-    Directory dir = newFSDirectory(indexDir);
+    FSDirectory dir = new SimpleFSDirectory(indexDir);
     final MockDirectoryWrapper ramDir = new MockDirectoryWrapper(random(), new RAMDirectory(dir, newIOContext(random())));
     dir.close();
     
     final IndexWriter writer = new IndexWriter(ramDir, new IndexWriterConfig(
-        TEST_VERSION_CURRENT, new MockAnalyzer(random())).setOpenMode(OpenMode.APPEND));
+        new MockAnalyzer(random())).setOpenMode(OpenMode.APPEND));
     writer.forceMerge(1);
     
     assertEquals(ramDir.sizeInBytes(), ramDir.getRecomputedSizeInBytes());
@@ -146,14 +151,43 @@ public class TestRAMDirectory extends BaseDirectoryTestCase {
         }
       };
     }
-    for (int i=0; i<numThreads; i++)
+    for (int i=0; i<numThreads; i++) {
       threads[i].start();
-    for (int i=0; i<numThreads; i++)
+    }
+    for (int i=0; i<numThreads; i++) {
       threads[i].join();
+    }
 
     writer.forceMerge(1);
     assertEquals(ramDir.sizeInBytes(), ramDir.getRecomputedSizeInBytes());
     
     writer.close();
+  }
+
+  public void testShouldThrowEOFException() throws Exception {
+    final Random random = random();
+
+    try (Directory dir = newDirectory()) {
+      final int len = 16 + random().nextInt(2048) / 16 * 16;
+      final byte[] bytes = new byte[len];
+
+      try (IndexOutput os = dir.createOutput("foo", newIOContext(random))) {
+        os.writeBytes(bytes, bytes.length);
+      }
+
+      try (IndexInput is = dir.openInput("foo", newIOContext(random))) {
+        try {
+          is.seek(0);
+          // Here, I go past EOF.
+          is.seek(len + random().nextInt(2048));
+          // since EOF is not enforced by the previous call in RAMInputStream
+          // this call to readBytes should throw the exception.
+          is.readBytes(bytes, 0, 16);
+          fail("Did not get EOFException");
+        } catch (EOFException eof) {
+          // expected!
+        }
+      }
+    }
   }
 }

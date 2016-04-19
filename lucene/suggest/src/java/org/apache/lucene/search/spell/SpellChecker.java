@@ -1,5 +1,3 @@
-package org.apache.lucene.search.spell;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.spell;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.spell;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -25,21 +24,20 @@ import java.util.List;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.document.StringField;
-import org.apache.lucene.index.AtomicReader;
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.ReaderUtil;
-import org.apache.lucene.index.Term;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.Term;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
@@ -48,11 +46,10 @@ import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefIterator;
-import org.apache.lucene.util.Version;
 
 /**
  * <p>
- *   Spell Checker class  (Main class) <br/>
+ *   Spell Checker class  (Main class).<br>
  *  (initially inspired by the David Spencer code).
  * </p>
  *
@@ -171,8 +168,7 @@ public class SpellChecker implements java.io.Closeable {
       ensureOpen();
       if (!DirectoryReader.indexExists(spellIndexDir)) {
           IndexWriter writer = new IndexWriter(spellIndexDir,
-            new IndexWriterConfig(Version.LUCENE_CURRENT,
-                null));
+            new IndexWriterConfig(null));
           writer.close();
       }
       swapSearcher(spellIndexDir);
@@ -338,7 +334,7 @@ public class SpellChecker implements java.io.Closeable {
         return new String[] { word };
       }
 
-      BooleanQuery query = new BooleanQuery();
+      BooleanQuery.Builder query = new BooleanQuery.Builder();
       String[] grams;
       String key;
 
@@ -368,7 +364,7 @@ public class SpellChecker implements java.io.Closeable {
       int maxHits = 10 * numSug;
 
   //    System.out.println("Q: " + query);
-      ScoreDoc[] hits = indexSearcher.search(query, null, maxHits).scoreDocs;
+      ScoreDoc[] hits = indexSearcher.search(query.build(), maxHits).scoreDocs;
   //    System.out.println("HITS: " + hits.length());
       SuggestWordQueue sugQueue = new SuggestWordQueue(numSug, comparator);
 
@@ -419,16 +415,15 @@ public class SpellChecker implements java.io.Closeable {
   /**
    * Add a clause to a boolean query.
    */
-  private static void add(BooleanQuery q, String name, String value, float boost) {
+  private static void add(BooleanQuery.Builder q, String name, String value, float boost) {
     Query tq = new TermQuery(new Term(name, value));
-    tq.setBoost(boost);
-    q.add(new BooleanClause(tq, BooleanClause.Occur.SHOULD));
+    q.add(new BooleanClause(new BoostQuery(tq, boost), BooleanClause.Occur.SHOULD));
   }
 
   /**
    * Add a clause to a boolean query.
    */
-  private static void add(BooleanQuery q, String name, String value) {
+  private static void add(BooleanQuery.Builder q, String name, String value) {
     q.add(new BooleanClause(new TermQuery(new Term(name, value)), BooleanClause.Occur.SHOULD));
   }
 
@@ -456,9 +451,7 @@ public class SpellChecker implements java.io.Closeable {
     synchronized (modifyCurrentIndexLock) {
       ensureOpen();
       final Directory dir = this.spellIndex;
-      final IndexWriter writer = new IndexWriter(dir, new IndexWriterConfig(
-          Version.LUCENE_CURRENT,
-          null)
+      final IndexWriter writer = new IndexWriter(dir, new IndexWriterConfig(null)
           .setOpenMode(OpenMode.CREATE));
       writer.close();
       swapSearcher(dir);
@@ -502,10 +495,10 @@ public class SpellChecker implements java.io.Closeable {
 
       final IndexReader reader = searcher.getIndexReader();
       if (reader.maxDoc() > 0) {
-        for (final AtomicReaderContext ctx : reader.leaves()) {
+        for (final LeafReaderContext ctx : reader.leaves()) {
           Terms terms = ctx.reader().terms(F_WORD);
           if (terms != null)
-            termsEnums.add(terms.iterator(null));
+            termsEnums.add(terms.iterator());
         }
       }
       
@@ -574,7 +567,7 @@ public class SpellChecker implements java.io.Closeable {
 
   private static Document createDocument(String text, int ng1, int ng2) {
     Document doc = new Document();
-    // the word field is never queried on... its indexed so it can be quickly
+    // the word field is never queried on... it's indexed so it can be quickly
     // checked for rebuild (and stored for retrieval). Doesn't need norms or TF/pos
     Field f = new StringField(F_WORD, text, Field.Store.YES);
     doc.add(f); // orig term

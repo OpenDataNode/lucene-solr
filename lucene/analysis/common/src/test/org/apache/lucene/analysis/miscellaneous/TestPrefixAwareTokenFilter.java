@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.miscellaneous;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.miscellaneous;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.miscellaneous;
+
 
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.MockTokenizer;
@@ -40,8 +40,10 @@ public class TestPrefixAwareTokenFilter extends BaseTokenStreamTestCase {
 
     // prefix and suffix using 2x prefix
 
+    final MockTokenizer suffix = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    suffix.setReader(new StringReader("hello world"));
     ts = new PrefixAwareTokenFilter(new SingleTokenTokenStream(createToken("^", 0, 0)),
-        new MockTokenizer(new StringReader("hello world"), MockTokenizer.WHITESPACE, false));
+        suffix);
     ts = new PrefixAwareTokenFilter(ts, new SingleTokenTokenStream(createToken("$", 0, 0)));
 
     assertTokenStreamContents(ts,

@@ -1,5 +1,3 @@
-package org.apache.lucene.search.similarities;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.similarities;
+
 
 import org.apache.lucene.search.Explanation;
 
@@ -45,14 +45,12 @@ public abstract class Normalization {
    * Subclasses that use other statistics must override this method.</p>
    */
   public Explanation explain(BasicStats stats, float tf, float len) {
-    Explanation result = new Explanation();
-    result.setDescription(getClass().getSimpleName() + ", computed from: ");
-    result.setValue(tfn(stats, tf, len));
-    result.addDetail(new Explanation(tf, "tf"));
-    result.addDetail(
-        new Explanation(stats.getAvgFieldLength(), "avgFieldLength"));
-    result.addDetail(new Explanation(len, "len"));
-    return result;
+    return Explanation.match(
+        tfn(stats, tf, len),
+        getClass().getSimpleName() + ", computed from: ",
+        Explanation.match(tf, "tf"),
+        Explanation.match(stats.getAvgFieldLength(), "avgFieldLength"),
+        Explanation.match(len, "len"));
   }
 
   /** Implementation used when there is no normalization. */
@@ -68,7 +66,7 @@ public abstract class Normalization {
 
     @Override
     public final Explanation explain(BasicStats stats, float tf, float len) {
-      return new Explanation(1, "no normalization");
+      return Explanation.match(1, "no normalization");
     }
     
     @Override

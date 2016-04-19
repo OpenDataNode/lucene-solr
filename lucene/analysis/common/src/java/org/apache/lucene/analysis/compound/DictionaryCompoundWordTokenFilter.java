@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.compound;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,12 @@ package org.apache.lucene.analysis.compound;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.compound;
+
 
 
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.util.CharArraySet;
-import org.apache.lucene.util.Version;
 
 /**
  * A {@link org.apache.lucene.analysis.TokenFilter} that decomposes compound words found in many Germanic languages.
@@ -28,14 +27,6 @@ import org.apache.lucene.util.Version;
  * "Donaudampfschiff" becomes Donau, dampf, schiff so that you can find
  * "Donaudampfschiff" even when you only enter "schiff".
  *  It uses a brute-force algorithm to achieve this.
- * <p>
- * You may specify the {@link Version} compatibility when creating
- * CompoundWordTokenFilterBase:
- * <ul>
- * <li>As of 3.1, CompoundWordTokenFilterBase correctly handles Unicode 4.0
- * supplementary characters in strings and char arrays provided as compound word
- * dictionaries.
- * </ul>
  */
 public class DictionaryCompoundWordTokenFilter extends CompoundWordTokenFilterBase {
 
@@ -49,17 +40,6 @@ public class DictionaryCompoundWordTokenFilter extends CompoundWordTokenFilterBa
    */
   public DictionaryCompoundWordTokenFilter(TokenStream input, CharArraySet dictionary) {
     super(input, dictionary);
-    if (dictionary == null) {
-      throw new IllegalArgumentException("dictionary cannot be null");
-    }
-  }
-
-  /**
-   * @deprecated Use {@link #DictionaryCompoundWordTokenFilter(TokenStream,CharArraySet)}
-   */
-  @Deprecated
-  public DictionaryCompoundWordTokenFilter(Version matchVersion, TokenStream input, CharArraySet dictionary) {
-    super(matchVersion, input, dictionary);
     if (dictionary == null) {
       throw new IllegalArgumentException("dictionary cannot be null");
     }
@@ -84,18 +64,6 @@ public class DictionaryCompoundWordTokenFilter extends CompoundWordTokenFilterBa
   public DictionaryCompoundWordTokenFilter(TokenStream input, CharArraySet dictionary,
                                            int minWordSize, int minSubwordSize, int maxSubwordSize, boolean onlyLongestMatch) {
     super(input, dictionary, minWordSize, minSubwordSize, maxSubwordSize, onlyLongestMatch);
-    if (dictionary == null) {
-      throw new IllegalArgumentException("dictionary cannot be null");
-    }
-  }
-
-  /**
-   * @deprecated Use {@link #DictionaryCompoundWordTokenFilter(TokenStream,CharArraySet,int,int,int,boolean)}
-   */
-  @Deprecated
-  public DictionaryCompoundWordTokenFilter(Version matchVersion, TokenStream input, CharArraySet dictionary,
-      int minWordSize, int minSubwordSize, int maxSubwordSize, boolean onlyLongestMatch) {
-    super(matchVersion, input, dictionary, minWordSize, minSubwordSize, maxSubwordSize, onlyLongestMatch);
     if (dictionary == null) {
       throw new IllegalArgumentException("dictionary cannot be null");
     }

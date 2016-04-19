@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,13 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.Closeable;
 import java.io.IOException;
+
+import org.apache.lucene.util.InfoStream;
 
 /** <p>Expert: {@link IndexWriter} uses an instance
  *  implementing this interface to execute the merges
@@ -46,4 +48,34 @@ public abstract class MergeScheduler implements Closeable {
   /** Close this MergeScheduler. */
   @Override
   public abstract void close() throws IOException;
+
+  /** For messages about merge scheduling */
+  protected InfoStream infoStream;
+
+  /** IndexWriter calls this on init. */
+  final void setInfoStream(InfoStream infoStream) {
+    this.infoStream = infoStream;
+  }
+
+  /**
+   * Returns true if infoStream messages are enabled. This method is usually used in
+   * conjunction with {@link #message(String)}:
+   * 
+   * <pre class="prettyprint">
+   * if (verbose()) {
+   *   message(&quot;your message&quot;);
+   * }
+   * </pre>
+   */
+  protected boolean verbose() {
+    return infoStream != null && infoStream.isEnabled("MS");
+  }
+ 
+  /**
+   * Outputs the given message - this method assumes {@link #verbose()} was
+   * called and returned true.
+   */
+  protected void message(String message) {
+    infoStream.message("MS", message);
+  }
 }

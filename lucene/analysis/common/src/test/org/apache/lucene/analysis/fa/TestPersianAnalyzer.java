@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.fa;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,15 @@ package org.apache.lucene.analysis.fa;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.fa;
+
+
+import java.io.IOException;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.util.CharArraySet;
+import org.apache.lucene.util.Version;
 
 /**
  * Test the Persian Analyzer
@@ -31,7 +34,7 @@ public class TestPersianAnalyzer extends BaseTokenStreamTestCase {
    * This test fails with NPE when the stopwords file is missing in classpath
    */
   public void testResourcesAvailable() {
-    new PersianAnalyzer();
+    new PersianAnalyzer().close();
   }
 
   /**
@@ -105,6 +108,7 @@ public class TestPersianAnalyzer extends BaseTokenStreamTestCase {
 
     // active present subjunctive
     assertAnalyzesTo(a, "بخورد", new String[] { "بخورد" });
+    a.close();
   }
 
   /**
@@ -181,6 +185,7 @@ public class TestPersianAnalyzer extends BaseTokenStreamTestCase {
 
     // active present subjunctive
     assertAnalyzesTo(a, "بخورد", new String[] { "بخورد" });
+    a.close();
   }
 
   /**
@@ -192,6 +197,7 @@ public class TestPersianAnalyzer extends BaseTokenStreamTestCase {
     Analyzer a = new PersianAnalyzer();
     assertAnalyzesTo(a, "برگ ها", new String[] { "برگ" });
     assertAnalyzesTo(a, "برگ‌ها", new String[] { "برگ" });
+    a.close();
   }
 
   /**
@@ -201,6 +207,7 @@ public class TestPersianAnalyzer extends BaseTokenStreamTestCase {
   public void testBehaviorNonPersian() throws Exception {
     Analyzer a = new PersianAnalyzer();
     assertAnalyzesTo(a, "English test.", new String[] { "english", "test" });
+    a.close();
   }
   
   /**
@@ -210,6 +217,7 @@ public class TestPersianAnalyzer extends BaseTokenStreamTestCase {
     Analyzer a = new PersianAnalyzer();
     assertAnalyzesTo(a, "خورده مي شده بوده باشد", new String[] { "خورده" });
     assertAnalyzesTo(a, "برگ‌ها", new String[] { "برگ" });
+    a.close();
   }
   
   /**
@@ -220,10 +228,41 @@ public class TestPersianAnalyzer extends BaseTokenStreamTestCase {
         new CharArraySet( asSet("the", "and", "a"), false));
     assertAnalyzesTo(a, "The quick brown fox.", new String[] { "quick",
         "brown", "fox" });
+    a.close();
+  }
+  
+  /**
+   * test we fold digits to latin-1
+   */
+  public void testDigits() throws Exception {
+    PersianAnalyzer a = new PersianAnalyzer();
+    checkOneTerm(a, "۱۲۳۴", "1234");
+    a.close();
+  }
+  
+  /**
+   * test that we don't fold digits for back compat behavior
+   * @deprecated remove this test in lucene 7
+   */
+  @Deprecated
+  public void testDigitsBackCompat() throws Exception {
+    PersianAnalyzer a = new PersianAnalyzer();
+    a.setVersion(Version.LUCENE_5_3_0);
+    checkOneTerm(a, "۱۲۳۴", "۱۲۳۴");
+    a.close();
   }
   
   /** blast some random strings through the analyzer */
   public void testRandomStrings() throws Exception {
-    checkRandomData(random(), new PersianAnalyzer(), 1000*RANDOM_MULTIPLIER);
+    PersianAnalyzer a = new PersianAnalyzer();
+    checkRandomData(random(), a, 1000*RANDOM_MULTIPLIER);
+    a.close();
+  }
+
+  public void testBackcompat40() throws IOException {
+    PersianAnalyzer a = new PersianAnalyzer();
+    a.setVersion(Version.LUCENE_4_6_1);
+    // this is just a test to see the correct unicode version is being used, not actually testing hebrew
+    assertAnalyzesTo(a, "א\"א", new String[] {"א", "א"});
   }
 }

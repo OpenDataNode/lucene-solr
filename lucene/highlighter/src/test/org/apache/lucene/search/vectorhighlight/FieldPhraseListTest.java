@@ -1,4 +1,3 @@
-package org.apache.lucene.search.vectorhighlight;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.lucene.search.vectorhighlight;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.lucene.search.vectorhighlight;
 import java.util.LinkedList;
 
 import org.apache.lucene.search.BooleanQuery;
@@ -23,7 +22,6 @@ import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.vectorhighlight.FieldPhraseList.WeightedPhraseInfo;
 import org.apache.lucene.search.vectorhighlight.FieldPhraseList.WeightedPhraseInfo.Toffs;
 import org.apache.lucene.search.vectorhighlight.FieldTermStack.TermInfo;
-import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.util.TestUtil;
 
 public class FieldPhraseListTest extends AbstractTestCase {
@@ -131,10 +129,10 @@ public class FieldPhraseListTest extends AbstractTestCase {
   public void test2PhrasesOverlap() throws Exception {
     make1d1fIndex( "d a b c d" );
 
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add( pqF( "a", "b" ), Occur.SHOULD );
     query.add( pqF( "b", "c" ), Occur.SHOULD );
-    FieldQuery fq = new FieldQuery( query, true, true );
+    FieldQuery fq = new FieldQuery( query.build(), true, true );
     FieldTermStack stack = new FieldTermStack( reader, 0, F, fq );
     FieldPhraseList fpl = new FieldPhraseList( stack, fq );
     assertEquals( 1, fpl.phraseList.size() );
@@ -154,10 +152,10 @@ public class FieldPhraseListTest extends AbstractTestCase {
   public void testSearchLongestPhrase() throws Exception {
     make1d1fIndex( "d a b d c a b c" );
 
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add( pqF( "a", "b" ), Occur.SHOULD );
     query.add( pqF( "a", "b", "c" ), Occur.SHOULD );
-    FieldQuery fq = new FieldQuery( query, true, true );
+    FieldQuery fq = new FieldQuery( query.build(), true, true );
     FieldTermStack stack = new FieldTermStack( reader, 0, F, fq );
     FieldPhraseList fpl = new FieldPhraseList( stack, fq );
     assertEquals( 2, fpl.phraseList.size() );

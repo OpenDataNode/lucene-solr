@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.core;
+
 
 import java.io.IOException;
 
@@ -23,21 +23,17 @@ import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.util.CharacterUtils;
-import org.apache.lucene.util.Version;
 
 /**
  * Normalizes token text to UPPER CASE.
- * <a name="version"/>
- * <p>You may specify the {@link Version}
- * compatibility when creating UpperCaseFilter
- *
+ * 
  * <p><b>NOTE:</b> In Unicode, this transformation may lose information when the
  * upper case character represents more than one lower case character. Use this filter
  * when you require uppercase tokens.  Use the {@link LowerCaseFilter} for 
  * general search matching
  */
 public final class UpperCaseFilter extends TokenFilter {
-  private final CharacterUtils charUtils;
+  private final CharacterUtils charUtils = CharacterUtils.getInstance();
   private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
   
   /**
@@ -47,16 +43,6 @@ public final class UpperCaseFilter extends TokenFilter {
    */
   public UpperCaseFilter(TokenStream in) {
     super(in);
-    charUtils = CharacterUtils.getInstance();
-  }
-
-  /**
-   * @deprecated Use {@link #UpperCaseFilter(TokenStream)}
-   */
-  @Deprecated
-  public UpperCaseFilter(Version matchVersion, TokenStream in) {
-    super(in);
-    charUtils = CharacterUtils.getInstance(matchVersion);
   }
   
   @Override

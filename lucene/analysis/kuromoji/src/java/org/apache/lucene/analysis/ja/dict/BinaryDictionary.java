@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.ja.dict;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.ja.dict;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.ja.dict;
+
 
 import java.io.BufferedInputStream;
 import java.io.EOFException;
@@ -289,7 +289,7 @@ public abstract class BinaryDictionary implements Dictionary {
     return new String(text);
   }
   
-  /** flag that the entry has baseform data. otherwise its not inflected (same as surface form) */
+  /** flag that the entry has baseform data. otherwise it's not inflected (same as surface form) */
   public static final int HAS_BASEFORM = 1;
   /** flag that the entry has reading data. otherwise reading is surface form converted to katakana */
   public static final int HAS_READING = 2;

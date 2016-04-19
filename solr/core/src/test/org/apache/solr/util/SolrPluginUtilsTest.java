@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.util;
 
 import org.apache.solr.SolrTestCaseJ4;
@@ -25,7 +24,6 @@ import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.search.DocList;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
-
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
@@ -38,6 +36,7 @@ import org.apache.lucene.search.BooleanClause.Occur;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
@@ -257,7 +256,7 @@ public class SolrPluginUtilsTest extends SolrTestCaseJ4 {
                out instanceof BooleanQuery);
     {
       BooleanQuery bq = (BooleanQuery)out;
-      List<BooleanClause> clauses = bq.clauses();
+      List<BooleanClause> clauses = new ArrayList<>(bq.clauses());
       assertEquals(t+" wrong number of clauses", 2,
                    clauses.size());
       Query sub = clauses.get(0).getQuery();
@@ -280,7 +279,7 @@ public class SolrPluginUtilsTest extends SolrTestCaseJ4 {
                out instanceof BooleanQuery);
     {
       BooleanQuery bq = (BooleanQuery)out;
-      List<BooleanClause> clauses = bq.clauses();
+      List<BooleanClause> clauses = new ArrayList<>(bq.clauses());
       assertEquals(t+" wrong number of clauses", 2,
                    clauses.size());
       Query sub = clauses.get(0).getQuery();
@@ -364,29 +363,29 @@ public class SolrPluginUtilsTest extends SolrTestCaseJ4 {
     assertEquals(9, calcMSM(12, "3<-25% 10<-3"));
     assertEquals(97, calcMSM(100, "3<-25% 10<-3"));
 
-    BooleanQuery q = new BooleanQuery();
+    BooleanQuery.Builder q = new BooleanQuery.Builder();
     q.add(new TermQuery(new Term("a","b")), Occur.SHOULD);
     q.add(new TermQuery(new Term("a","c")), Occur.SHOULD);
     q.add(new TermQuery(new Term("a","d")), Occur.SHOULD);
     q.add(new TermQuery(new Term("a","d")), Occur.SHOULD);
 
     SolrPluginUtils.setMinShouldMatch(q, "0");
-    assertEquals(0, q.getMinimumNumberShouldMatch());
+    assertEquals(0, q.build().getMinimumNumberShouldMatch());
         
     SolrPluginUtils.setMinShouldMatch(q, "1");
-    assertEquals(1, q.getMinimumNumberShouldMatch());
+    assertEquals(1, q.build().getMinimumNumberShouldMatch());
         
     SolrPluginUtils.setMinShouldMatch(q, "50%");
-    assertEquals(2, q.getMinimumNumberShouldMatch());
+    assertEquals(2, q.build().getMinimumNumberShouldMatch());
 
     SolrPluginUtils.setMinShouldMatch(q, "99");
-    assertEquals(4, q.getMinimumNumberShouldMatch());
+    assertEquals(4, q.build().getMinimumNumberShouldMatch());
 
     q.add(new TermQuery(new Term("a","e")), Occur.MUST);
     q.add(new TermQuery(new Term("a","f")), Occur.MUST);
 
     SolrPluginUtils.setMinShouldMatch(q, "50%");
-    assertEquals(2, q.getMinimumNumberShouldMatch());
+    assertEquals(2, q.build().getMinimumNumberShouldMatch());
         
   }
 

@@ -52,7 +52,7 @@ public class TestNonWritablePersistFile extends AbstractDataImportHandlerTestCas
 
   @BeforeClass
   public static void createTempSolrHomeAndCore() throws Exception {
-    tmpSolrHome = createTempDir().getAbsolutePath();
+    tmpSolrHome = createTempDir().toFile().getAbsolutePath();
     FileUtils.copyDirectory(getFile("dih/solr"), new File(tmpSolrHome).getAbsoluteFile());
     initCore("dataimport-solrconfig.xml", "dataimport-schema.xml", 
              new File(tmpSolrHome).getAbsolutePath());
@@ -72,8 +72,8 @@ public class TestNonWritablePersistFile extends AbstractDataImportHandlerTestCas
     try {
       // execute the test only if we are able to set file to read only mode
       assumeTrue("No dataimport.properties file", f.exists() || f.createNewFile());
-      assumeTrue("dataimport.proprties can't be set read only", f.setReadOnly());
-      assumeFalse("dataimport.proprties is still writable even though " + 
+      assumeTrue("dataimport.properties can't be set read only", f.setReadOnly());
+      assumeFalse("dataimport.properties is still writable even though " + 
                   "marked readonly - test running as superuser?", f.canWrite());
 
       ignoreException("Properties is not writable");
@@ -92,7 +92,7 @@ public class TestNonWritablePersistFile extends AbstractDataImportHandlerTestCas
       runFullImport(dataConfig_delta);
       assertQ(req("id:1"), "//*[@numFound='0']");
     } finally {
-      f.delete();
+      f.setWritable(true);
     }
   }  
 }

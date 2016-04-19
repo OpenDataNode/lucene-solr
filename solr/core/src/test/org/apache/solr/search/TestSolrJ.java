@@ -14,16 +14,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.search;
 
 
 import org.apache.solr.SolrTestCaseJ4;
-import org.apache.solr.client.solrj.SolrServer;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrServer;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
+import org.apache.solr.client.solrj.impl.ConcurrentUpdateSolrClient;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.common.SolrInputDocument;
+import org.apache.solr.util.RTimer;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -41,7 +41,7 @@ public class TestSolrJ extends SolrTestCaseJ4 {
     // doCommitPerf();
   }
 
-  public static SolrServer server;
+  public static SolrClient client;
   public static String idField = "id";
   public static Exception ex;
 
@@ -56,15 +56,15 @@ public class TestSolrJ extends SolrTestCaseJ4 {
     final int nConnections = Integer.parseInt(args[i++]);
     final int maxSleep = Integer.parseInt(args[i++]);
 
-    ConcurrentUpdateSolrServer sserver = null;
+    ConcurrentUpdateSolrClient concurrentClient = null;
 
-    // server = sserver = new ConcurrentUpdateSolrServer(addr,32,8);
-    server = sserver = new ConcurrentUpdateSolrServer(addr,64,nConnections);
+    // server = concurrentClient = new ConcurrentUpdateSolrServer(addr,32,8);
+    client = concurrentClient = new ConcurrentUpdateSolrClient(addr,64,nConnections);
 
-    server.deleteByQuery("*:*");
-    server.commit();
+    client.deleteByQuery("*:*");
+    client.commit();
 
-    long start = System.currentTimeMillis();
+    final RTimer timer = new RTimer();
 
     final int docsPerThread = nDocs / nProducers;
 
@@ -94,12 +94,12 @@ public class TestSolrJ extends SolrTestCaseJ4 {
       threads[threadNum].join();
     }
 
-    if (sserver != null) {
-      sserver.blockUntilFinished();
+    if (concurrentClient != null) {
+      concurrentClient.blockUntilFinished();
     }
 
-    long end = System.currentTimeMillis();
-    System.out.println("time="+(end-start) + " throughput="+(nDocs*1000/(end-start)) + " Exception="+ex);
+    double elapsed = timer.getTime();
+    System.out.println("time="+elapsed + " throughput="+(nDocs*1000/elapsed) + " Exception="+ex);
 
     // should server threads be marked as daemon?
     // need a server.close()!!!
@@ -145,7 +145,7 @@ public class TestSolrJ extends SolrTestCaseJ4 {
       }
 
       SolrInputDocument doc = getDocument(i);
-      server.add(doc);
+      client.add(doc);
 
       if (maxSleep > 0) {
         int sleep = r.nextInt(maxSleep);
@@ -163,25 +163,21 @@ public class TestSolrJ extends SolrTestCaseJ4 {
 
 
   public void doCommitPerf() throws Exception {
-    HttpSolrServer client = new HttpSolrServer("http://127.0.0.1:8983/solr");
 
-    long start = System.currentTimeMillis();
+    try (HttpSolrClient client = new HttpSolrClient("http://127.0.0.1:8983/solr")) {
 
-    for (int i=0; i<10000; i++) {
-      SolrInputDocument doc = new SolrInputDocument();
-      doc.addField("id", Integer.toString(i % 13));
-      client.add(doc);
-      client.commit(true, true, true);
+      final RTimer timer = new RTimer();
+
+      for (int i = 0; i < 10000; i++) {
+        SolrInputDocument doc = new SolrInputDocument();
+        doc.addField("id", Integer.toString(i % 13));
+        client.add(doc);
+        client.commit(true, true, true);
+      }
+
+      System.out.println("TIME: " + timer.getTime());
     }
 
-    long end = System.currentTimeMillis();
-
-    client.shutdown();
-
-    System.out.println("TIME: " + (end-start));
   }
-
-
-
 
 }

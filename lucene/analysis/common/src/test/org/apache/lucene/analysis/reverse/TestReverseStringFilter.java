@@ -14,11 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.analysis.reverse;
 
 import java.io.IOException;
-import java.io.Reader;
 import java.io.StringReader;
 
 import org.apache.lucene.analysis.Analyzer;
@@ -27,19 +25,18 @@ import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.core.KeywordTokenizer;
-import org.apache.lucene.util.Version;
 
 public class TestReverseStringFilter extends BaseTokenStreamTestCase {
   public void testFilter() throws Exception {
-    TokenStream stream = new MockTokenizer(new StringReader("Do have a nice day"),
-        MockTokenizer.WHITESPACE, false);     // 1-4 length string
+    TokenStream stream = new MockTokenizer(MockTokenizer.WHITESPACE, false);     // 1-4 length string
+    ((Tokenizer)stream).setReader(new StringReader("Do have a nice day"));
     ReverseStringFilter filter = new ReverseStringFilter(stream);
     assertTokenStreamContents(filter, new String[] { "oD", "evah", "a", "ecin", "yad" });
   }
   
   public void testFilterWithMark() throws Exception {
-    TokenStream stream = new MockTokenizer(new StringReader("Do have a nice day"),
-        MockTokenizer.WHITESPACE, false); // 1-4 length string
+    TokenStream stream = new MockTokenizer(MockTokenizer.WHITESPACE, false); // 1-4 length string
+    ((Tokenizer)stream).setReader(new StringReader("Do have a nice day"));
     ReverseStringFilter filter = new ReverseStringFilter(stream, '\u0001');
     assertTokenStreamContents(filter, 
         new String[] { "\u0001oD", "\u0001evah", "\u0001a", "\u0001ecin", "\u0001yad" });
@@ -55,15 +52,6 @@ public class TestReverseStringFilter extends BaseTokenStreamTestCase {
     char[] buffer = { 'A', 'B', 'C', 'D', 'E', 'F' };
     ReverseStringFilter.reverse( buffer, 2, 3 );
     assertEquals( "ABEDCF", new String( buffer ) );
-  }
-  
-  /**
-   * Test the broken 3.0 behavior, for back compat
-   * @deprecated (3.1) Remove in Lucene 5.0
-   */
-  @Deprecated
-  public void testBackCompat() throws Exception {
-    assertEquals("\uDF05\uD866\uDF05\uD866", ReverseStringFilter.reverse(Version.LUCENE_3_0, "𩬅𩬅"));
   }
   
   public void testReverseSupplementary() throws Exception {
@@ -106,22 +94,24 @@ public class TestReverseStringFilter extends BaseTokenStreamTestCase {
   public void testRandomStrings() throws Exception {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
         return new TokenStreamComponents(tokenizer, new ReverseStringFilter(tokenizer));
       }
     };
     checkRandomData(random(), a, 1000*RANDOM_MULTIPLIER);
+    a.close();
   }
   
   public void testEmptyTerm() throws IOException {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new KeywordTokenizer(reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new KeywordTokenizer();
         return new TokenStreamComponents(tokenizer, new ReverseStringFilter(tokenizer));
       }
     };
     checkOneTerm(a, "", "");
+    a.close();
   }
 }

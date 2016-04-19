@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.nodes;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard.nodes;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.nodes;
 
 import java.util.List;
 
@@ -27,7 +26,7 @@ import org.apache.lucene.search.similarities.Similarity;
 /**
  * A {@link StandardBooleanQueryNode} has the same behavior as
  * {@link BooleanQueryNode}. It only indicates if the coord should be enabled or
- * not for this boolean query. <br/>
+ * not for this boolean query.
  * 
  * @see Similarity#coord(int, int)
  * @see BooleanQuery

@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.builders;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard.builders;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.builders;
 
 import java.util.List;
 
@@ -36,8 +35,8 @@ import org.apache.lucene.search.BooleanQuery.TooManyClauses;
  * Builds a {@link BooleanQuery} object from a {@link BooleanQueryNode} object.
  * Every children in the {@link BooleanQueryNode} object must be already tagged
  * using {@link QueryTreeBuilder#QUERY_TREE_BUILDER_TAGID} with a {@link Query}
- * object. <br/>
- * <br/>
+ * object. <br>
+ * <br>
  * It takes in consideration if the children is a {@link ModifierQueryNode} to
  * define the {@link BooleanClause}.
  */
@@ -51,7 +50,7 @@ public class BooleanQueryNodeBuilder implements StandardQueryBuilder {
   public BooleanQuery build(QueryNode queryNode) throws QueryNodeException {
     BooleanQueryNode booleanNode = (BooleanQueryNode) queryNode;
 
-    BooleanQuery bQuery = new BooleanQuery();
+    BooleanQuery.Builder bQuery = new BooleanQuery.Builder();
     List<QueryNode> children = booleanNode.getChildren();
 
     if (children != null) {
@@ -80,7 +79,7 @@ public class BooleanQueryNodeBuilder implements StandardQueryBuilder {
 
     }
 
-    return bQuery;
+    return bQuery.build();
 
   }
 

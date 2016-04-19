@@ -14,17 +14,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.queries.function.valuesource;
 
-import java.io.IOException;
-import java.util.Map;
-
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.util.BytesRef;
+import org.apache.lucene.util.BytesRefBuilder;
+
+import java.io.IOException;
+import java.util.Map;
 
 
 /**
@@ -44,7 +43,7 @@ public class IfFunction extends BoolFunction {
   }
 
   @Override
-  public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+  public FunctionValues getValues(Map context, LeafReaderContext readerContext) throws IOException {
     final FunctionValues ifVals = ifSource.getValues(context, readerContext);
     final FunctionValues trueVals = trueSource.getValues(context, readerContext);
     final FunctionValues falseVals = falseSource.getValues(context, readerContext);
@@ -91,7 +90,7 @@ public class IfFunction extends BoolFunction {
       }
 
       @Override
-      public boolean bytesVal(int doc, BytesRef target) {
+      public boolean bytesVal(int doc, BytesRefBuilder target) {
         return ifVals.boolVal(doc) ? trueVals.bytesVal(doc, target) : falseVals.bytesVal(doc, target);
       }
 
@@ -102,7 +101,7 @@ public class IfFunction extends BoolFunction {
 
       @Override
       public boolean exists(int doc) {
-        return true; // TODO: flow through to any sub-sources?
+        return ifVals.boolVal(doc) ? trueVals.exists(doc) : falseVals.exists(doc);
       }
 
       @Override

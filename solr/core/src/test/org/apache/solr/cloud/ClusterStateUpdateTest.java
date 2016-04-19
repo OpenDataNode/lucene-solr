@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,7 +14,16 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
+import java.io.File;
+import java.io.IOException;
+import java.lang.invoke.MethodHandles;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+
+import com.google.common.collect.ImmutableMap;
 import org.apache.lucene.util.LuceneTestCase.Slow;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.cloud.ClusterState;
@@ -25,9 +32,8 @@ import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkNodeProps;
 import org.apache.solr.common.cloud.ZkStateReader;
+import org.apache.solr.common.util.Utils;
 import org.apache.solr.core.CoreContainer;
-import org.apache.solr.core.CoreDescriptor;
-import org.apache.solr.core.SolrCore;
 import org.apache.zookeeper.CreateMode;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -35,16 +41,9 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-
 @Slow
 public class ClusterStateUpdateTest extends SolrTestCaseJ4  {
-  protected static Logger log = LoggerFactory
-      .getLogger(AbstractZkTestCase.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private static final boolean VERBOSE = false;
 
@@ -71,7 +70,7 @@ public class ClusterStateUpdateTest extends SolrTestCaseJ4  {
 
   @BeforeClass
   public static void beforeClass() throws IOException {
-    solrHomeDirectory = createTempDir();
+    solrHomeDirectory = createTempDir().toFile();
     System.setProperty("solrcloud.skip.autorecovery", "true");
     System.setProperty("genericCoreNodeNames", "false");
     copyMinFullSetup(solrHomeDirectory);
@@ -89,7 +88,7 @@ public class ClusterStateUpdateTest extends SolrTestCaseJ4  {
   public void setUp() throws Exception {
     super.setUp();
     System.setProperty("zkClientTimeout", "3000");
-    File tmpDir = createTempDir("zkData");
+    File tmpDir = createTempDir("zkData").toFile();
     zkDir = tmpDir.getAbsolutePath();
     zkServer = new ZkTestServer(zkDir);
     zkServer.run();
@@ -151,15 +150,12 @@ public class ClusterStateUpdateTest extends SolrTestCaseJ4  {
     SolrZkClient zkClient = new SolrZkClient(zkServer.getZkAddress(),
         AbstractZkTestCase.TIMEOUT);
     zkClient.makePath(ZkStateReader.COLLECTIONS_ZKNODE + "/testcore",
-        ZkStateReader.toJSON(zkProps2), CreateMode.PERSISTENT, true);
+        Utils.toJSON(zkProps2), CreateMode.PERSISTENT, true);
     zkClient.makePath(ZkStateReader.COLLECTIONS_ZKNODE + "/testcore/shards",
         CreateMode.PERSISTENT, true);
     zkClient.close();
 
-    CoreDescriptor dcore = buildCoreDescriptor(container1, "testcore", "testcore")
-                              .withDataDir(dataDir4.getAbsolutePath()).build();
-
-    SolrCore core = container1.create(dcore);
+    container1.create("testcore", ImmutableMap.of("dataDir", dataDir4.getAbsolutePath()));
     
     ZkController zkController2 = container2.getZkController();
 

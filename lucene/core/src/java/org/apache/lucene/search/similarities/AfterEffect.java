@@ -1,5 +1,3 @@
-package org.apache.lucene.search.similarities;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search.similarities;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.similarities;
+
 
 import org.apache.lucene.search.Explanation;
 
@@ -56,7 +56,7 @@ public abstract class AfterEffect {
 
     @Override
     public final Explanation explain(BasicStats stats, float tfn) {
-      return new Explanation(1, "no aftereffect");
+      return Explanation.match(1, "no aftereffect");
     }
     
     @Override

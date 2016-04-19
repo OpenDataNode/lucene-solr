@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.cz;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,10 @@ package org.apache.lucene.analysis.cz;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.cz;
+
 
 import java.io.IOException;
-import java.io.Reader;
 import java.io.StringReader;
 
 import org.apache.lucene.analysis.Analyzer;
@@ -32,7 +31,7 @@ import org.apache.lucene.analysis.util.CharArraySet;
 /**
  * Test the Czech Stemmer.
  * 
- * Note: its algorithmic, so some stems are nonsense
+ * Note: it's algorithmic, so some stems are nonsense
  *
  */
 public class TestCzechStemmer extends BaseTokenStreamTestCase {
@@ -103,6 +102,8 @@ public class TestCzechStemmer extends BaseTokenStreamTestCase {
     assertAnalyzesTo(cz, "soudcům", new String[] { "soudk" });
     assertAnalyzesTo(cz, "soudcích", new String[] { "soudk" });
     assertAnalyzesTo(cz, "soudcem", new String[] { "soudk" });
+    
+    cz.close();
   }
   
   /**
@@ -147,6 +148,8 @@ public class TestCzechStemmer extends BaseTokenStreamTestCase {
     assertAnalyzesTo(cz, "ženách", new String[] { "žn" });
     assertAnalyzesTo(cz, "ženou", new String[] { "žn" });
     assertAnalyzesTo(cz, "ženami", new String[] { "žn" });
+    
+    cz.close();
   }
 
   /**
@@ -189,7 +192,9 @@ public class TestCzechStemmer extends BaseTokenStreamTestCase {
     assertAnalyzesTo(cz, "stavení", new String[] { "stavn" });
     assertAnalyzesTo(cz, "stavením", new String[] { "stavn" });
     assertAnalyzesTo(cz, "staveních", new String[] { "stavn" });
-    assertAnalyzesTo(cz, "staveními", new String[] { "stavn" });    
+    assertAnalyzesTo(cz, "staveními", new String[] { "stavn" }); 
+    
+    cz.close();
   }
   
   /**
@@ -218,6 +223,8 @@ public class TestCzechStemmer extends BaseTokenStreamTestCase {
     assertAnalyzesTo(cz, "jarnímu", new String[] { "jarn" });
     assertAnalyzesTo(cz, "jarním", new String[] { "jarn" });
     assertAnalyzesTo(cz, "jarními", new String[] { "jarn" });  
+    
+    cz.close();
   }
   
   /**
@@ -227,6 +234,7 @@ public class TestCzechStemmer extends BaseTokenStreamTestCase {
     CzechAnalyzer cz = new CzechAnalyzer();
     assertAnalyzesTo(cz, "Karlův", new String[] { "karl" });
     assertAnalyzesTo(cz, "jazykový", new String[] { "jazyk" });
+    cz.close();
   }
   
   /**
@@ -267,6 +275,8 @@ public class TestCzechStemmer extends BaseTokenStreamTestCase {
     /* rewrite of e* -> * */
     assertAnalyzesTo(cz, "deska", new String[] { "desk" });
     assertAnalyzesTo(cz, "desek", new String[] { "desk" });
+    
+    cz.close();
   }
   
   /**
@@ -276,25 +286,29 @@ public class TestCzechStemmer extends BaseTokenStreamTestCase {
     CzechAnalyzer cz = new CzechAnalyzer();
     assertAnalyzesTo(cz, "e", new String[] { "e" });
     assertAnalyzesTo(cz, "zi", new String[] { "zi" });
+    cz.close();
   }
   
   public void testWithKeywordAttribute() throws IOException {
     CharArraySet set = new CharArraySet(1, true);
     set.add("hole");
+    final MockTokenizer in = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    in.setReader(new StringReader("hole desek"));
     CzechStemFilter filter = new CzechStemFilter(new SetKeywordMarkerFilter(
-        new MockTokenizer(new StringReader("hole desek"), MockTokenizer.WHITESPACE, false), set));
+        in, set));
     assertTokenStreamContents(filter, new String[] { "hole", "desk" });
   }
   
   public void testEmptyTerm() throws IOException {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new KeywordTokenizer(reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new KeywordTokenizer();
         return new TokenStreamComponents(tokenizer, new CzechStemFilter(tokenizer));
       }
     };
     checkOneTerm(a, "", "");
+    a.close();
   }
   
 }

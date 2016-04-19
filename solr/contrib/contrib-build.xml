@@ -30,7 +30,7 @@
   <dirname file="${ant.file}" property="antfile.dir"/>
 
   <available property="contrib.has.webapp" type="dir" file="${antfile.dir}/src/webapp" />
-  <target name="add-to-war" if="contrib.has.webapp">
+  <target name="add-to-webapp" if="contrib.has.webapp">
     <copy todir="${dest}/web" failonerror="false">
       <fileset dir="${antfile.dir}/src/webapp"/>
     </copy>
@@ -49,8 +49,8 @@
 
   <target name="resolve" depends="ivy-availability-check,ivy-fail,ivy-configure">
     <sequential>
-      <ivy:retrieve conf="compile" type="jar,bundle" sync="${ivy.sync}" log="download-only"/>
-      <ivy:retrieve conf="test" type="jar,bundle,test" sync="${ivy.sync}" log="download-only"
+      <ivy:retrieve conf="compile" type="jar,bundle" sync="${ivy.sync}" log="download-only" symlink="${ivy.symlink}"/>
+      <ivy:retrieve conf="test" type="jar,bundle,test" sync="${ivy.sync}" log="download-only" symlink="${ivy.symlink}"
                     pattern="${test.lib.dir}/[artifact]-[revision](-[classifier]).[ext]"/>
     </sequential>
   </target>

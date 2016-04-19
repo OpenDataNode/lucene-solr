@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,13 +14,15 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.lucene.analysis.MockAnalyzer;
-import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.simpletext.SimpleTextCodec;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
@@ -84,6 +84,12 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     Term searchTerm = new Term("id", "7");
     writer.deleteDocuments(searchTerm);
     writer.close();
+    
+    // read in index to try to not depend on codec-specific filenames so much
+    SegmentInfos sis = SegmentInfos.readLatestCommit(dir);
+    SegmentInfo si0 = sis.info(0).info;
+    SegmentInfo si1 = sis.info(1).info;
+    SegmentInfo si3 = sis.info(3).info;
 
     // Now, artificially create an extra .del file & extra
     // .s0 file:
@@ -96,7 +102,7 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     */
 
     // TODO: fix this test better
-    String ext = Codec.getDefault().getName().equals("SimpleText") ? ".liv" : ".del";
+    String ext = ".liv";
     
     // Create a bogus separate del file for a
     // segment that already has a separate del file: 
@@ -110,27 +116,30 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     // non-existent segment:
     copyFile(dir, "_0_1" + ext, "_188_1" + ext);
 
+    String cfsFiles0[] = si0.getCodec() instanceof SimpleTextCodec ? new String[] { "_0.scf" } : new String[] { "_0.cfs", "_0.cfe" };
+    
     // Create a bogus segment file:
-    copyFile(dir, "_0.cfs", "_188.cfs");
+    copyFile(dir, cfsFiles0[0], "_188.cfs");
 
     // Create a bogus fnm file when the CFS already exists:
-    copyFile(dir, "_0.cfs", "_0.fnm");
-    
-    // Create some old segments file:
-    copyFile(dir, "segments_2", "segments");
-    copyFile(dir, "segments_2", "segments_1");
+    copyFile(dir, cfsFiles0[0], "_0.fnm");
 
     // Create a bogus cfs file shadowing a non-cfs segment:
     
     // TODO: assert is bogus (relies upon codec-specific filenames)
     assertTrue(slowFileExists(dir, "_3.fdt") || slowFileExists(dir, "_3.fld"));
-    assertTrue(!slowFileExists(dir, "_3.cfs"));
-    copyFile(dir, "_1.cfs", "_3.cfs");
+    
+    String cfsFiles3[] = si3.getCodec() instanceof SimpleTextCodec ? new String[] { "_3.scf" } : new String[] { "_3.cfs", "_3.cfe" };
+    for (String f : cfsFiles3) {
+      assertTrue(!slowFileExists(dir, f));
+    }
+    
+    String cfsFiles1[] = si1.getCodec() instanceof SimpleTextCodec ? new String[] { "_1.scf" } : new String[] { "_1.cfs", "_1.cfe" };
+    copyFile(dir, cfsFiles1[0], "_3.cfs");
     
     String[] filesPre = dir.listAll();
 
-    // Open & close a writer: it should delete the above 4
-    // files and nothing more:
+    // Open & close a writer: it should delete the above files and nothing more:
     writer = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random()))
                                     .setOpenMode(OpenMode.APPEND));
     writer.close();
@@ -209,14 +218,14 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     doc.add(newStringField("id", Integer.toString(id), Field.Store.NO));
     writer.addDocument(doc);
   }
-
+  
   public void testVirusScannerDoesntCorruptIndex() throws IOException {
     MockDirectoryWrapper dir = newMockDirectory();
     dir.setPreventDoubleWrite(false); // we arent trying to test this
     dir.setEnableVirusScanner(false); // we have our own to make test reproduce always
     
     // add empty commit
-    new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, null)).close();
+    new IndexWriter(dir, new IndexWriterConfig(null)).close();
     // add a trash unreferenced file
     dir.createOutput("_0.si", IOContext.DEFAULT).close();
 
@@ -236,7 +245,7 @@ public class TestIndexFileDeleter extends LuceneTestCase {
       }
     });
     
-    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, null));
+    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(null));
     iw.addDocument(new Document());
     // stop virus scanner
     stopScanning.set(true);
@@ -249,14 +258,13 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     Directory dir = newMockDirectory();
     
     // empty commit
-    new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, null)).close();   
+    new IndexWriter(dir, new IndexWriterConfig(null)).close();   
     
-    SegmentInfos sis = new SegmentInfos();
-    sis.read(dir);
+    SegmentInfos sis = SegmentInfos.readLatestCommit(dir);
     assertEquals(1, sis.getGeneration());
     
     // no inflation
-    IndexFileDeleter.inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
+    inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
     assertEquals(1, sis.getGeneration());
 
     dir.close();
@@ -267,22 +275,21 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     dir.setCheckIndexOnClose(false); // TODO: allow falling back more than one commit
     
     // empty commit
-    new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, null)).close();   
+    new IndexWriter(dir, new IndexWriterConfig(null)).close();   
     
-    SegmentInfos sis = new SegmentInfos();
-    sis.read(dir);
+    SegmentInfos sis = SegmentInfos.readLatestCommit(dir);
     assertEquals(1, sis.getGeneration());
     
     // add trash commit
     dir.createOutput(IndexFileNames.SEGMENTS + "_2", IOContext.DEFAULT).close();
     
     // ensure inflation
-    IndexFileDeleter.inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
+    inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
     assertEquals(2, sis.getGeneration());
     
     // add another trash commit
     dir.createOutput(IndexFileNames.SEGMENTS + "_4", IOContext.DEFAULT).close();
-    IndexFileDeleter.inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
+    inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
     assertEquals(4, sis.getGeneration());
 
     dir.close();
@@ -292,35 +299,33 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     MockDirectoryWrapper dir = newMockDirectory();
     
     // empty commit
-    new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, null)).close();   
+    new IndexWriter(dir, new IndexWriterConfig(null)).close();   
     
-    SegmentInfos sis = new SegmentInfos();
-    sis.read(dir);
+    SegmentInfos sis = SegmentInfos.readLatestCommit(dir);
     assertEquals(0, sis.counter);
     
     // no inflation
-    IndexFileDeleter.inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
+    inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
     assertEquals(0, sis.counter);
     
     // add trash per-segment file
     dir.createOutput(IndexFileNames.segmentFileName("_0", "", "foo"), IOContext.DEFAULT).close();
     
     // ensure inflation
-    IndexFileDeleter.inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
+    inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
     assertEquals(1, sis.counter);
     
     // add trash per-segment file
     dir.createOutput(IndexFileNames.segmentFileName("_3", "", "foo"), IOContext.DEFAULT).close();
-    IndexFileDeleter.inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
+    inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
     assertEquals(4, sis.counter);
     
     // ensure we write _4 segment next
-    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, null));
+    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(null));
     iw.addDocument(new Document());
     iw.commit();
     iw.close();
-    sis = new SegmentInfos();
-    sis.read(dir);
+    sis = SegmentInfos.readLatestCommit(dir);
     assertEquals("_4", sis.info(0).info.name);
     assertEquals(5, sis.counter);
     
@@ -331,25 +336,24 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     MockDirectoryWrapper dir = newMockDirectory();
     
     // initial commit
-    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, null));
+    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(null));
     iw.addDocument(new Document());
     iw.commit();
     iw.close();   
     
     // no deletes: start at 1
-    SegmentInfos sis = new SegmentInfos();
-    sis.read(dir);
+    SegmentInfos sis = SegmentInfos.readLatestCommit(dir);
     assertEquals(1, sis.info(0).getNextDelGen());
     
     // no inflation
-    IndexFileDeleter.inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
+    inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
     assertEquals(1, sis.info(0).getNextDelGen());
     
     // add trash per-segment deletes file
     dir.createOutput(IndexFileNames.fileNameFromGeneration("_0", "del", 2), IOContext.DEFAULT).close();
     
     // ensure inflation
-    IndexFileDeleter.inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
+    inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
     assertEquals(3, sis.info(0).getNextDelGen());
     
     dir.close();
@@ -360,17 +364,16 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     dir.setCheckIndexOnClose(false); // TODO: maybe handle such trash better elsewhere...
     
     // empty commit
-    new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, null)).close();   
+    new IndexWriter(dir, new IndexWriterConfig(null)).close();   
     
-    SegmentInfos sis = new SegmentInfos();
-    sis.read(dir);
+    SegmentInfos sis = SegmentInfos.readLatestCommit(dir);
     assertEquals(1, sis.getGeneration());
     
     // add trash file
     dir.createOutput(IndexFileNames.SEGMENTS + "_", IOContext.DEFAULT).close();
     
     // no inflation
-    IndexFileDeleter.inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
+    inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
     assertEquals(1, sis.getGeneration());
 
     dir.close();
@@ -380,28 +383,41 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     MockDirectoryWrapper dir = newMockDirectory();
     
     // initial commit
-    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(TEST_VERSION_CURRENT, null));
+    IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig(null));
     iw.addDocument(new Document());
     iw.commit();
     iw.close();   
     
     // no deletes: start at 1
-    SegmentInfos sis = new SegmentInfos();
-    sis.read(dir);
+    SegmentInfos sis = SegmentInfos.readLatestCommit(dir);
     assertEquals(1, sis.info(0).getNextDelGen());
     
     // add trash file
     dir.createOutput("_1_A", IOContext.DEFAULT).close();
     
     // no inflation
-    IndexFileDeleter.inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
+    inflateGens(sis, Arrays.asList(dir.listAll()), InfoStream.getDefault());
     assertEquals(1, sis.info(0).getNextDelGen());
 
     dir.close();
   }
+  
+  // IFD's inflater is "raw" and expects to only see codec files, 
+  // and rightfully so, it filters them out.
+  static void inflateGens(SegmentInfos sis, Collection<String> files, InfoStream stream) {
+    List<String> filtered = new ArrayList<>();
+    for (String file : files) {
+      if (IndexFileNames.CODEC_FILE_PATTERN.matcher(file).matches() ||
+          file.startsWith(IndexFileNames.SEGMENTS) ||
+          file.startsWith(IndexFileNames.PENDING_SEGMENTS)) {
+        filtered.add(file);
+      }
+    }
+    IndexFileDeleter.inflateGens(sis, filtered, stream);
+  }
 
   // LUCENE-5919
-  public void testExcInDecRef() throws Exception {
+  public void testExcInDecRef() throws Throwable {
     MockDirectoryWrapper dir = newMockDirectory();
 
     // disable slow things: we don't rely upon sleeps here.
@@ -431,7 +447,7 @@ public class TestIndexFileDeleter extends LuceneTestCase {
     if (ms instanceof ConcurrentMergeScheduler) {
       final ConcurrentMergeScheduler suppressFakeFail = new ConcurrentMergeScheduler() {
           @Override
-          protected void handleMergeException(Throwable exc) {
+          protected void handleMergeException(Directory dir, Throwable exc) {
             // suppress only FakeIOException:
             if (exc instanceof RuntimeException && exc.getMessage().equals("fake fail")) {
               // ok to ignore
@@ -439,13 +455,12 @@ public class TestIndexFileDeleter extends LuceneTestCase {
                         && exc.getCause() != null && "fake fail".equals(exc.getCause().getMessage())) {
               // also ok to ignore
             } else {
-              super.handleMergeException(exc);
+              super.handleMergeException(dir, exc);
             }
           }
         };
       final ConcurrentMergeScheduler cms = (ConcurrentMergeScheduler) ms;
       suppressFakeFail.setMaxMergesAndThreads(cms.getMaxMergeCount(), cms.getMaxThreadCount());
-      suppressFakeFail.setMergeThreadPriority(cms.getMergeThreadPriority());
       iwc.setMergeScheduler(suppressFakeFail);
     }
 
@@ -469,24 +484,11 @@ public class TestIndexFileDeleter extends LuceneTestCase {
           doc.add(newTextField("field", "some text", Field.Store.NO));
           w.addDocument(doc);
         }
-      } catch (IOException ioe) {
-        if (ioe.getMessage().contains("background merge hit exception")) {
-          Throwable cause = ioe.getCause();
-          if (cause != null && cause instanceof RuntimeException && ((RuntimeException) cause).getMessage().equals("fake fail")) {
-            // ok
-          } else {
-            throw ioe;
-          }
-        } else {
-          throw ioe;
-        }
-      } catch (RuntimeException re) {
-        if (re.getMessage().equals("fake fail")) {
+      } catch (Throwable t) {
+        if (t.toString().contains("fake fail") || (t.getCause() != null && t.getCause().toString().contains("fake fail"))) {
           // ok
-        } else if (re instanceof AlreadyClosedException && re.getCause() != null && "fake fail".equals(re.getCause().getMessage())) {
-          break; // our test got unlucky, triggered our strange exception after successful finishCommit, caused a disaster!
         } else {
-          throw re;
+          throw t;
         }
       }
     }

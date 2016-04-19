@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,13 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
+
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Arrays;
 
 import org.apache.lucene.util.Accountable;
 
@@ -25,7 +28,7 @@ import org.apache.lucene.util.Accountable;
  * Represents a file in RAM as a list of byte[] buffers.
  * @lucene.internal */
 public class RAMFile implements Accountable {
-  protected ArrayList<byte[]> buffers = new ArrayList<>();
+  protected final ArrayList<byte[]> buffers = new ArrayList<>();
   long length;
   RAMDirectory directory;
   protected long sizeInBytes;
@@ -82,4 +85,40 @@ public class RAMFile implements Accountable {
     return sizeInBytes;
   }
   
+  @Override
+  public Collection<Accountable> getChildResources() {
+    return Collections.emptyList();
+  }
+
+  @Override
+  public String toString() {
+    return getClass().getSimpleName() + "(length=" + length + ")";
+  }
+
+  @Override
+  public int hashCode() {
+    int h = (int) (length ^ (length >>> 32));
+    for (byte[] block : buffers) {
+      h = 31 * h + Arrays.hashCode(block);
+    }
+    return h;
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) return true;
+    if (obj == null) return false;
+    if (getClass() != obj.getClass()) return false;
+    RAMFile other = (RAMFile) obj;
+    if (length != other.length) return false;
+    if (buffers.size() != other.buffers.size()) {
+      return false;
+    }
+    for (int i = 0; i < buffers.size(); i++) {
+      if (!Arrays.equals(buffers.get(i), other.buffers.get(i))) {
+        return false;
+      }
+    }
+    return true;
+  }
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.miscellaneous;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,12 @@ package org.apache.lucene.analysis.miscellaneous;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.miscellaneous;
+
 
 import java.util.Map;
 
+import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.util.TokenFilterFactory;
 import org.apache.lucene.util.Version;
@@ -36,32 +37,39 @@ import org.apache.lucene.util.Version;
 public class LengthFilterFactory extends TokenFilterFactory {
   final int min;
   final int max;
-  final boolean enablePositionIncrements;
   public static final String MIN_KEY = "min";
   public static final String MAX_KEY = "max";
+  private boolean enablePositionIncrements;
 
   /** Creates a new LengthFilterFactory */
   public LengthFilterFactory(Map<String, String> args) {
     super(args);
     min = requireInt(args, MIN_KEY);
     max = requireInt(args, MAX_KEY);
-    enablePositionIncrements = getBoolean(args, "enablePositionIncrements", true);
-    if (enablePositionIncrements == false &&
-        (luceneMatchVersion == null || luceneMatchVersion.onOrAfter(Version.LUCENE_4_4_0))) {
-      throw new IllegalArgumentException("enablePositionIncrements=false is not supported anymore as of Lucene 4.4");
+
+    if (luceneMatchVersion.onOrAfter(Version.LUCENE_5_0_0) == false) {
+      boolean defaultValue = luceneMatchVersion.onOrAfter(Version.LUCENE_4_4_0);
+      enablePositionIncrements = getBoolean(args, "enablePositionIncrements", defaultValue);
+      if (enablePositionIncrements == false && luceneMatchVersion.onOrAfter(Version.LUCENE_4_4_0)) {
+        throw new IllegalArgumentException("enablePositionIncrements=false is not supported anymore as of Lucene 4.4");
+      }
+    } else if (args.containsKey("enablePositionIncrements")) {
+      throw new IllegalArgumentException("enablePositionIncrements is not a valid option as of Lucene 5.0");
     }
+    
     if (!args.isEmpty()) {
       throw new IllegalArgumentException("Unknown parameters: " + args);
     }
   }
   
   @Override
-  public LengthFilter create(TokenStream input) {
-    if (luceneMatchVersion == null) {
+  public TokenFilter create(TokenStream input) {
+    if (luceneMatchVersion.onOrAfter(Version.LUCENE_4_4_0)) {
       return new LengthFilter(input, min, max);
+    } else {
+      @SuppressWarnings("deprecation")
+      final TokenFilter filter = new Lucene43LengthFilter(enablePositionIncrements, input, min, max);
+      return filter;
     }
-    @SuppressWarnings("deprecation")
-    final LengthFilter filter = new LengthFilter(luceneMatchVersion, enablePositionIncrements, input,min,max);
-    return filter;
   }
 }

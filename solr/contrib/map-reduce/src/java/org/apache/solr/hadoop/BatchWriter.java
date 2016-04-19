@@ -16,7 +16,18 @@
  */
 package org.apache.solr.hadoop;
 
+import org.apache.hadoop.mapreduce.TaskAttemptContext;
+import org.apache.hadoop.mapreduce.TaskID;
+import org.apache.solr.client.solrj.SolrServerException;
+import org.apache.solr.client.solrj.embedded.EmbeddedSolrServer;
+import org.apache.solr.client.solrj.response.UpdateResponse;
+import org.apache.solr.common.SolrInputDocument;
+import org.apache.solr.common.util.ExecutorUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -26,15 +37,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.hadoop.mapreduce.TaskAttemptContext;
-import org.apache.hadoop.mapreduce.TaskID;
-import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.embedded.EmbeddedSolrServer;
-import org.apache.solr.client.solrj.response.UpdateResponse;
-import org.apache.solr.common.SolrInputDocument;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 /**
  * Enables adding batches of documents to an EmbeddedSolrServer.
  */
@@ -43,7 +45,7 @@ class BatchWriter {
   private final EmbeddedSolrServer solr;
   private volatile Exception batchWriteException = null;
   
-  private static final Logger LOG = LoggerFactory.getLogger(BatchWriter.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   public Exception getBatchWriteException() {
     return batchWriteException;
@@ -161,7 +163,7 @@ class BatchWriter {
 
     // we need to obtain the settings before the constructor
     if (writerThreads != 0) {
-      batchPool = new ThreadPoolExecutor(writerThreads, writerThreads, 5,
+      batchPool = new ExecutorUtil.MDCAwareThreadPoolExecutor(writerThreads, writerThreads, 5,
           TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>(queueSize),
           new ThreadPoolExecutor.CallerRunsPolicy());
     } else { // single threaded case
@@ -209,7 +211,7 @@ class BatchWriter {
     context.setStatus("Committing Solr Phase 2");
     solr.commit(true, false);
     context.setStatus("Shutting down Solr");
-    solr.shutdown();
+    solr.close();
   }
 
   /**

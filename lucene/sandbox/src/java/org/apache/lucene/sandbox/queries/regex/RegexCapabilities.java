@@ -1,7 +1,3 @@
-package org.apache.lucene.sandbox.queries.regex;
-
-import org.apache.lucene.util.BytesRef;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -18,11 +14,16 @@ import org.apache.lucene.util.BytesRef;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.sandbox.queries.regex;
+
+import org.apache.lucene.util.BytesRef;
 
 /**
  * Defines basic operations needed by {@link RegexQuery} for a regular
  * expression implementation.
+ * @deprecated Use core's regex query.
  */
+@Deprecated
 public interface RegexCapabilities {
   /**
    * Called by the constructor of {@link RegexTermsEnum} allowing
@@ -44,7 +45,9 @@ public interface RegexCapabilities {
    * prefix.
    * <p>
    * NOTE: implementations cannot seek.
+   * @deprecated Use core's regex query.
    */
+  @Deprecated
   public interface RegexMatcher {
     /**
      *

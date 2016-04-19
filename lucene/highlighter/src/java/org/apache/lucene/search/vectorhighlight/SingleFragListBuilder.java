@@ -1,5 +1,3 @@
-package org.apache.lucene.search.vectorhighlight;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.vectorhighlight;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.vectorhighlight;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -27,7 +26,7 @@ import org.apache.lucene.search.vectorhighlight.FieldPhraseList.WeightedPhraseIn
 /**
  * An implementation class of {@link FragListBuilder} that generates one {@link WeightedFragInfo} object.
  * Typical use case of this class is that you can get an entire field contents
- * by using both of this class and {@link SimpleFragmentsBuilder}.<br/>
+ * by using both of this class and {@link SimpleFragmentsBuilder}.<br>
  * <pre class="prettyprint">
  * FastVectorHighlighter h = new FastVectorHighlighter( true, true,
  *   new SingleFragListBuilder(), new SimpleFragmentsBuilder() );

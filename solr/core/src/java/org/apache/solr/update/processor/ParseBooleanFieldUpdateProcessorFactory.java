@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update.processor;
 
 import org.apache.solr.common.SolrException;
@@ -64,7 +63,7 @@ import java.util.Set;
  *   &lt;arr name="falseValue"&gt;
  *     &lt;str&gt;False&lt;/str&gt;
  *     &lt;str&gt;No&lt;/str&gt;
- *   &lt:/arr&gt;
+ *   &lt;/arr&gt;
  * &lt;/processor&gt;</pre>
  */
 public class ParseBooleanFieldUpdateProcessorFactory extends FieldMutatingUpdateProcessorFactory {

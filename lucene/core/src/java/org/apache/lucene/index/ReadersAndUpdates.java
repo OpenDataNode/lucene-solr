@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -31,8 +31,6 @@ import org.apache.lucene.codecs.DocValuesConsumer;
 import org.apache.lucene.codecs.DocValuesFormat;
 import org.apache.lucene.codecs.FieldInfosFormat;
 import org.apache.lucene.codecs.LiveDocsFormat;
-import org.apache.lucene.document.BinaryDocValuesField;
-import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FlushInfo;
 import org.apache.lucene.store.IOContext;
@@ -57,16 +55,6 @@ class ReadersAndUpdates {
 
   // Set once (null, and then maybe set, and never set again):
   private SegmentReader reader;
-
-  // TODO: it's sometimes wasteful that we hold open two
-  // separate SRs (one for merging one for
-  // reading)... maybe just use a single SR?  The gains of
-  // not loading the terms index (for merging in the
-  // non-NRT case) are far less now... and if the app has
-  // any deletes it'll open real readers anyway.
-
-  // Set once (null, and then maybe set, and never set again):
-  private SegmentReader mergeReader;
 
   // Holds the current shared (readable and writable)
   // liveDocs.  This is null when there are no deleted
@@ -94,9 +82,22 @@ class ReadersAndUpdates {
   private final Map<String,DocValuesFieldUpdates> mergingDVUpdates = new HashMap<>();
   
   public ReadersAndUpdates(IndexWriter writer, SegmentCommitInfo info) {
-    this.info = info;
     this.writer = writer;
+    this.info = info;
     liveDocsShared = true;
+  }
+
+  /** Init from a previously opened SegmentReader.
+   *
+   * <p>NOTE: steals incoming ref from reader. */
+  public ReadersAndUpdates(IndexWriter writer, SegmentReader reader) {
+    this.writer = writer;
+    this.reader = reader;
+    info = reader.getSegmentInfo();
+    liveDocs = reader.getLiveDocs();
+    liveDocsShared = true;
+    pendingDeleteCount = reader.numDeletedDocs() - info.getDelCount();
+    assert pendingDeleteCount >= 0: "got " + pendingDeleteCount + " reader.numDeletedDocs()=" + reader.numDeletedDocs() + " info.getDelCount()=" + info.getDelCount() + " maxDoc=" + reader.maxDoc() + " numDocs=" + reader.numDocs();
   }
 
   public void incRef() {
@@ -124,16 +125,16 @@ class ReadersAndUpdates {
     int count;
     if (liveDocs != null) {
       count = 0;
-      for(int docID=0;docID<info.info.getDocCount();docID++) {
+      for(int docID=0;docID<info.info.maxDoc();docID++) {
         if (liveDocs.get(docID)) {
           count++;
         }
       }
     } else {
-      count = info.info.getDocCount();
+      count = info.info.maxDoc();
     }
 
-    assert info.info.getDocCount() - info.getDelCount() - pendingDeleteCount == count: "info.docCount=" + info.info.getDocCount() + " info.getDelCount()=" + info.getDelCount() + " pendingDeleteCount=" + pendingDeleteCount + " count=" + count;
+    assert info.info.maxDoc() - info.getDelCount() - pendingDeleteCount == count: "info.maxDoc=" + info.info.maxDoc() + " info.getDelCount()=" + info.getDelCount() + " pendingDeleteCount=" + pendingDeleteCount + " count=" + count;
     return true;
   }
 
@@ -141,7 +142,7 @@ class ReadersAndUpdates {
   public SegmentReader getReader(IOContext context) throws IOException {
     if (reader == null) {
       // We steal returned ref:
-      reader = new SegmentReader(info, writer.getConfig().getReaderTermsIndexDivisor(), context);
+      reader = new SegmentReader(info, context);
       if (liveDocs == null) {
         liveDocs = reader.getLiveDocs();
       }
@@ -152,37 +153,6 @@ class ReadersAndUpdates {
     return reader;
   }
   
-  // Get reader for merging (does not load the terms
-  // index):
-  public synchronized SegmentReader getMergeReader(IOContext context) throws IOException {
-    //System.out.println("  livedocs=" + rld.liveDocs);
-
-    if (mergeReader == null) {
-
-      if (reader != null) {
-        // Just use the already opened non-merge reader
-        // for merging.  In the NRT case this saves us
-        // pointless double-open:
-        //System.out.println("PROMOTE non-merge reader seg=" + rld.info);
-        // Ref for us:
-        reader.incRef();
-        mergeReader = reader;
-        //System.out.println(Thread.currentThread().getName() + ": getMergeReader share seg=" + info.name);
-      } else {
-        //System.out.println(Thread.currentThread().getName() + ": getMergeReader seg=" + info.name);
-        // We steal returned ref:
-        mergeReader = new SegmentReader(info, -1, context);
-        if (liveDocs == null) {
-          liveDocs = mergeReader.getLiveDocs();
-        }
-      }
-    }
-
-    // Ref for caller
-    mergeReader.incRef();
-    return mergeReader;
-  }
-
   public synchronized void release(SegmentReader sr) throws IOException {
     assert info == sr.getSegmentInfo();
     sr.decRef();
@@ -191,13 +161,13 @@ class ReadersAndUpdates {
   public synchronized boolean delete(int docID) {
     assert liveDocs != null;
     assert Thread.holdsLock(writer);
-    assert docID >= 0 && docID < liveDocs.length() : "out of bounds: docid=" + docID + " liveDocsLength=" + liveDocs.length() + " seg=" + info.info.name + " docCount=" + info.info.getDocCount();
+    assert docID >= 0 && docID < liveDocs.length() : "out of bounds: docid=" + docID + " liveDocsLength=" + liveDocs.length() + " seg=" + info.info.name + " maxDoc=" + info.info.maxDoc();
     assert !liveDocsShared;
     final boolean didDelete = liveDocs.get(docID);
     if (didDelete) {
       ((MutableBits) liveDocs).clear(docID);
       pendingDeleteCount++;
-      //System.out.println("  new del seg=" + info + " docID=" + docID + " pendingDelCount=" + pendingDeleteCount + " totDelCount=" + (info.docCount-liveDocs.count()));
+      //System.out.println("  new del seg=" + info + " docID=" + docID + " pendingDelCount=" + pendingDeleteCount + " totDelCount=" + (info.info.maxDoc()-liveDocs.count()));
     }
     return didDelete;
   }
@@ -206,23 +176,12 @@ class ReadersAndUpdates {
   public synchronized void dropReaders() throws IOException {
     // TODO: can we somehow use IOUtils here...?  problem is
     // we are calling .decRef not .close)...
-    try {
-      if (reader != null) {
-        //System.out.println("  pool.drop info=" + info + " rc=" + reader.getRefCount());
-        try {
-          reader.decRef();
-        } finally {
-          reader = null;
-        }
-      }
-    } finally {
-      if (mergeReader != null) {
-        //System.out.println("  pool.drop info=" + info + " merge rc=" + mergeReader.getRefCount());
-        try {
-          mergeReader.decRef();
-        } finally {
-          mergeReader = null;
-        }
+    if (reader != null) {
+      //System.out.println("  pool.drop info=" + info + " rc=" + reader.getRefCount());
+      try {
+        reader.decRef();
+      } finally {
+        reader = null;
       }
     }
 
@@ -241,7 +200,7 @@ class ReadersAndUpdates {
     // force new liveDocs in initWritableLiveDocs even if it's null
     liveDocsShared = true;
     if (liveDocs != null) {
-      return new SegmentReader(reader.getSegmentInfo(), reader, liveDocs, info.info.getDocCount() - info.getDelCount() - pendingDeleteCount);
+      return new SegmentReader(reader.getSegmentInfo(), reader, liveDocs, info.info.maxDoc() - info.getDelCount() - pendingDeleteCount);
     } else {
       // liveDocs == null and reader != null. That can only be if there are no deletes
       assert reader.getLiveDocs() == null;
@@ -252,7 +211,7 @@ class ReadersAndUpdates {
 
   public synchronized void initWritableLiveDocs() throws IOException {
     assert Thread.holdsLock(writer);
-    assert info.info.getDocCount() > 0;
+    assert info.info.maxDoc() > 0;
     //System.out.println("initWritableLivedocs seg=" + info + " liveDocs=" + liveDocs + " shared=" + shared);
     if (liveDocsShared) {
       // Copy on write: this means we've cloned a
@@ -262,7 +221,7 @@ class ReadersAndUpdates {
       LiveDocsFormat liveDocsFormat = info.info.getCodec().liveDocsFormat();
       if (liveDocs == null) {
         //System.out.println("create BV seg=" + info);
-        liveDocs = liveDocsFormat.newLiveDocs(info.info.getDocCount());
+        liveDocs = liveDocsFormat.newLiveDocs(info.info.maxDoc());
       } else {
         liveDocs = liveDocsFormat.newLiveDocs(liveDocs);
       }
@@ -300,7 +259,6 @@ class ReadersAndUpdates {
   // Commit live docs (writes new _X_N.del files) and field updates (writes new
   // _X_N updates files) to the directory; returns true if it wrote any file
   // and false if there were no new deletes or updates to write:
-  // TODO (DVU_RENAME) to writeDeletesAndUpdates
   public synchronized boolean writeLiveDocs(Directory dir) throws IOException {
     assert Thread.holdsLock(writer);
     //System.out.println("rld.writeLiveDocs seg=" + info + " pendingDelCount=" + pendingDeleteCount + " numericUpdates=" + numericUpdates);
@@ -309,7 +267,7 @@ class ReadersAndUpdates {
     }
     
     // We have new deletes
-    assert liveDocs.length() == info.info.getDocCount();
+    assert liveDocs.length() == info.info.maxDoc();
     
     // Do this so we can delete any created files on
     // exception; this saves all codecs from having to do
@@ -350,22 +308,21 @@ class ReadersAndUpdates {
   @SuppressWarnings("synthetic-access")
   private void handleNumericDVUpdates(FieldInfos infos, Map<String,NumericDocValuesFieldUpdates> updates,
       Directory dir, DocValuesFormat dvFormat, final SegmentReader reader, Map<Integer,Set<String>> fieldFiles) throws IOException {
-    int termsIndexDivisor = writer.getConfig().getReaderTermsIndexDivisor();
     for (Entry<String,NumericDocValuesFieldUpdates> e : updates.entrySet()) {
       final String field = e.getKey();
       final NumericDocValuesFieldUpdates fieldUpdates = e.getValue();
 
       final long nextDocValuesGen = info.getNextDocValuesGen();
       final String segmentSuffix = Long.toString(nextDocValuesGen, Character.MAX_RADIX);
-      final long estUpdatesSize = fieldUpdates.ramBytesPerDoc() * info.info.getDocCount();
-      final IOContext updatesContext = new IOContext(new FlushInfo(info.info.getDocCount(), estUpdatesSize));
+      final long estUpdatesSize = fieldUpdates.ramBytesPerDoc() * info.info.maxDoc();
+      final IOContext updatesContext = new IOContext(new FlushInfo(info.info.maxDoc(), estUpdatesSize));
       final FieldInfo fieldInfo = infos.fieldInfo(field);
       assert fieldInfo != null;
       fieldInfo.setDocValuesGen(nextDocValuesGen);
       final FieldInfos fieldInfos = new FieldInfos(new FieldInfo[] { fieldInfo });
       // separately also track which files were created for this gen
       final TrackingDirectoryWrapper trackingDir = new TrackingDirectoryWrapper(dir);
-      final SegmentWriteState state = new SegmentWriteState(null, trackingDir, info.info, fieldInfos, termsIndexDivisor, null, updatesContext, segmentSuffix);
+      final SegmentWriteState state = new SegmentWriteState(null, trackingDir, info.info, fieldInfos, null, updatesContext, segmentSuffix);
       try (final DocValuesConsumer fieldsConsumer = dvFormat.fieldsConsumer(state)) {
         // write the numeric updates to a new gen'd docvalues file
         fieldsConsumer.addNumericField(fieldInfo, new Iterable<Number>() {
@@ -424,22 +381,21 @@ class ReadersAndUpdates {
   @SuppressWarnings("synthetic-access")
   private void handleBinaryDVUpdates(FieldInfos infos, Map<String,BinaryDocValuesFieldUpdates> updates, 
       TrackingDirectoryWrapper dir, DocValuesFormat dvFormat, final SegmentReader reader, Map<Integer,Set<String>> fieldFiles) throws IOException {
-    int termsIndexDivisor = writer.getConfig().getReaderTermsIndexDivisor();
     for (Entry<String,BinaryDocValuesFieldUpdates> e : updates.entrySet()) {
       final String field = e.getKey();
       final BinaryDocValuesFieldUpdates fieldUpdates = e.getValue();
 
       final long nextDocValuesGen = info.getNextDocValuesGen();
       final String segmentSuffix = Long.toString(nextDocValuesGen, Character.MAX_RADIX);
-      final long estUpdatesSize = fieldUpdates.ramBytesPerDoc() * info.info.getDocCount();
-      final IOContext updatesContext = new IOContext(new FlushInfo(info.info.getDocCount(), estUpdatesSize));
+      final long estUpdatesSize = fieldUpdates.ramBytesPerDoc() * info.info.maxDoc();
+      final IOContext updatesContext = new IOContext(new FlushInfo(info.info.maxDoc(), estUpdatesSize));
       final FieldInfo fieldInfo = infos.fieldInfo(field);
       assert fieldInfo != null;
       fieldInfo.setDocValuesGen(nextDocValuesGen);
       final FieldInfos fieldInfos = new FieldInfos(new FieldInfo[] { fieldInfo });
       // separately also track which files were created for this gen
       final TrackingDirectoryWrapper trackingDir = new TrackingDirectoryWrapper(dir);
-      final SegmentWriteState state = new SegmentWriteState(null, trackingDir, info.info, fieldInfos, termsIndexDivisor, null, updatesContext, segmentSuffix);
+      final SegmentWriteState state = new SegmentWriteState(null, trackingDir, info.info, fieldInfos, null, updatesContext, segmentSuffix);
       try (final DocValuesConsumer fieldsConsumer = dvFormat.fieldsConsumer(state)) {
         // write the binary updates to a new gen'd docvalues file
         fieldsConsumer.addBinaryField(fieldInfo, new Iterable<BytesRef>() {
@@ -503,10 +459,10 @@ class ReadersAndUpdates {
     // HEADER + FOOTER: 40
     // 90 bytes per-field (over estimating long name and attributes map)
     final long estInfosSize = 40 + 90 * fieldInfos.size();
-    final IOContext infosContext = new IOContext(new FlushInfo(info.info.getDocCount(), estInfosSize));
+    final IOContext infosContext = new IOContext(new FlushInfo(info.info.maxDoc(), estInfosSize));
     // separately also track which files were created for this gen
     final TrackingDirectoryWrapper trackingDir = new TrackingDirectoryWrapper(dir);
-    infosFormat.getFieldInfosWriter().write(trackingDir, info.info.name, segmentSuffix, fieldInfos, infosContext);
+    infosFormat.write(trackingDir, info.info, segmentSuffix, fieldInfos, infosContext);
     info.advanceFieldInfosGen();
     return trackingDir.getCreatedFiles();
   }
@@ -532,7 +488,7 @@ class ReadersAndUpdates {
 
       // reader could be null e.g. for a just merged segment (from
       // IndexWriter.commitMergedDeletes).
-      final SegmentReader reader = this.reader == null ? new SegmentReader(info, writer.getConfig().getReaderTermsIndexDivisor(), IOContext.READONCE) : this.reader;
+      final SegmentReader reader = this.reader == null ? new SegmentReader(info, IOContext.READONCE) : this.reader;
       try {
         // clone FieldInfos so that we can update their dvGen separately from
         // the reader's infos and write them to a new fieldInfos_gen file
@@ -542,20 +498,20 @@ class ReadersAndUpdates {
         for (FieldInfo fi : reader.getFieldInfos()) {
           FieldInfo clone = builder.add(fi);
           // copy the stuff FieldInfos.Builder doesn't copy
-          if (fi.attributes() != null) {
-            for (Entry<String,String> e : fi.attributes().entrySet()) {
-              clone.putAttribute(e.getKey(), e.getValue());
-            }
+          for (Entry<String,String> e : fi.attributes().entrySet()) {
+            clone.putAttribute(e.getKey(), e.getValue());
           }
           clone.setDocValuesGen(fi.getDocValuesGen());
         }
         // create new fields or update existing ones to have NumericDV type
         for (String f : dvUpdates.numericDVUpdates.keySet()) {
-          builder.addOrUpdate(f, NumericDocValuesField.TYPE);
+          FieldInfo fieldInfo = builder.getOrAdd(f);
+          fieldInfo.setDocValuesType(DocValuesType.NUMERIC);
         }
         // create new fields or update existing ones to have BinaryDV type
         for (String f : dvUpdates.binaryDVUpdates.keySet()) {
-          builder.addOrUpdate(f, BinaryDocValuesField.TYPE);
+          FieldInfo fieldInfo = builder.getOrAdd(f);
+          fieldInfo.setDocValuesType(DocValuesType.BINARY);
         }
         
         fieldInfos = builder.finish();
@@ -632,7 +588,7 @@ class ReadersAndUpdates {
 
     // if there is a reader open, reopen it to reflect the updates
     if (reader != null) {
-      SegmentReader newReader = new SegmentReader(info, reader, liveDocs, info.info.getDocCount() - info.getDelCount() - pendingDeleteCount);
+      SegmentReader newReader = new SegmentReader(info, reader, liveDocs, info.info.maxDoc() - info.getDelCount() - pendingDeleteCount);
       boolean reopened = false;
       try {
         reader.decRef();

@@ -1,4 +1,3 @@
-package org.apache.solr.schema;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,16 +14,18 @@ package org.apache.solr.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.schema;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.lang.invoke.MethodHandles;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.solr.common.util.SuppressForbidden;
 import org.noggit.JSONParser;
 import org.apache.lucene.analysis.util.ResourceLoader;
 import org.apache.solr.common.SolrException;
@@ -53,7 +54,7 @@ import org.slf4j.LoggerFactory;
  * @see <a href="https://openexchangerates.org/documentation">openexchangerates.org JSON Data Format</a>
  */
 public class OpenExchangeRatesOrgProvider implements ExchangeRateProvider {
-  public static Logger log = LoggerFactory.getLogger(OpenExchangeRatesOrgProvider.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   protected static final String PARAM_RATES_FILE_LOCATION   = "ratesFileLocation";
   protected static final String PARAM_REFRESH_INTERVAL      = "refreshInterval";
   protected static final String DEFAULT_REFRESH_INTERVAL    = "1440";
@@ -84,12 +85,9 @@ public class OpenExchangeRatesOrgProvider implements ExchangeRateProvider {
     if (sourceCurrencyCode == null || targetCurrencyCode == null) {
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Cannot get exchange rate; currency was null.");
     }
-    
-    if ((rates.getTimestamp() + refreshIntervalSeconds)*1000 < System.currentTimeMillis()) {
-      log.debug("Refresh interval has expired. Refreshing exchange rates.");
-      reload();
-    }
-    
+
+    reloadIfExpired();
+
     Double source = (Double) rates.getRates().get(sourceCurrencyCode);
     Double target = (Double) rates.getRates().get(targetCurrencyCode);
 
@@ -100,6 +98,14 @@ public class OpenExchangeRatesOrgProvider implements ExchangeRateProvider {
     }
     
     return target / source;  
+  }
+
+  @SuppressForbidden(reason = "Need currentTimeMillis, for comparison with stamp in an external file")
+  private void reloadIfExpired() {
+    if ((rates.getTimestamp() + refreshIntervalSeconds)*1000 < System.currentTimeMillis()) {
+      log.debug("Refresh interval has expired. Refreshing exchange rates.");
+      reload();
+    }
   }
 
   @Override

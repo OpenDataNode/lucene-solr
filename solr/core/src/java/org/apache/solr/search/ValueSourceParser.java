@@ -18,7 +18,7 @@ package org.apache.solr.search;
 
 import com.spatial4j.core.distance.DistanceUtils;
 
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queries.function.BoostedQuery;
 import org.apache.lucene.queries.function.FunctionValues;
@@ -35,15 +35,26 @@ import org.apache.lucene.search.spell.JaroWinklerDistance;
 import org.apache.lucene.search.spell.LevensteinDistance;
 import org.apache.lucene.search.spell.NGramDistance;
 import org.apache.lucene.search.spell.StringDistance;
-import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
-import org.apache.lucene.util.UnicodeUtil;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.schema.*;
+import org.apache.solr.search.facet.AggValueSource;
+import org.apache.solr.search.facet.AvgAgg;
+import org.apache.solr.search.facet.CountAgg;
+import org.apache.solr.search.facet.HLLAgg;
+import org.apache.solr.search.facet.MaxAgg;
+import org.apache.solr.search.facet.MinAgg;
+import org.apache.solr.search.facet.PercentileAgg;
+import org.apache.solr.search.facet.SumAgg;
+import org.apache.solr.search.facet.SumsqAgg;
+import org.apache.solr.search.facet.UniqueAgg;
 import org.apache.solr.search.function.CollapseScoreFunction;
+import org.apache.solr.search.function.OrdFieldSource;
+import org.apache.solr.search.function.ReverseOrdFieldSource;
 import org.apache.solr.search.function.distance.*;
+import org.apache.solr.util.DateFormatUtil;
 import org.apache.solr.util.plugin.NamedListInitializedPlugin;
 
 import java.io.IOException;
@@ -387,6 +398,17 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
 
         String fieldName = fp.parseArg();
         SchemaField f = fp.getReq().getSchema().getField(fieldName);
+        if (fp.hasMoreArguments()) {
+          // multivalued selector option
+          String s = fp.parseArg();
+          FieldType.MultiValueSelector selector = FieldType.MultiValueSelector.lookup(s);
+          if (null == selector) {
+            throw new SolrException(SolrException.ErrorCode.BAD_REQUEST,
+                                    "Multi-Valued field selector '"+s+"' not spported");
+          }
+          return f.getType().getSingleValueSource(selector, f, fp);
+        }
+        // simple field ValueSource
         return f.getType().getValueSource(f, fp);
       }
     });
@@ -552,6 +574,7 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
         return new MinFloatFunction(sources.toArray(new ValueSource[sources.size()]));
       }
     });
+
     addParser("sqedist", new ValueSourceParser() {
       @Override
       public ValueSource parse(FunctionQParser fp) throws SyntaxError {
@@ -592,7 +615,7 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
       @Override
       public ValueSource parse(FunctionQParser fp) throws SyntaxError {
         TInfo tinfo = parseTerm(fp);
-        return new DocFreqValueSource(tinfo.field, tinfo.val, tinfo.indexedField, tinfo.indexedBytes);
+        return new DocFreqValueSource(tinfo.field, tinfo.val, tinfo.indexedField, tinfo.indexedBytes.get());
       }
     });
 
@@ -600,7 +623,7 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
       @Override
       public ValueSource parse(FunctionQParser fp) throws SyntaxError {
         TInfo tinfo = parseTerm(fp);
-        return new TotalTermFreqValueSource(tinfo.field, tinfo.val, tinfo.indexedField, tinfo.indexedBytes);
+        return new TotalTermFreqValueSource(tinfo.field, tinfo.val, tinfo.indexedField, tinfo.indexedBytes.get());
       }
     });
     alias("totaltermfreq","ttf");
@@ -618,7 +641,7 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
       @Override
       public ValueSource parse(FunctionQParser fp) throws SyntaxError {
         TInfo tinfo = parseTerm(fp);
-        return new IDFValueSource(tinfo.field, tinfo.val, tinfo.indexedField, tinfo.indexedBytes);
+        return new IDFValueSource(tinfo.field, tinfo.val, tinfo.indexedField, tinfo.indexedBytes.get());
       }
     });
 
@@ -626,7 +649,7 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
       @Override
       public ValueSource parse(FunctionQParser fp) throws SyntaxError {
         TInfo tinfo = parseTerm(fp);
-        return new TermFreqValueSource(tinfo.field, tinfo.val, tinfo.indexedField, tinfo.indexedBytes);
+        return new TermFreqValueSource(tinfo.field, tinfo.val, tinfo.indexedField, tinfo.indexedBytes.get());
       }
     });
 
@@ -634,7 +657,7 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
       @Override
       public ValueSource parse(FunctionQParser fp) throws SyntaxError {
         TInfo tinfo = parseTerm(fp);
-        return new TFValueSource(tinfo.field, tinfo.val, tinfo.indexedField, tinfo.indexedBytes);
+        return new TFValueSource(tinfo.field, tinfo.val, tinfo.indexedField, tinfo.indexedBytes.get());
       }
     });
 
@@ -787,14 +810,101 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
       }
     });
 
+
+    addParser("agg", new ValueSourceParser() {
+      @Override
+      public AggValueSource parse(FunctionQParser fp) throws SyntaxError {
+        return fp.parseAgg(FunctionQParser.FLAG_DEFAULT);
+      }
+    });
+
+    addParser("agg_count", new ValueSourceParser() {
+      @Override
+      public ValueSource parse(FunctionQParser fp) throws SyntaxError {
+        return new CountAgg();
+      }
+    });
+
+    addParser("agg_unique", new ValueSourceParser() {
+      @Override
+      public ValueSource parse(FunctionQParser fp) throws SyntaxError {
+        return new UniqueAgg(fp.parseArg());
+      }
+    });
+
+    addParser("agg_hll", new ValueSourceParser() {
+      @Override
+      public ValueSource parse(FunctionQParser fp) throws SyntaxError {
+        return new HLLAgg(fp.parseArg());
+      }
+    });
+
+    addParser("agg_sum", new ValueSourceParser() {
+      @Override
+      public ValueSource parse(FunctionQParser fp) throws SyntaxError {
+        return new SumAgg(fp.parseValueSource());
+      }
+    });
+
+    addParser("agg_avg", new ValueSourceParser() {
+      @Override
+      public ValueSource parse(FunctionQParser fp) throws SyntaxError {
+        return new AvgAgg(fp.parseValueSource());
+      }
+    });
+
+    addParser("agg_sumsq", new ValueSourceParser() {
+      @Override
+      public ValueSource parse(FunctionQParser fp) throws SyntaxError {
+        return new SumsqAgg(fp.parseValueSource());
+      }
+    });
+
+    /***
+     addParser("agg_stdev", new ValueSourceParser() {
+    @Override
+    public ValueSource parse(FunctionQParser fp) throws SyntaxError {
+    return null;
+    }
+    });
+
+     addParser("agg_multistat", new ValueSourceParser() {
+    @Override
+    public ValueSource parse(FunctionQParser fp) throws SyntaxError {
+    return null;
+    }
+    });
+     ***/
+
+    addParser("agg_min", new ValueSourceParser() {
+      @Override
+      public ValueSource parse(FunctionQParser fp) throws SyntaxError {
+        return new MinAgg(fp.parseValueSource());
+      }
+    });
+
+    addParser("agg_max", new ValueSourceParser() {
+      @Override
+      public ValueSource parse(FunctionQParser fp) throws SyntaxError {
+        return new MaxAgg(fp.parseValueSource());
+      }
+    });
+
+    addParser("agg_percentile", new PercentileAgg.Parser());
+
   }
+
+  ///////////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////////////
+
 
   private static TInfo parseTerm(FunctionQParser fp) throws SyntaxError {
     TInfo tinfo = new TInfo();
 
     tinfo.indexedField = tinfo.field = fp.parseArg();
     tinfo.val = fp.parseArg();
-    tinfo.indexedBytes = new BytesRef();
+    tinfo.indexedBytes = new BytesRefBuilder();
 
     FieldType ft = fp.getReq().getSchema().getFieldTypeNoEx(tinfo.field);
     if (ft == null) ft = new StrField();
@@ -870,15 +980,13 @@ public abstract class ValueSourceParser implements NamedListInitializedPlugin {
     String field;
     String val;
     String indexedField;
-    BytesRef indexedBytes;
+    BytesRefBuilder indexedBytes;
   }
 
 }
 
 
 class DateValueSourceParser extends ValueSourceParser {
-  DateField df = new TrieDateField();
-
   @Override
   public void init(NamedList args) {
   }
@@ -886,7 +994,7 @@ class DateValueSourceParser extends ValueSourceParser {
   public Date getDate(FunctionQParser fp, String arg) {
     if (arg == null) return null;
     if (arg.startsWith("NOW") || (arg.length() > 0 && Character.isDigit(arg.charAt(0)))) {
-      return df.parseMathLenient(null, arg, fp.req);
+      return DateFormatUtil.parseMathLenient(null, arg, fp.req);
     }
     return null;
   }
@@ -894,9 +1002,6 @@ class DateValueSourceParser extends ValueSourceParser {
   public ValueSource getValueSource(FunctionQParser fp, String arg) {
     if (arg == null) return null;
     SchemaField f = fp.req.getSchema().getField(arg);
-    if (f.getType().getClass() == DateField.class) {
-      throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Can't use ms() function on non-numeric legacy date field " + arg);
-    }
     return f.getType().getValueSource(f, fp);
   }
 
@@ -1000,7 +1105,7 @@ class LongConstValueSource extends ConstNumberSource {
   }
 
   @Override
-  public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+  public FunctionValues getValues(Map context, LeafReaderContext readerContext) throws IOException {
     return new LongDocValues(this) {
       @Override
       public float floatVal(int doc) {
@@ -1107,7 +1212,7 @@ abstract class DoubleParser extends NamedParser {
     }
 
     @Override
-    public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+    public FunctionValues getValues(Map context, LeafReaderContext readerContext) throws IOException {
       final FunctionValues vals =  source.getValues(context, readerContext);
       return new DoubleDocValues(this) {
         @Override
@@ -1155,7 +1260,7 @@ abstract class Double2Parser extends NamedParser {
     }
 
     @Override
-    public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+    public FunctionValues getValues(Map context, LeafReaderContext readerContext) throws IOException {
       final FunctionValues aVals =  a.getValues(context, readerContext);
       final FunctionValues bVals =  b.getValues(context, readerContext);
       return new DoubleDocValues(this) {
@@ -1209,7 +1314,7 @@ class BoolConstValueSource extends ConstNumberSource {
   }
 
   @Override
-  public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+  public FunctionValues getValues(Map context, LeafReaderContext readerContext) throws IOException {
     return new BoolDocValues(this) {
       @Override
       public boolean boolVal(int doc) {
@@ -1270,7 +1375,7 @@ class TestValueSource extends ValueSource {
   }
   
   @Override
-  public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+  public FunctionValues getValues(Map context, LeafReaderContext readerContext) throws IOException {
     if (context.get(this) == null) {
       SolrRequestInfo requestInfo = SolrRequestInfo.getRequestInfo();
       throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "testfunc: unweighted value source detected.  delegate="+source + " request=" + (requestInfo==null ? "null" : requestInfo.getReq()));

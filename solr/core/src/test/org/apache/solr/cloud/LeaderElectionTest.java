@@ -1,24 +1,23 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements. See the NOTICE file distributed with this
- * work for additional information regarding copyright ownership. The ASF
- * licenses this file to You under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- * 
- * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- * License for the specific language governing permissions and limitations under
- * the License.
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
+package org.apache.solr.cloud;
 
-import java.io.File;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -38,12 +37,17 @@ import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.util.DefaultSolrThreadFactory;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.KeeperException.NoNodeException;
+import org.apache.zookeeper.KeeperException.SessionExpiredException;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Slow
 public class LeaderElectionTest extends SolrTestCaseJ4 {
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   static final int TIMEOUT = 30000;
   private ZkTestServer server;
@@ -66,7 +70,7 @@ public class LeaderElectionTest extends SolrTestCaseJ4 {
   @Override
   public void setUp() throws Exception {
     super.setUp();
-    String zkDir = createTempDir("zkData").getAbsolutePath();;
+    String zkDir = createTempDir("zkData").toFile().getAbsolutePath();;
     
     server = new ZkTestServer(zkDir);
     server.setTheTickTime(1000);
@@ -169,10 +173,6 @@ public class LeaderElectionTest extends SolrTestCaseJ4 {
     public void run() {
       try {
         setupOnConnect();
-      } catch (InterruptedException e) {
-        log.error("setup failed", e);
-        es.close();
-        return;
       } catch (Throwable e) {
         log.error("setup failed", e);
         es.close();
@@ -229,7 +229,7 @@ public class LeaderElectionTest extends SolrTestCaseJ4 {
     props = new ZkNodeProps(ZkStateReader.BASE_URL_PROP,
         "http://127.0.0.1/solr/", ZkStateReader.CORE_NAME_PROP, "2");
     ElectionContext context = new ShardLeaderElectionContextBase(second,
-        "slice1", "collection2", "dummynode1", props, zkStateReader);
+        "slice1", "collection2", "dummynode2", props, zkStateReader);
     second.setup(context);
     second.joinElection(context, false);
     Thread.sleep(1000);
@@ -250,7 +250,7 @@ public class LeaderElectionTest extends SolrTestCaseJ4 {
         ZkCoreNodeProps leaderProps = new ZkCoreNodeProps(
             ZkNodeProps.load(data));
         return leaderProps.getCoreUrl();
-      } catch (NoNodeException e) {
+      } catch (NoNodeException | SessionExpiredException e) {
         Thread.sleep(500);
       }
     }
@@ -482,8 +482,11 @@ public class LeaderElectionTest extends SolrTestCaseJ4 {
             int j;
             j = random().nextInt(threads.size());
             try {
-              threads.get(j).es.zkClient.getSolrZooKeeper().pauseCnxn(
-                  ZkTestServer.TICK_TIME * 2);
+              threads.get(j).es.zkClient.getSolrZooKeeper().closeCnxn();
+              if (random().nextBoolean()) {
+                long sessionId = zkClient.getSolrZooKeeper().getSessionId();
+                server.expire(sessionId);
+              }
             } catch (Exception e) {
               e.printStackTrace();
             }

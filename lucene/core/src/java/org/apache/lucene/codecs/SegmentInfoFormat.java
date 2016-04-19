@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,18 @@ package org.apache.lucene.codecs;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs;
+
+
+import java.io.IOException;
 
 import org.apache.lucene.index.SegmentInfo;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
 
 /**
  * Expert: Controls the format of the 
  * {@link SegmentInfo} (segment metadata file).
- * <p>
- * 
  * @see SegmentInfo
  * @lucene.experimental
  */
@@ -33,11 +35,20 @@ public abstract class SegmentInfoFormat {
   protected SegmentInfoFormat() {
   }
 
-  /** Returns the {@link SegmentInfoReader} for reading
-   *  {@link SegmentInfo} instances. */
-  public abstract SegmentInfoReader getSegmentInfoReader();
+  /**
+   * Read {@link SegmentInfo} data from a directory.
+   * @param directory directory to read from
+   * @param segmentName name of the segment to read
+   * @param segmentID expected identifier for the segment
+   * @return infos instance to be populated with data
+   * @throws IOException If an I/O error occurs
+   */
+  public abstract SegmentInfo read(Directory directory, String segmentName, byte segmentID[], IOContext context) throws IOException;
 
-  /** Returns the {@link SegmentInfoWriter} for writing
-   *  {@link SegmentInfo} instances. */
-  public abstract SegmentInfoWriter getSegmentInfoWriter();
+  /**
+   * Write {@link SegmentInfo} data.
+   * The codec must add its SegmentInfo filename(s) to {@code info} before doing i/o. 
+   * @throws IOException If an I/O error occurs
+   */
+  public abstract void write(Directory dir, SegmentInfo info, IOContext ioContext) throws IOException;
 }

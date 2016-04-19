@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.schema;
 
 import org.apache.solr.SolrTestCaseJ4;
@@ -31,15 +30,19 @@ import java.util.Map;
 
 
 public class IndexSchemaTest extends SolrTestCaseJ4 {
+
+  final private static String solrConfigFileName = "solrconfig.xml";
+  final private static String schemaFileName = "schema.xml";
+
   @BeforeClass
   public static void beforeClass() throws Exception {
-    initCore("solrconfig.xml","schema.xml");
+    initCore(solrConfigFileName, schemaFileName);
   }
 
   /**
    * This test assumes the schema includes:
-   * <dynamicField name="dynamic_*" type="string" indexed="true" stored="true"/>
-   * <dynamicField name="*_dynamic" type="string" indexed="true" stored="true"/>
+   * &lt;dynamicField name="dynamic_*" type="string" indexed="true" stored="true"/&gt;
+   * &lt;dynamicField name="*_dynamic" type="string" indexed="true" stored="true"/&gt;
    */
   @Test
   public void testDynamicCopy()
@@ -92,5 +95,20 @@ public class IndexSchemaTest extends SolrTestCaseJ4 {
     SolrCore core = h.getCore();
     IndexSchema schema = core.getLatestSchema();
     assertFalse(schema.getField("id").multiValued());
+    
+    // Test TrieDate fields. The following asserts are expecting a field type defined as:
+    String expectedDefinition = "<fieldtype name=\"tdatedv\" class=\"solr.TrieDateField\" " +
+        "precisionStep=\"6\" docValues=\"true\" multiValued=\"true\"/>";
+    FieldType tdatedv = schema.getFieldType("foo_tdtdvs");
+    assertTrue("Expecting a field type defined as " + expectedDefinition, 
+        tdatedv instanceof TrieDateField);
+    assertTrue("Expecting a field type defined as " + expectedDefinition,
+        tdatedv.hasProperty(FieldProperties.DOC_VALUES));
+    assertTrue("Expecting a field type defined as " + expectedDefinition,
+        tdatedv.isMultiValued());
+    assertEquals("Expecting a field type defined as " + expectedDefinition,
+        6, ((TrieDateField)tdatedv).getPrecisionStep());
   }
+  
+  
 }

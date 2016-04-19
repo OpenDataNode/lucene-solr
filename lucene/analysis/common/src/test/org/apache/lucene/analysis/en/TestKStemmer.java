@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.en;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,12 @@ package org.apache.lucene.analysis.en;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.en;
+
 
 import static org.apache.lucene.analysis.VocabularyAssert.assertVocabulary;
 
 import java.io.IOException;
-import java.io.Reader;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
@@ -32,13 +31,25 @@ import org.apache.lucene.analysis.core.KeywordTokenizer;
  * Tests for {@link KStemmer}
  */
 public class TestKStemmer extends BaseTokenStreamTestCase {
-  Analyzer a = new Analyzer() {
-    @Override
-    protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, true);
-      return new TokenStreamComponents(tokenizer, new KStemFilter(tokenizer));
-    }
-  };
+  private Analyzer a;
+  
+  @Override
+  public void setUp() throws Exception {
+    super.setUp();
+    a = new Analyzer() {
+      @Override
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, true);
+        return new TokenStreamComponents(tokenizer, new KStemFilter(tokenizer));
+      }
+    };
+  }
+  
+  @Override
+  public void tearDown() throws Exception {
+    a.close();
+    super.tearDown();
+  }
  
   /** blast some random strings through the analyzer */
   public void testRandomStrings() throws Exception {
@@ -51,18 +62,19 @@ public class TestKStemmer extends BaseTokenStreamTestCase {
    * testCreateMap, commented out below).
    */
   public void testVocabulary() throws Exception {
-    assertVocabulary(a, getDataFile("kstemTestData.zip"), "kstem_examples.txt");
+    assertVocabulary(a, getDataPath("kstemTestData.zip"), "kstem_examples.txt");
   }
   
   public void testEmptyTerm() throws IOException {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new KeywordTokenizer(reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new KeywordTokenizer();
         return new TokenStreamComponents(tokenizer, new KStemFilter(tokenizer));
       }
     };
     checkOneTerm(a, "", "");
+    a.close();
   }
 
   /****** requires original java kstem source code to create map

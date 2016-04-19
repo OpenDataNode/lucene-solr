@@ -1,5 +1,3 @@
-package org.apache.lucene.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
+
 
 
 import java.text.ParseException;
@@ -33,113 +33,64 @@ import java.util.Locale;
 public final class Version {
 
   /**
-   * Match settings and bugs in Lucene's 3.0 release.
-   * @deprecated (4.0) Use latest
-   */
-  @Deprecated
-  public static final Version LUCENE_3_0_0 = new Version(3, 0, 0);
-
-  /**
-   * Match settings and bugs in Lucene's 3.1 release.
-   * @deprecated (4.0) Use latest
-   */
-  @Deprecated
-  public static final Version LUCENE_3_1_0 = new Version(3, 1, 0);
-
-  /**
-   * Match settings and bugs in Lucene's 3.2 release.
-   * @deprecated (4.0) Use latest
-   */
-  @Deprecated
-  public static final Version LUCENE_3_2_0 = new Version(3, 2, 0);
-
-  /**
-   * Match settings and bugs in Lucene's 3.3 release.
-   * @deprecated (4.0) Use latest
-   */
-  @Deprecated
-  public static final Version LUCENE_3_3_0 = new Version(3, 3, 0);
-
-  /**
-   * Match settings and bugs in Lucene's 3.4 release.
-   * @deprecated (4.0) Use latest
-   */
-  @Deprecated
-  public static final Version LUCENE_3_4_0 = new Version(3, 4, 0);
-
-  /**
-   * Match settings and bugs in Lucene's 3.5 release.
-   * @deprecated (4.0) Use latest
-   */
-  @Deprecated
-  public static final Version LUCENE_3_5_0 = new Version(3, 5, 0);
-
-  /**
-   * Match settings and bugs in Lucene's 3.6 release.
-   * @deprecated (4.0) Use latest
-   */
-  @Deprecated
-  public static final Version LUCENE_3_6_0 = new Version(3, 6, 0);
-
-  /**
    * Match settings and bugs in Lucene's 4.0.0-ALPHA release.
-   * @deprecated (4.1) Use latest
+   * @deprecated (5.0) Use latest
    */
   @Deprecated
   public static final Version LUCENE_4_0_0_ALPHA = new Version(4, 0, 0, 0);
 
   /**
    * Match settings and bugs in Lucene's 4.0.0-BETA release.
-   * @deprecated (4.1) Use latest
+   * @deprecated (5.0) Use latest
    */
   @Deprecated
   public static final Version LUCENE_4_0_0_BETA = new Version(4, 0, 0, 1);
 
   /**
    * Match settings and bugs in Lucene's 4.0.0 release.
-   * @deprecated (4.1) Use latest
+   * @deprecated (5.0) Use latest
    */
   @Deprecated
   public static final Version LUCENE_4_0_0 = new Version(4, 0, 0, 2);
-
+  
   /**
    * Match settings and bugs in Lucene's 4.1.0 release.
-   * @deprecated (4.2) Use latest
+   * @deprecated (5.0) Use latest
    */
   @Deprecated
   public static final Version LUCENE_4_1_0 = new Version(4, 1, 0);
 
   /**
    * Match settings and bugs in Lucene's 4.2.0 release.
-   * @deprecated (4.3) Use latest
+   * @deprecated (5.0) Use latest
    */
   @Deprecated
   public static final Version LUCENE_4_2_0 = new Version(4, 2, 0);
 
   /**
    * Match settings and bugs in Lucene's 4.2.1 release.
-   * @deprecated (4.3) Use latest
+   * @deprecated (5.0) Use latest
    */
   @Deprecated
   public static final Version LUCENE_4_2_1 = new Version(4, 2, 1);
 
   /**
    * Match settings and bugs in Lucene's 4.3.0 release.
-   * @deprecated (4.4) Use latest
+   * @deprecated (5.0) Use latest
    */
   @Deprecated
   public static final Version LUCENE_4_3_0 = new Version(4, 3, 0);
 
   /**
    * Match settings and bugs in Lucene's 4.3.1 release.
-   * @deprecated (4.6) Use latest
+   * @deprecated (5.0) Use latest
    */
   @Deprecated
   public static final Version LUCENE_4_3_1 = new Version(4, 3, 1);
 
   /**
    * Match settings and bugs in Lucene's 4.4.0 release.
-   * @deprecated (4.7) Use latest
+   * @deprecated (5.0) Use latest
    */
   @Deprecated
   public static final Version LUCENE_4_4_0 = new Version(4, 4, 0);
@@ -174,7 +125,7 @@ public final class Version {
   
   /**
    * Match settings and bugs in Lucene's 4.7.0 release.
-   * @deprecated (4.8) Use latest
+   * @deprecated (5.0) Use latest
    */
   @Deprecated
   public static final Version LUCENE_4_7_0 = new Version(4, 7, 0);
@@ -192,17 +143,17 @@ public final class Version {
    */
   @Deprecated
   public static final Version LUCENE_4_7_2 = new Version(4, 7, 2);
-
+  
   /**
    * Match settings and bugs in Lucene's 4.8.0 release.
-   * @deprecated (4.9) Use latest
+   * @deprecated (5.0) Use latest
    */
   @Deprecated
   public static final Version LUCENE_4_8_0 = new Version(4, 8, 0);
 
   /**
    * Match settings and bugs in Lucene's 4.8.1 release.
-   * @deprecated (4.10) Use latest
+   * @deprecated (5.0) Use latest
    */
   @Deprecated
   public static final Version LUCENE_4_8_1 = new Version(4, 8, 1);
@@ -222,25 +173,109 @@ public final class Version {
   public static final Version LUCENE_4_9_1 = new Version(4, 9, 1);
   
   /**
-   * Match settings and bugs in Lucene's 4.10 release.
-   * @deprecated Use latest
+   * Match settings and bugs in Lucene's 4.10.0 release.
+   * @deprecated (5.0) Use latest
    */
   @Deprecated
   public static final Version LUCENE_4_10_0 = new Version(4, 10, 0);
 
   /**
    * Match settings and bugs in Lucene's 4.10.1 release.
-   * @deprecated Use latest
+   * @deprecated (5.0) Use latest
    */
   @Deprecated
   public static final Version LUCENE_4_10_1 = new Version(4, 10, 1);
 
   /**
    * Match settings and bugs in Lucene's 4.10.2 release.
+   * @deprecated (5.0) Use latest
    */
+  @Deprecated
   public static final Version LUCENE_4_10_2 = new Version(4, 10, 2);
 
-  /* Add new constants for later versions **here** to respect order! */
+  /**
+   * Match settings and bugs in Lucene's 4.10.3 release.
+   * @deprecated (5.0) Use latest
+   */
+  @Deprecated
+  public static final Version LUCENE_4_10_3 = new Version(4, 10, 3);
+
+  /**
+   * Match settings and bugs in Lucene's 4.10.4 release.
+   * @deprecated (5.0) Use latest
+   */
+  @Deprecated
+  public static final Version LUCENE_4_10_4 = new Version(4, 10, 4);
+
+  /** Match settings and bugs in Lucene's 5.0 release.
+   *  <p>
+   *  Use this to get the latest &amp; greatest settings, bug
+   *  fixes, etc, for Lucene.
+   * @deprecated (5.1.0) Use latest
+   */
+  @Deprecated
+  public static final Version LUCENE_5_0_0 = new Version(5, 0, 0);
+
+  /**
+   * Match settings and bugs in Lucene's 5.1.0 release.
+   * @deprecated (5.2.0) Use latest
+   */
+  @Deprecated
+  public static final Version LUCENE_5_1_0 = new Version(5, 1, 0);
+
+  /**
+   * Match settings and bugs in Lucene's 5.2.0 release.
+   * @deprecated (5.3.0) Use latest
+   */
+  @Deprecated
+  public static final Version LUCENE_5_2_0 = new Version(5, 2, 0);
+
+  /**
+   * Match settings and bugs in Lucene's 5.2.1 release.
+   * @deprecated Use latest
+   */
+  @Deprecated
+  public static final Version LUCENE_5_2_1 = new Version(5, 2, 1);
+
+  /**
+   * Match settings and bugs in Lucene's 5.3.0 release.
+   * @deprecated (5.4.0) Use latest
+   */
+  @Deprecated
+  public static final Version LUCENE_5_3_0 = new Version(5, 3, 0);
+
+  /**
+   * Match settings and bugs in Lucene's 5.3.1 release.
+   * @deprecated Use latest
+   */
+  @Deprecated
+  public static final Version LUCENE_5_3_1 = new Version(5, 3, 1);
+
+  /**
+   * Match settings and bugs in Lucene's 5.3.2 release.
+   * @deprecated Use latest
+   */
+  @Deprecated
+  public static final Version LUCENE_5_3_2 = new Version(5, 3, 2);
+
+  /**
+   * Match settings and bugs in Lucene's 5.4.0 release.
+   * @deprecated (5.5.0) Use latest
+   */
+  @Deprecated
+  public static final Version LUCENE_5_4_0 = new Version(5, 4, 0);
+
+  /**
+   * Match settings and bugs in Lucene's 5.4.1 release.
+   * @deprecated Use latest
+   */
+  @Deprecated
+  public static final Version LUCENE_5_4_1 = new Version(5, 4, 1);
+
+  /**
+   * Match settings and bugs in Lucene's 5.5.0 release.
+   */
+  public static final Version LUCENE_5_5_0 = new Version(5, 5, 0);
 
   // To add a new version:
   //  * Only add above this comment
@@ -261,7 +296,7 @@ public final class Version {
    * some defaults may have changed and may break functionality 
    * in your application.
    */
-  public static final Version LATEST = LUCENE_4_10_2;
+  public static final Version LATEST = LUCENE_5_5_0;
 
   /**
    * Constant for backwards compatibility.
@@ -269,106 +304,6 @@ public final class Version {
    */
   @Deprecated
   public static final Version LUCENE_CURRENT = LATEST;
-  
-  // Deprecated old version constants, just for backwards compatibility:
-  // Those are no longer enum constants and don't work in switch statements,
-  // but should fix most uses.
-  // TODO: Do not update them anymore, deprecated in 4.9, so LUCENE_49 is not needed!
-  // Remove in 5.0!
-
-  // End: Deprecated version constants -> Remove in 5.0
-  
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_3_0_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_30 = LUCENE_3_0_0;
-  
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_3_1_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_31 = LUCENE_3_1_0;
-  
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_3_2_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_32 = LUCENE_3_2_0;
-  
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_3_3_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_33 = LUCENE_3_3_0;
-  
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_3_4_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_34 = LUCENE_3_4_0;
-  
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_3_5_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_35 = LUCENE_3_5_0;
-  
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_3_6_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_36 = LUCENE_3_6_0;
-  
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_4_0_0} instead (this constant actually points to {@link #LUCENE_4_0_0_ALPHA} to match whole 4.0 series). */
-  @Deprecated
-  public static final Version LUCENE_40 = LUCENE_4_0_0_ALPHA;
-  
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_4_1_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_41 = LUCENE_4_1_0;
-
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_4_2_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_42 = LUCENE_4_2_0;
-
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_4_3_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_43 = LUCENE_4_3_0;
-
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_4_4_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_44 = LUCENE_4_4_0;
-
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_4_5_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_45 = LUCENE_4_5_0;
-
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_4_6_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_46 = LUCENE_4_6_0;
-
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_4_7_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_47 = LUCENE_4_7_0;
-
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_4_8_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_48 = LUCENE_4_8_0;
-
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_3_0_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_3_0 = LUCENE_3_0_0;
-
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_3_1_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_3_1 = LUCENE_3_1_0;
-
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_3_2_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_3_2 = LUCENE_3_2_0;
-
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_3_3_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_3_3 = LUCENE_3_3_0;
-
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_3_4_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_3_4 = LUCENE_3_4_0;
-
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_3_5_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_3_5 = LUCENE_3_5_0;
-
-  /** @deprecated Bad naming of constant; use {@link #LUCENE_3_6_0} instead. */
-  @Deprecated
-  public static final Version LUCENE_3_6 = LUCENE_3_6_0;
 
   /** @deprecated Bad naming of constant; use {@link #LUCENE_4_0_0} instead (this constant actually points to {@link #LUCENE_4_0_0_ALPHA} to match whole 4.0 series). */
   @Deprecated
@@ -421,7 +356,6 @@ public final class Version {
    * @lucene.internal
    */
   public static Version parse(String version) throws ParseException {
-    if (version == null) return null;
 
     StrictStringTokenizer tokens = new StrictStringTokenizer(version, '.');
     if (tokens.hasMoreTokens() == false) {
@@ -433,7 +367,9 @@ public final class Version {
     try {
       major = Integer.parseInt(token);
     } catch (NumberFormatException nfe) {
-      throw new ParseException("Failed to parse major version from \"" + token + "\" (got: " + version + ")", 0);
+      ParseException p = new ParseException("Failed to parse major version from \"" + token + "\" (got: " + version + ")", 0);
+      p.initCause(nfe);
+      throw p;
     }
 
     if (tokens.hasMoreTokens() == false) {
@@ -445,7 +381,9 @@ public final class Version {
     try {
       minor = Integer.parseInt(token);
     } catch (NumberFormatException nfe) {
-      throw new ParseException("Failed to parse minor version from \"" + token + "\" (got: " + version + ")", 0);
+      ParseException p = new ParseException("Failed to parse minor version from \"" + token + "\" (got: " + version + ")", 0);
+      p.initCause(nfe);
+      throw p;
     }
 
     int bugfix = 0;
@@ -456,7 +394,9 @@ public final class Version {
       try {
         bugfix = Integer.parseInt(token);
       } catch (NumberFormatException nfe) {
-        throw new ParseException("Failed to parse bugfix version from \"" + token + "\" (got: " + version + ")", 0);
+        ParseException p = new ParseException("Failed to parse bugfix version from \"" + token + "\" (got: " + version + ")", 0);
+        p.initCause(nfe);
+        throw p;
       }
 
       if (tokens.hasMoreTokens()) {
@@ -464,7 +404,9 @@ public final class Version {
         try {
           prerelease = Integer.parseInt(token);
         } catch (NumberFormatException nfe) {
-          throw new ParseException("Failed to parse prerelease version from \"" + token + "\" (got: " + version + ")", 0);
+          ParseException p = new ParseException("Failed to parse prerelease version from \"" + token + "\" (got: " + version + ")", 0);
+          p.initCause(nfe);
+          throw p;
         }
         if (prerelease == 0) {
           throw new ParseException("Invalid value " + prerelease + " for prerelease; should be 1 or 2 (got: " + version + ")", 0);
@@ -519,6 +461,13 @@ public final class Version {
           throw pe2;
         }
     }
+  }
+  
+  /** Returns a new version based on raw numbers
+   *
+   *  @lucene.internal */
+  public static Version fromBits(int major, int minor, int bugfix) {
+    return new Version(major, minor, bugfix);
   }
 
   /** Major version, the difference between stable and trunk */

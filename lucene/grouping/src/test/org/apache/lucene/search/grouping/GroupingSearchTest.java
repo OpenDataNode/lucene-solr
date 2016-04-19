@@ -1,5 +1,3 @@
-package org.apache.lucene.search.grouping;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.grouping;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.grouping;
 
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.document.Document;
@@ -28,10 +27,8 @@ import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.valuesource.BytesRefFieldSource;
-import org.apache.lucene.search.CachingWrapperFilter;
-import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.QueryWrapperFilter;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.store.Directory;
@@ -58,7 +55,7 @@ public class GroupingSearchTest extends LuceneTestCase {
         random(),
         dir,
         newIndexWriterConfig(new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
-    boolean canUseIDV = !"Lucene3x".equals(w.w.getConfig().getCodec().getName());
+    boolean canUseIDV = true;
     List<Document> documents = new ArrayList<>();
     // 0
     Document doc = new Document();
@@ -123,7 +120,7 @@ public class GroupingSearchTest extends LuceneTestCase {
     Sort groupSort = Sort.RELEVANCE;
     GroupingSearch groupingSearch = createRandomGroupingSearch(groupField, groupSort, 5, canUseIDV);
 
-    TopGroups<?> groups = groupingSearch.search(indexSearcher, null, new TermQuery(new Term("content", "random")), 0, 10);
+    TopGroups<?> groups = groupingSearch.search(indexSearcher, new TermQuery(new Term("content", "random")), 0, 10);
 
     assertEquals(7, groups.totalHitCount);
     assertEquals(7, groups.totalGroupedHitCount);
@@ -138,7 +135,7 @@ public class GroupingSearchTest extends LuceneTestCase {
     assertEquals(2, group.scoreDocs.length);
     assertEquals(5, group.scoreDocs[0].doc);
     assertEquals(4, group.scoreDocs[1].doc);
-    assertTrue(group.scoreDocs[0].score > group.scoreDocs[1].score);
+    assertTrue(group.scoreDocs[0].score >= group.scoreDocs[1].score);
 
     group = groups.groups[1];
     compareGroupValue("author1", group);
@@ -146,8 +143,8 @@ public class GroupingSearchTest extends LuceneTestCase {
     assertEquals(0, group.scoreDocs[0].doc);
     assertEquals(1, group.scoreDocs[1].doc);
     assertEquals(2, group.scoreDocs[2].doc);
-    assertTrue(group.scoreDocs[0].score > group.scoreDocs[1].score);
-    assertTrue(group.scoreDocs[1].score > group.scoreDocs[2].score);
+    assertTrue(group.scoreDocs[0].score >= group.scoreDocs[1].score);
+    assertTrue(group.scoreDocs[1].score >= group.scoreDocs[2].score);
 
     group = groups.groups[2];
     compareGroupValue("author2", group);
@@ -159,9 +156,9 @@ public class GroupingSearchTest extends LuceneTestCase {
     assertEquals(1, group.scoreDocs.length);
     assertEquals(6, group.scoreDocs[0].doc);
 
-    Filter lastDocInBlock = new CachingWrapperFilter(new QueryWrapperFilter(new TermQuery(new Term("groupend", "x"))));
+    Query lastDocInBlock = new TermQuery(new Term("groupend", "x"));
     groupingSearch = new GroupingSearch(lastDocInBlock);
-    groups = groupingSearch.search(indexSearcher, null, new TermQuery(new Term("content", "random")), 0, 10);
+    groups = groupingSearch.search(indexSearcher, new TermQuery(new Term("content", "random")), 0, 10);
 
     assertEquals(7, groups.totalHitCount);
     assertEquals(7, groups.totalGroupedHitCount);
@@ -229,6 +226,7 @@ public class GroupingSearchTest extends LuceneTestCase {
         newIndexWriterConfig(new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
     Document doc = new Document();
     doc.add(newField("group", "foo", StringField.TYPE_NOT_STORED));
+    doc.add(new SortedDocValuesField("group", new BytesRef("foo")));
     w.addDocument(doc);
 
     IndexSearcher indexSearcher = newSearcher(w.getReader());
@@ -236,7 +234,7 @@ public class GroupingSearchTest extends LuceneTestCase {
 
     GroupingSearch gs = new GroupingSearch("group");
     gs.setAllGroups(true);
-    TopGroups<?> groups = gs.search(indexSearcher, null, new TermQuery(new Term("group", "foo")), 0, 10);
+    TopGroups<?> groups = gs.search(indexSearcher, new TermQuery(new Term("group", "foo")), 0, 10);
     assertEquals(1, groups.totalHitCount);
     //assertEquals(1, groups.totalGroupCount.intValue());
     assertEquals(1, groups.totalGroupedHitCount);

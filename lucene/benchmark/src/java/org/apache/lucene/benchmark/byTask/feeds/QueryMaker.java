@@ -1,5 +1,3 @@
-package org.apache.lucene.benchmark.byTask.feeds;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,12 @@ package org.apache.lucene.benchmark.byTask.feeds;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.benchmark.byTask.feeds;
 
 
-import org.apache.lucene.search.Query;
+
 import org.apache.lucene.benchmark.byTask.utils.Config;
+import org.apache.lucene.search.Query;
 
 
 /**
@@ -30,7 +30,7 @@ public interface QueryMaker {
   /** 
    * Create the next query, of the given size.
    * @param size the size of the query - number of terms, etc.
-   * @exception Exception if cannot make the query, or if size>0 was specified but this feature is not supported.
+   * @exception Exception if cannot make the query, or if size &gt; 0 was specified but this feature is not supported.
    */ 
   public Query makeQuery (int size) throws Exception;
 
@@ -41,7 +41,7 @@ public interface QueryMaker {
   public void setConfig (Config config) throws Exception;
   
   /** Reset inputs so that the test run would behave, input wise, as if it just started. */
-  public void resetInputs();
+  public void resetInputs() throws Exception;
   
   /** Print the queries */
   public String printQueries();

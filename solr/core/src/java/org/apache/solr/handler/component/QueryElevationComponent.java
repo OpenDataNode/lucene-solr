@@ -14,18 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler.component;
-
-import com.carrotsearch.hppc.IntOpenHashSet;
-import com.carrotsearch.hppc.IntIntOpenHashMap;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
-import org.apache.lucene.index.AtomicReader;
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
@@ -33,17 +29,18 @@ import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.FieldComparator;
 import org.apache.lucene.search.FieldComparatorSource;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.SimpleFieldComparator;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
-import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.SentinelIntSet;
 import org.apache.solr.cloud.ZkController;
 import org.apache.solr.common.SolrException;
@@ -74,6 +71,8 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 
+import com.carrotsearch.hppc.IntIntHashMap;
+
 import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathExpressionException;
@@ -82,6 +81,7 @@ import javax.xml.xpath.XPathFactory;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.invoke.MethodHandles;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
@@ -100,7 +100,7 @@ import java.util.WeakHashMap;
  * @since solr 1.3
  */
 public class QueryElevationComponent extends SearchComponent implements SolrCoreAware {
-  private static Logger log = LoggerFactory.getLogger(QueryElevationComponent.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   // Constants used in solrconfig.xml
   static final String FIELD_TYPE = "queryFieldType";
@@ -143,8 +143,7 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
       this.ids = new HashSet<>();
       this.excludeIds = new HashSet<>();
 
-      this.include = new BooleanQuery();
-      this.include.setBoost(0);
+      BooleanQuery.Builder include = new BooleanQuery.Builder();
       this.priority = new HashMap<>();
       int max = elevate.size() + 5;
       for (String id : elevate) {
@@ -154,6 +153,7 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
         include.add(tq, BooleanClause.Occur.SHOULD);
         this.priority.put(new BytesRef(id), max--);
       }
+      this.include = include.build();
 
       if (exclude == null || exclude.isEmpty()) {
         this.exclude = null;
@@ -358,8 +358,7 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
       return query;
     }
     StringBuilder norm = new StringBuilder();
-    TokenStream tokens = analyzer.tokenStream("", query);
-    try {
+    try (TokenStream tokens = analyzer.tokenStream("", query)) {
       tokens.reset();
 
       CharTermAttribute termAtt = tokens.addAttribute(CharTermAttribute.class);
@@ -368,8 +367,6 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
       }
       tokens.end();
       return norm.toString();
-    } finally {
-      IOUtils.closeWhileHandlingException(tokens);
     }
   }
 
@@ -423,11 +420,12 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
       // Change the query to insert forced documents
       if (exclusive == true) {
         //we only want these results
-        rb.setQuery(booster.include);
+        rb.setQuery(new BoostQuery(booster.include, 0f));
       } else {
-        BooleanQuery newq = new BooleanQuery(true);
+        BooleanQuery.Builder newq = new BooleanQuery.Builder();
+        newq.setDisableCoord(true);
         newq.add(query, BooleanClause.Occur.SHOULD);
-        newq.add(booster.include, BooleanClause.Occur.SHOULD);
+        newq.add(new BoostQuery(booster.include, 0f), BooleanClause.Occur.SHOULD);
         if (booster.exclude != null) {
           if (markExcludes == false) {
             for (TermQuery tq : booster.exclude) {
@@ -439,7 +437,7 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
             rb.req.getContext().put(EXCLUDED, booster.excludeIds);
           }
         }
-        rb.setQuery(newq);
+        rb.setQuery(newq.build());
       }
 
       ElevationComparatorSource comparator = new ElevationComparatorSource(booster);
@@ -538,16 +536,16 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
   }
 
 
-  public static IntIntOpenHashMap getBoostDocs(SolrIndexSearcher indexSearcher, Map<BytesRef, Integer>boosted, Map context) throws IOException {
+  public static IntIntHashMap getBoostDocs(SolrIndexSearcher indexSearcher, Map<BytesRef, Integer>boosted, Map context) throws IOException {
 
-    IntIntOpenHashMap boostDocs = null;
+    IntIntHashMap boostDocs = null;
 
     if(boosted != null) {
 
       //First see if it's already in the request context. Could have been put there
       //by another caller.
       if(context != null) {
-        boostDocs = (IntIntOpenHashMap)context.get(BOOSTED_DOCIDS);
+        boostDocs = (IntIntHashMap) context.get(BOOSTED_DOCIDS);
       }
 
       if(boostDocs != null) {
@@ -557,30 +555,32 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
 
       SchemaField idField = indexSearcher.getSchema().getUniqueKeyField();
       String fieldName = idField.getName();
-      HashSet<BytesRef> localBoosts = new HashSet(boosted.size()*2);
+      HashSet<BytesRef> localBoosts = new HashSet<>(boosted.size()*2);
       Iterator<BytesRef> boostedIt = boosted.keySet().iterator();
       while(boostedIt.hasNext()) {
         localBoosts.add(boostedIt.next());
       }
 
-      boostDocs = new IntIntOpenHashMap(boosted.size()*2);
+      boostDocs = new IntIntHashMap(boosted.size());
 
-      List<AtomicReaderContext>leaves = indexSearcher.getTopReaderContext().leaves();
-      TermsEnum termsEnum = null;
-      DocsEnum docsEnum = null;
-      for(AtomicReaderContext leaf : leaves) {
-        AtomicReader reader = leaf.reader();
+      List<LeafReaderContext>leaves = indexSearcher.getTopReaderContext().leaves();
+      PostingsEnum postingsEnum = null;
+      for(LeafReaderContext leaf : leaves) {
+        LeafReader reader = leaf.reader();
         int docBase = leaf.docBase;
         Bits liveDocs = reader.getLiveDocs();
         Terms terms = reader.terms(fieldName);
-        termsEnum = terms.iterator(termsEnum);
+        TermsEnum termsEnum = terms.iterator();
         Iterator<BytesRef> it = localBoosts.iterator();
         while(it.hasNext()) {
           BytesRef ref = it.next();
           if(termsEnum.seekExact(ref)) {
-            docsEnum = termsEnum.docs(liveDocs, docsEnum);
-            int doc = docsEnum.nextDoc();
-            if(doc != DocsEnum.NO_MORE_DOCS) {
+            postingsEnum = termsEnum.postings(postingsEnum);
+            int doc = postingsEnum.nextDoc();
+            while (doc != PostingsEnum.NO_MORE_DOCS && liveDocs != null && liveDocs.get(doc) == false) {
+              doc = postingsEnum.nextDoc();
+            }
+            if(doc != PostingsEnum.NO_MORE_DOCS) {
               //Found the document.
               int p = boosted.get(ref);
               boostDocs.put(doc+docBase, p);
@@ -613,11 +613,6 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
   }
 
   @Override
-  public String getSource() {
-    return null;
-  }
-
-  @Override
   public URL[] getDocs() {
     try {
       return new URL[]{
@@ -641,12 +636,11 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
 
   @Override
   public FieldComparator<Integer> newComparator(String fieldname, final int numHits, int sortPos, boolean reversed) throws IOException {
-    return new FieldComparator<Integer>() {
+    return new SimpleFieldComparator<Integer>() {
       private final int[] values = new int[numHits];
       private int bottomVal;
       private int topVal;
-      private TermsEnum termsEnum;
-      private DocsEnum docsEnum;
+      private PostingsEnum postingsEnum;
       Set<String> seen = new HashSet<>(elevations.ids.size());
 
       @Override
@@ -687,31 +681,31 @@ public class QueryElevationComponent extends SearchComponent implements SolrCore
       }
 
       @Override
-      public FieldComparator setNextReader(AtomicReaderContext context) throws IOException {
+      protected void doSetNextReader(LeafReaderContext context) throws IOException {
         //convert the ids to Lucene doc ids, the ordSet and termValues needs to be the same size as the number of elevation docs we have
         ordSet.clear();
         Fields fields = context.reader().fields();
-        if (fields == null) return this;
+        if (fields == null) return;
         Terms terms = fields.terms(idField);
-        if (terms == null) return this;
-        termsEnum = terms.iterator(termsEnum);
+        if (terms == null) return;
+        TermsEnum termsEnum = terms.iterator();
         BytesRefBuilder term = new BytesRefBuilder();
         Bits liveDocs = context.reader().getLiveDocs();
 
         for (String id : elevations.ids) {
           term.copyChars(id);
           if (seen.contains(id) == false  && termsEnum.seekExact(term.get())) {
-            docsEnum = termsEnum.docs(liveDocs, docsEnum, DocsEnum.FLAG_NONE);
-            if (docsEnum != null) {
-              int docId = docsEnum.nextDoc();
-              if (docId == DocIdSetIterator.NO_MORE_DOCS ) continue;  // must have been deleted
-              termValues[ordSet.put(docId)] = term.toBytesRef();
-              seen.add(id);
-              assert docsEnum.nextDoc() == DocIdSetIterator.NO_MORE_DOCS;
+            postingsEnum = termsEnum.postings(postingsEnum, PostingsEnum.NONE);
+            int docId = postingsEnum.nextDoc();
+            while (docId != DocIdSetIterator.NO_MORE_DOCS && liveDocs != null && liveDocs.get(docId) == false) {
+              docId = postingsEnum.nextDoc();
             }
+            if (docId == DocIdSetIterator.NO_MORE_DOCS ) continue;  // must have been deleted
+            termValues[ordSet.put(docId)] = term.toBytesRef();
+            seen.add(id);
+            assert postingsEnum.nextDoc() == DocIdSetIterator.NO_MORE_DOCS;
           }
         }
-        return this;
       }
 
       @Override

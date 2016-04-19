@@ -1,5 +1,3 @@
-package org.apache.solr.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,16 +14,21 @@ package org.apache.solr.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.core;
 
 import java.io.Closeable;
 import java.io.File;
-import java.io.FileNotFoundException;
+import java.io.FileFilter;
 import java.io.IOException;
-import java.nio.file.NoSuchFileException;
+import java.lang.invoke.MethodHandles;
+import java.util.Collection;
+import java.util.Collections;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FlushInfo;
 import org.apache.lucene.store.IOContext;
+import org.apache.lucene.store.LockFactory;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.core.CachingDirectoryFactory.CloseListener;
 import org.apache.solr.util.plugin.NamedListInitializedPlugin;
@@ -44,14 +47,23 @@ public abstract class DirectoryFactory implements NamedListInitializedPlugin,
   // A large estimate should currently have no other side effects.
   public static final IOContext IOCONTEXT_NO_CACHE = new IOContext(new FlushInfo(10*1000*1000, 100L*1000*1000*1000));
 
+  protected static final String INDEX_W_TIMESTAMP_REGEX = "index\\.[0-9]{17}"; // see SnapShooter.DATE_FMT
+
   // hint about what the directory contains - default is index directory
   public enum DirContext {DEFAULT, META_DATA}
 
-  private static final Logger log = LoggerFactory.getLogger(DirectoryFactory.class.getName());
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
+  // Available lock types
+  public final static String LOCK_TYPE_SIMPLE = "simple";
+  public final static String LOCK_TYPE_NATIVE = "native";
+  public final static String LOCK_TYPE_SINGLE = "single";
+  public final static String LOCK_TYPE_NONE   = "none";
+  public final static String LOCK_TYPE_HDFS   = "hdfs";
   
   /**
-   * Indicates a Directory will no longer be used, and when it's ref count
-   * hits 0, it can be closed. On shutdown all directories will be closed
+   * Indicates a Directory will no longer be used, and when its ref count
+   * hits 0, it can be closed. On close all directories will be closed
    * whether this has been called or not. This is simply to allow early cleanup.
    * 
    * @throws IOException If there is a low-level I/O error.
@@ -76,7 +88,14 @@ public abstract class DirectoryFactory implements NamedListInitializedPlugin,
    * 
    * @throws IOException If there is a low-level I/O error.
    */
-  protected abstract Directory create(String path,  DirContext dirContext) throws IOException;
+  protected abstract Directory create(String path, LockFactory lockFactory, DirContext dirContext) throws IOException;
+  
+  /**
+   * Creates a new LockFactory for a given path.
+   * @param rawLockType A string value as passed in config. Every factory should at least support 'none' to disable locking.
+   * @throws IOException If there is a low-level I/O error.
+   */
+  protected abstract LockFactory createLockFactory(String rawLockType) throws IOException;
   
   /**
    * Returns true if a Directory exists for a given path.
@@ -134,7 +153,7 @@ public abstract class DirectoryFactory implements NamedListInitializedPlugin,
    * @throws IOException If there is a low-level I/O error.
    */
   public void move(Directory fromDir, Directory toDir, String fileName, IOContext ioContext) throws IOException {
-    fromDir.copy(toDir, fileName, fileName, ioContext);
+    toDir.copyFrom(fromDir, fileName, fileName, ioContext);
     fromDir.deleteFile(fileName);
   }
   
@@ -213,7 +232,8 @@ public abstract class DirectoryFactory implements NamedListInitializedPlugin,
   public static long sizeOf(Directory directory, String file) throws IOException {
     try {
       return directory.fileLength(file);
-    } catch (FileNotFoundException | NoSuchFileException e) {
+    } catch (IOException e) {
+      // could be a race, file no longer exists, access denied, is a directory, etc.
       return 0;
     }
   }
@@ -252,6 +272,57 @@ public abstract class DirectoryFactory implements NamedListInitializedPlugin,
 
   public String getDataHome(CoreDescriptor cd) throws IOException {
     // by default, we go off the instance directory
-    return normalize(SolrResourceLoader.normalizeDir(cd.getInstanceDir()) + cd.getDataDir());
+    return cd.getInstanceDir().resolve(cd.getDataDir()).toAbsolutePath().toString();
+  }
+
+  /**
+   * Optionally allow the DirectoryFactory to request registration of some MBeans.
+   */
+  public Collection<SolrInfoMBean> offerMBeans() {
+    return Collections.emptySet();
+  }
+
+  public void cleanupOldIndexDirectories(final String dataDirPath, final String currentIndexDirPath) {
+    File dataDir = new File(dataDirPath);
+    if (!dataDir.isDirectory()) {
+      log.warn("{} does not point to a valid data directory; skipping clean-up of old index directories.", dataDirPath);
+      return;
+    }
+
+    final File currentIndexDir = new File(currentIndexDirPath);
+    File[] oldIndexDirs = dataDir.listFiles(new FileFilter() {
+      @Override
+      public boolean accept(File file) {
+        String fileName = file.getName();
+        return file.isDirectory() &&
+               !file.equals(currentIndexDir) &&
+               (fileName.equals("index") || fileName.matches(INDEX_W_TIMESTAMP_REGEX));
+      }
+    });
+
+    if (oldIndexDirs == null || oldIndexDirs.length == 0)
+      return; // nothing to do (no log message needed)
+
+    log.info("Found {} old index directories to clean-up under {}", oldIndexDirs.length, dataDirPath);
+    for (File dir : oldIndexDirs) {
+
+      String dirToRmPath = dir.getAbsolutePath();
+      try {
+        if (deleteOldIndexDirectory(dirToRmPath)) {
+          log.info("Deleted old index directory: {}", dirToRmPath);
+        } else {
+          log.warn("Delete old index directory {} failed.", dirToRmPath);
+        }
+      } catch (IOException ioExc) {
+        log.error("Failed to delete old directory {} due to: {}", dir.getAbsolutePath(), ioExc.toString());
+      }
+    }
+  }
+
+  // Extension point to allow sub-classes to infuse additional code when deleting old index directories
+  protected boolean deleteOldIndexDirectory(String oldDirPath) throws IOException {
+    File dirToRm = new File(oldDirPath);
+    FileUtils.deleteDirectory(dirToRm);
+    return !dirToRm.isDirectory();
   }
 }

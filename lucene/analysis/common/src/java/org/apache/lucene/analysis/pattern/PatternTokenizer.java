@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.analysis.pattern;
 
 import java.io.IOException;
@@ -30,7 +29,6 @@ import org.apache.lucene.util.AttributeFactory;
 /**
  * This tokenizer uses regex pattern matching to construct distinct tokens
  * for the input stream.  It takes two arguments:  "pattern" and "group".
- * <p/>
  * <ul>
  * <li>"pattern" is the regular expression.</li>
  * <li>"group" says which group to extract into tokens.</li>
@@ -41,7 +39,7 @@ import org.apache.lucene.util.AttributeFactory;
  * {@link String#split(java.lang.String)}
  * </p>
  * <p>
- * Using group >= 0 selects the matching group as the token.  For example, if you have:<br/>
+ * Using group &gt;= 0 selects the matching group as the token.  For example, if you have:<br>
  * <pre>
  *  pattern = \'([^\']+)\'
  *  group = 0
@@ -49,7 +47,6 @@ import org.apache.lucene.util.AttributeFactory;
  *</pre>
  * the output will be two tokens: 'bbb' and 'ccc' (including the ' marks).  With the same input
  * but using group=1, the output would be: bbb and ccc (no ' marks)
- * </p>
  * <p>NOTE: This Tokenizer does not output tokens that are of zero length.</p>
  *
  * @see Pattern
@@ -66,13 +63,13 @@ public final class PatternTokenizer extends Tokenizer {
   private final Matcher matcher;
 
   /** creates a new PatternTokenizer returning tokens from group (-1 for split functionality) */
-  public PatternTokenizer(Reader input, Pattern pattern, int group) {
-    this(DEFAULT_TOKEN_ATTRIBUTE_FACTORY, input, pattern, group);
+  public PatternTokenizer(Pattern pattern, int group) {
+    this(DEFAULT_TOKEN_ATTRIBUTE_FACTORY, pattern, group);
   }
 
   /** creates a new PatternTokenizer returning tokens from group (-1 for split functionality) */
-  public PatternTokenizer(AttributeFactory factory, Reader input, Pattern pattern, int group) {
-    super(factory, input);
+  public PatternTokenizer(AttributeFactory factory, Pattern pattern, int group) {
+    super(factory);
     this.group = group;
 
     // Use "" instead of str so don't consume chars
@@ -139,9 +136,19 @@ public final class PatternTokenizer extends Tokenizer {
   }
 
   @Override
+  public void close() throws IOException {
+    try {
+      super.close();
+    } finally {
+      str.setLength(0);
+      str.trimToSize();
+    }
+  }
+
+  @Override
   public void reset() throws IOException {
     super.reset();
-    fillBuffer(str, input);
+    fillBuffer(input);
     matcher.reset(str);
     index = 0;
   }
@@ -149,11 +156,11 @@ public final class PatternTokenizer extends Tokenizer {
   // TODO: we should see if we can make this tokenizer work without reading
   // the entire document into RAM, perhaps with Matcher.hitEnd/requireEnd ?
   final char[] buffer = new char[8192];
-  private void fillBuffer(StringBuilder sb, Reader input) throws IOException {
+  private void fillBuffer(Reader input) throws IOException {
     int len;
-    sb.setLength(0);
+    str.setLength(0);
     while ((len = input.read(buffer)) > 0) {
-      sb.append(buffer, 0, len);
+      str.append(buffer, 0, len);
     }
   }
 }

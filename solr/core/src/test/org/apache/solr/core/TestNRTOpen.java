@@ -1,5 +1,3 @@
-package org.apache.solr.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,14 @@ package org.apache.solr.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.core;
 
 import java.io.File;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Set;
 
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.search.SolrIndexSearcher;
@@ -129,7 +127,7 @@ public class TestNRTOpen extends SolrTestCaseJ4 {
   static void assertNRT(int maxDoc) {
     RefCounted<SolrIndexSearcher> searcher = h.getCore().getSearcher();
     try {
-      DirectoryReader ir = searcher.get().getIndexReader();
+      DirectoryReader ir = searcher.get().getRawReader();
       assertEquals(maxDoc, ir.maxDoc());
       assertTrue("expected NRT reader, got: " + ir, ir.toString().contains(":nrt"));
     } finally {
@@ -141,8 +139,8 @@ public class TestNRTOpen extends SolrTestCaseJ4 {
     RefCounted<SolrIndexSearcher> searcher = h.getCore().getSearcher();
     Set<Object> set = Collections.newSetFromMap(new IdentityHashMap<Object,Boolean>());
     try {
-      DirectoryReader ir = searcher.get().getIndexReader();
-      for (AtomicReaderContext context : ir.leaves()) {
+      DirectoryReader ir = searcher.get().getRawReader();
+      for (LeafReaderContext context : ir.leaves()) {
         set.add(context.reader().getCoreCacheKey());
       }
     } finally {

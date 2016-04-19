@@ -14,13 +14,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler.admin;
 
+import static org.apache.lucene.index.IndexOptions.DOCS;
+import static org.apache.lucene.index.IndexOptions.DOCS_AND_FREQS;
+import static org.apache.lucene.index.IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS;
+
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.util.CharFilterFactory;
@@ -28,16 +41,28 @@ import org.apache.lucene.analysis.util.TokenFilterFactory;
 import org.apache.lucene.analysis.util.TokenizerFactory;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.index.*;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
+import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.DocValuesType;
+import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.IndexCommit;
+import org.apache.lucene.index.IndexOptions;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.index.LeafReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.MultiFields;
+import org.apache.lucene.index.PostingsEnum;
+import org.apache.lucene.index.SegmentReader;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.Terms;
+import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.similarities.Similarity;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.CharsRefBuilder;
 import org.apache.lucene.util.PriorityQueue;
-import org.apache.lucene.util.UnicodeUtil;
 import org.apache.solr.analysis.TokenizerChain;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
@@ -50,18 +75,14 @@ import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
+import org.apache.solr.schema.CopyField;
 import org.apache.solr.schema.FieldType;
-import org.apache.solr.update.SolrIndexWriter;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
-import org.apache.solr.schema.CopyField;
 import org.apache.solr.search.SolrIndexSearcher;
+import org.apache.solr.update.SolrIndexWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static org.apache.lucene.index.FieldInfo.IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS;
-import static org.apache.lucene.index.FieldInfo.IndexOptions.DOCS_AND_FREQS;
-import static org.apache.lucene.index.FieldInfo.IndexOptions.DOCS_ONLY;
 
 /**
  * This handler exposes the internal lucene index.  It is inspired by and 
@@ -75,9 +96,10 @@ import static org.apache.lucene.index.FieldInfo.IndexOptions.DOCS_ONLY;
  */
 public class LukeRequestHandler extends RequestHandlerBase
 {
-  private static Logger log = LoggerFactory.getLogger(LukeRequestHandler.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   public static final String NUMTERMS = "numTerms";
+  public static final String INCLUDE_INDEX_FIELD_FLAGS = "includeIndexFieldFlags";
   public static final String DOC_ID = "docId";
   public static final String ID = "id";
   public static final int DEFAULT_COUNT = 10;
@@ -179,17 +201,18 @@ public class LukeRequestHandler extends RequestHandlerBase
 
     StringBuilder flags = new StringBuilder();
 
-    flags.append( (f != null && f.fieldType().indexed())                     ? FieldFlag.INDEXED.getAbbreviation() : '-' );
+    flags.append( (f != null && f.fieldType().indexOptions() != IndexOptions.NONE)                     ? FieldFlag.INDEXED.getAbbreviation() : '-' );
     flags.append( (f != null && f.fieldType().tokenized())                   ? FieldFlag.TOKENIZED.getAbbreviation() : '-' );
     flags.append( (f != null && f.fieldType().stored())                      ? FieldFlag.STORED.getAbbreviation() : '-' );
-    flags.append( (f != null && f.fieldType().docValueType() != null)        ? FieldFlag.DOC_VALUES.getAbbreviation() : "-" );
+    flags.append( (f != null && f.fieldType().docValuesType() != DocValuesType.NONE)        ? FieldFlag.DOC_VALUES.getAbbreviation() : "-" );
     flags.append( (false)                                          ? FieldFlag.MULTI_VALUED.getAbbreviation() : '-' ); // SchemaField Specific
     flags.append( (f != null && f.fieldType().storeTermVectors())            ? FieldFlag.TERM_VECTOR_STORED.getAbbreviation() : '-' );
     flags.append( (f != null && f.fieldType().storeTermVectorOffsets())   ? FieldFlag.TERM_VECTOR_OFFSET.getAbbreviation() : '-' );
     flags.append( (f != null && f.fieldType().storeTermVectorPositions()) ? FieldFlag.TERM_VECTOR_POSITION.getAbbreviation() : '-' );
+    flags.append( (f != null && f.fieldType().storeTermVectorPayloads())   ? FieldFlag.TERM_VECTOR_PAYLOADS.getAbbreviation() : '-' );
     flags.append( (f != null && f.fieldType().omitNorms())                  ? FieldFlag.OMIT_NORMS.getAbbreviation() : '-' );
 
-    flags.append( (f != null && DOCS_ONLY == opts ) ?
+    flags.append( (f != null && DOCS == opts ) ?
         FieldFlag.OMIT_TF.getAbbreviation() : '-' );
 
     flags.append((f != null && DOCS_AND_FREQS == opts) ?
@@ -225,6 +248,7 @@ public class LukeRequestHandler extends RequestHandlerBase
     flags.append( (f != null && f.storeTermVector() )    ? FieldFlag.TERM_VECTOR_STORED.getAbbreviation() : '-' );
     flags.append( (f != null && f.storeTermOffsets() )   ? FieldFlag.TERM_VECTOR_OFFSET.getAbbreviation() : '-' );
     flags.append( (f != null && f.storeTermPositions() ) ? FieldFlag.TERM_VECTOR_POSITION.getAbbreviation() : '-' );
+    flags.append( (f != null && f.storeTermPayloads() )  ? FieldFlag.TERM_VECTOR_PAYLOADS.getAbbreviation() : '-' );
     flags.append( (f != null && f.omitNorms())           ? FieldFlag.OMIT_NORMS.getAbbreviation() : '-' );
     flags.append( (f != null &&
         f.omitTermFreqAndPositions() )        ? FieldFlag.OMIT_TF.getAbbreviation() : '-' );
@@ -284,7 +308,7 @@ public class LukeRequestHandler extends RequestHandlerBase
           Terms v = reader.getTermVector( docId, field.name() );
           if( v != null ) {
             SimpleOrderedMap<Integer> tfv = new SimpleOrderedMap<>();
-            final TermsEnum termsEnum = v.iterator(null);
+            final TermsEnum termsEnum = v.iterator();
             BytesRef text;
             while((text = termsEnum.next()) != null) {
               final int freq = (int) termsEnum.totalTermFreq();
@@ -316,7 +340,7 @@ public class LukeRequestHandler extends RequestHandlerBase
       fields = new TreeSet<>(Arrays.asList(fl.split( "[,\\s]+" )));
     }
 
-    AtomicReader reader = searcher.getAtomicReader();
+    LeafReader reader = searcher.getLeafReader();
     IndexSchema schema = searcher.getSchema();
 
     // Don't be tempted to put this in the loop below, the whole point here is to alphabetize the fields!
@@ -350,29 +374,25 @@ public class LukeRequestHandler extends RequestHandlerBase
       }
 
       if(sfield != null && sfield.indexed() ) {
-        // In the pre-4.0 days, this did a veeeery expensive range query. But we can be much faster now,
-        // so just do this all the time.
-        Document doc = getFirstLiveDoc(terms, reader);
-
-
-        if( doc != null ) {
-          // Found a document with this field
-          try {
-            IndexableField fld = doc.getField( fieldName );
-            if( fld != null ) {
-              fieldMap.add("index", getFieldFlags(fld));
+        if (params.getBool(INCLUDE_INDEX_FIELD_FLAGS,true)) {
+          Document doc = getFirstLiveDoc(terms, reader);
+          if (doc != null) {
+            // Found a document with this field
+            try {
+              IndexableField fld = doc.getField(fieldName);
+              if (fld != null) {
+                fieldMap.add("index", getFieldFlags(fld));
+              } else {
+                // it is a non-stored field...
+                fieldMap.add("index", "(unstored field)");
+              }
+            } catch (Exception ex) {
+              log.warn("error reading field: " + fieldName);
             }
-            else {
-              // it is a non-stored field...
-              fieldMap.add("index", "(unstored field)");
-            }
-          }
-          catch( Exception ex ) {
-            log.warn( "error reading field: "+fieldName );
           }
         }
-        fieldMap.add("docs", terms.getDocCount());
 
+        fieldMap.add("docs", terms.getDocCount());
       }
       if (fields != null && (fields.contains(fieldName) || fields.contains("*"))) {
         getDetailedFieldInfo(req, fieldName, fieldMap);
@@ -386,19 +406,23 @@ public class LukeRequestHandler extends RequestHandlerBase
   // Just get a document with the term in it, the first one will do!
   // Is there a better way to do this? Shouldn't actually be very costly
   // to do it this way.
-  private static Document getFirstLiveDoc(Terms terms, AtomicReader reader) throws IOException {
-    DocsEnum docsEnum = null;
-    TermsEnum termsEnum = terms.iterator(null);
+  private static Document getFirstLiveDoc(Terms terms, LeafReader reader) throws IOException {
+    PostingsEnum postingsEnum = null;
+    TermsEnum termsEnum = terms.iterator();
     BytesRef text;
     // Deal with the chance that the first bunch of terms are in deleted documents. Is there a better way?
-    for (int idx = 0; idx < 1000 && docsEnum == null; ++idx) {
+    for (int idx = 0; idx < 1000 && postingsEnum == null; ++idx) {
       text = termsEnum.next();
       if (text == null) { // Ran off the end of the terms enum without finding any live docs with that field in them.
         return null;
       }
-      docsEnum = termsEnum.docs(reader.getLiveDocs(), docsEnum, DocsEnum.FLAG_NONE);
-      if (docsEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
-        return reader.document(docsEnum.docID());
+      postingsEnum = termsEnum.postings(postingsEnum, PostingsEnum.NONE);
+      final Bits liveDocs = reader.getLiveDocs();
+      if (postingsEnum.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
+        if (liveDocs != null && liveDocs.get(postingsEnum.docID())) {
+          continue;
+        }
+        return reader.document(postingsEnum.docID());
       }
     }
     return null;
@@ -471,15 +495,15 @@ public class LukeRequestHandler extends RequestHandlerBase
       TokenizerChain tchain = (TokenizerChain)analyzer;
 
       CharFilterFactory[] cfiltfacs = tchain.getCharFilterFactories();
-      SimpleOrderedMap<Map<String, Object>> cfilters = new SimpleOrderedMap<>();
-      for (CharFilterFactory cfiltfac : cfiltfacs) {
-        Map<String, Object> tok = new HashMap<>();
-        String className = cfiltfac.getClass().getName();
-        tok.put("className", className);
-        tok.put("args", cfiltfac.getOriginalArgs());
-        cfilters.add(className.substring(className.lastIndexOf('.')+1), tok);
-      }
-      if (cfilters.size() > 0) {
+      if (0 < cfiltfacs.length) {
+        SimpleOrderedMap<Map<String, Object>> cfilters = new SimpleOrderedMap<>();
+        for (CharFilterFactory cfiltfac : cfiltfacs) {
+          Map<String, Object> tok = new HashMap<>();
+          String className = cfiltfac.getClass().getName();
+          tok.put("className", className);
+          tok.put("args", cfiltfac.getOriginalArgs());
+          cfilters.add(className.substring(className.lastIndexOf('.')+1), tok);
+        }
         aninfo.add("charFilters", cfilters);
       }
 
@@ -490,15 +514,15 @@ public class LukeRequestHandler extends RequestHandlerBase
       aninfo.add("tokenizer", tokenizer);
 
       TokenFilterFactory[] filtfacs = tchain.getTokenFilterFactories();
-      SimpleOrderedMap<Map<String, Object>> filters = new SimpleOrderedMap<>();
-      for (TokenFilterFactory filtfac : filtfacs) {
-        Map<String, Object> tok = new HashMap<>();
-        String className = filtfac.getClass().getName();
-        tok.put("className", className);
-        tok.put("args", filtfac.getOriginalArgs());
-        filters.add(className.substring(className.lastIndexOf('.')+1), tok);
-      }
-      if (filters.size() > 0) {
+      if (0 < filtfacs.length) {
+        SimpleOrderedMap<Map<String, Object>> filters = new SimpleOrderedMap<>();
+        for (TokenFilterFactory filtfac : filtfacs) {
+          Map<String, Object> tok = new HashMap<>();
+          String className = filtfac.getClass().getName();
+          tok.put("className", className);
+          tok.put("args", filtfac.getOriginalArgs());
+          filters.add(className.substring(className.lastIndexOf('.')+1), tok);
+        }
         aninfo.add("filters", filters);
       }
     }
@@ -562,21 +586,36 @@ public class LukeRequestHandler extends RequestHandlerBase
     indexInfo.add("current", reader.isCurrent() );
     indexInfo.add("hasDeletions", reader.hasDeletions() );
     indexInfo.add("directory", dir );
-    indexInfo.add("userData", reader.getIndexCommit().getUserData());
-    String s = reader.getIndexCommit().getUserData().get(SolrIndexWriter.COMMIT_TIME_MSEC_KEY);
+    IndexCommit indexCommit = reader.getIndexCommit();
+    String segmentsFileName = indexCommit.getSegmentsFileName();
+    indexInfo.add("segmentsFile", segmentsFileName);
+    indexInfo.add("segmentsFileSizeInBytes", getFileLength(indexCommit.getDirectory(), segmentsFileName));
+    Map<String,String> userData = indexCommit.getUserData();
+    indexInfo.add("userData", userData);
+    String s = userData.get(SolrIndexWriter.COMMIT_TIME_MSEC_KEY);
     if (s != null) {
       indexInfo.add("lastModified", new Date(Long.parseLong(s)));
     }
     return indexInfo;
   }
 
+  private static long getFileLength(Directory dir, String filename) {
+    try {
+      return dir.fileLength(filename);
+    } catch (IOException e) {
+      // Whatever the error is, only log it and return -1.
+      log.warn("Error getting file length for [{}]", filename, e);
+      return -1;
+    }
+  }
+
   /** Returns the sum of RAM bytes used by each segment */
   private static long getIndexHeapUsed(DirectoryReader reader) {
     long indexHeapRamBytesUsed = 0;
-    for(AtomicReaderContext atomicReaderContext : reader.leaves()) {
-      AtomicReader atomicReader = atomicReaderContext.reader();
-      if (atomicReader instanceof SegmentReader) {
-        indexHeapRamBytesUsed += ((SegmentReader) atomicReader).ramBytesUsed();
+    for(LeafReaderContext leafReaderContext : reader.leaves()) {
+      LeafReader leafReader = leafReaderContext.reader();
+      if (leafReader instanceof SegmentReader) {
+        indexHeapRamBytesUsed += ((SegmentReader) leafReader).ramBytesUsed();
       } else {
         // Not supported for any reader that is not a SegmentReader
         return -1;
@@ -598,17 +637,11 @@ public class LukeRequestHandler extends RequestHandlerBase
 
     final CharsRefBuilder spare = new CharsRefBuilder();
 
-    Fields fields = MultiFields.getFields(req.getSearcher().getIndexReader());
-
-    if (fields == null) { // No indexed fields
+    Terms terms = MultiFields.getTerms(req.getSearcher().getIndexReader(), field);
+    if (terms == null) {  // field does not exist
       return;
     }
-
-    Terms terms = fields.terms(field);
-    if (terms == null) {  // No terms in the field.
-      return;
-    }
-    TermsEnum termsEnum = terms.iterator(null);
+    TermsEnum termsEnum = terms.iterator();
     BytesRef text;
     int[] buckets = new int[HIST_ARRAY_SIZE];
     while ((text = termsEnum.next()) != null) {
@@ -657,11 +690,6 @@ public class LukeRequestHandler extends RequestHandlerBase
   @Override
   public String getDescription() {
     return "Lucene Index Browser.  Inspired and modeled after Luke: http://www.getopt.org/luke/";
-  }
-
-  @Override
-  public String getSource() {
-    return null;
   }
 
   @Override

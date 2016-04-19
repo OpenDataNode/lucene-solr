@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,6 +16,20 @@
  */
 package org.apache.solr.hadoop;
 
+import java.io.IOException;
+import java.lang.invoke.MethodHandles;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
+import com.google.common.collect.ImmutableMap;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.filecache.DistributedCache;
 import org.apache.hadoop.fs.FileSystem;
@@ -29,28 +43,16 @@ import org.apache.solr.client.solrj.embedded.EmbeddedSolrServer;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.CoreDescriptor;
+import org.apache.solr.core.DirectoryFactory;
 import org.apache.solr.core.HdfsDirectoryFactory;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.core.SolrResourceLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Properties;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
-
 class SolrRecordWriter<K, V> extends RecordWriter<K, V> {
   
-  private static final Logger LOG = LoggerFactory.getLogger(SolrRecordWriter.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   public final static List<String> allowedConfigDirectories = new ArrayList<>(
       Arrays.asList(new String[] { "conf", "lib", "solr.xml" }));
@@ -104,7 +106,7 @@ class SolrRecordWriter<K, V> extends RecordWriter<K, V> {
   
   public SolrRecordWriter(TaskAttemptContext context, Path outputShardDir, int batchSize) {
     this.batchSize = batchSize;
-    this.batch = new ArrayList(batchSize);
+    this.batch = new ArrayList<>(batchSize);
     Configuration conf = context.getConfiguration();
 
     // setLogLevel("org.apache.solr.core", "WARN");
@@ -134,26 +136,23 @@ class SolrRecordWriter<K, V> extends RecordWriter<K, V> {
   public static EmbeddedSolrServer createEmbeddedSolrServer(Path solrHomeDir, FileSystem fs, Path outputShardDir)
       throws IOException {
 
-    if (solrHomeDir == null) {
-      throw new IOException("Unable to find solr home setting");
-    }
     LOG.info("Creating embedded Solr server with solrHomeDir: " + solrHomeDir + ", fs: " + fs + ", outputShardDir: " + outputShardDir);
 
     Path solrDataDir = new Path(outputShardDir, "data");
 
     String dataDirStr = solrDataDir.toUri().toString();
 
-    SolrResourceLoader loader = new SolrResourceLoader(solrHomeDir.toString(), null, null);
+    SolrResourceLoader loader = new SolrResourceLoader(Paths.get(solrHomeDir.toString()), null, null);
 
     LOG.info(String
         .format(Locale.ENGLISH, 
             "Constructed instance information solr.home %s (%s), instance dir %s, conf dir %s, writing index to solr.data.dir %s, with permdir %s",
-            solrHomeDir, solrHomeDir.toUri(), loader.getInstanceDir(),
+            solrHomeDir, solrHomeDir.toUri(), loader.getInstancePath(),
             loader.getConfigDir(), dataDirStr, outputShardDir));
 
     // TODO: This is fragile and should be well documented
     System.setProperty("solr.directoryFactory", HdfsDirectoryFactory.class.getName()); 
-    System.setProperty("solr.lock.type", "hdfs"); 
+    System.setProperty("solr.lock.type", DirectoryFactory.LOCK_TYPE_HDFS);
     System.setProperty("solr.hdfs.nrtcachingdirectory", "false");
     System.setProperty("solr.hdfs.blockcache.enabled", "false");
     System.setProperty("solr.autoCommit.maxTime", "600000");
@@ -161,13 +160,8 @@ class SolrRecordWriter<K, V> extends RecordWriter<K, V> {
     
     CoreContainer container = new CoreContainer(loader);
     container.load();
-    
-    Properties props = new Properties();
-    props.setProperty(CoreDescriptor.CORE_DATADIR, dataDirStr);
-    
-    CoreDescriptor descr = new CoreDescriptor(container, "core1", solrHomeDir.toString(), props);
-    
-    SolrCore core = container.create(descr);
+
+    SolrCore core = container.create("core1", ImmutableMap.of(CoreDescriptor.CORE_DATADIR, dataDirStr));
     
     if (!(core.getDirectoryFactory() instanceof HdfsDirectoryFactory)) {
       throw new UnsupportedOperationException(
@@ -186,7 +180,7 @@ class SolrRecordWriter<K, V> extends RecordWriter<K, V> {
     }
   }
 
-  public static void incrementCounter(TaskID taskId, Enum counterName, long incr) {
+  public static void incrementCounter(TaskID taskId, Enum<?> counterName, long incr) {
     Reducer<?,?,?,?>.Context context = contextMap.get(taskId);
     if (context != null) {
       context.getCounter(counterName).increment(incr);
@@ -199,52 +193,18 @@ class SolrRecordWriter<K, V> extends RecordWriter<K, V> {
   }
 
   public static Path findSolrConfig(Configuration conf) throws IOException {
-    Path solrHome = null;
     // FIXME when mrunit supports the new cache apis
     //URI[] localArchives = context.getCacheArchives();
     Path[] localArchives = DistributedCache.getLocalCacheArchives(conf);
-    if (localArchives.length == 0) {
-      throw new IOException(String.format(Locale.ENGLISH,
-          "No local cache archives, where is %s:%s", SolrOutputFormat
-              .getSetupOk(), SolrOutputFormat.getZipName(conf)));
-    }
     for (Path unpackedDir : localArchives) {
-      // Only logged if debugging
-      if (LOG.isDebugEnabled()) {
-        LOG.debug(String.format(Locale.ENGLISH, "Examining unpack directory %s for %s",
-            unpackedDir, SolrOutputFormat.getZipName(conf)));
-
-        ProcessBuilder lsCmd = new ProcessBuilder(new String[] { "/bin/ls",
-            "-lR", unpackedDir.toString() });
-        lsCmd.redirectErrorStream();
-        Process ls = lsCmd.start();
-        byte[] buf = new byte[16 * 1024];
-        InputStream all = ls.getInputStream();
-        try {
-          int count;
-          while ((count = all.read(buf)) >= 0) {
-            System.err.write(buf, 0, count);
-          }
-        } catch (IOException ignore) {
-        } finally {
-          all.close();
-        }
-        String exitValue;
-        try {
-          exitValue = String.valueOf(ls.waitFor());
-        } catch (InterruptedException e) {
-          exitValue = "interrupted";
-        }
-        System.err.format(Locale.ENGLISH, "Exit value of 'ls -lR' is %s%n", exitValue);
-      }
       if (unpackedDir.getName().equals(SolrOutputFormat.getZipName(conf))) {
         LOG.info("Using this unpacked directory as solr home: {}", unpackedDir);
-        solrHome = unpackedDir;
-        break;
+        return unpackedDir;
       }
     }
-
-    return solrHome;
+    throw new IOException(String.format(Locale.ENGLISH,
+        "No local cache archives, where is %s:%s", SolrOutputFormat
+            .getSetupOk(), SolrOutputFormat.getZipName(conf)));
   }
 
   /**

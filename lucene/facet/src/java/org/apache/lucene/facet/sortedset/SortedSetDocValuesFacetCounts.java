@@ -1,5 +1,3 @@
-package org.apache.lucene.facet.sortedset;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.facet.sortedset;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet.sortedset;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -32,7 +31,7 @@ import org.apache.lucene.facet.FacetsConfig;
 import org.apache.lucene.facet.LabelAndValue;
 import org.apache.lucene.facet.TopOrdAndIntQueue;
 import org.apache.lucene.facet.sortedset.SortedSetDocValuesReaderState.OrdRange;
-import org.apache.lucene.index.AtomicReader;
+import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.MultiDocValues;
 import org.apache.lucene.index.MultiDocValues.MultiSortedSetDocValues;
@@ -162,7 +161,7 @@ public class SortedSetDocValuesFacetCounts extends Facets {
 
     for(MatchingDocs hits : matchingDocs) {
 
-      AtomicReader reader = hits.context.reader();
+      LeafReader reader = hits.context.reader();
       //System.out.println("  reader=" + reader);
       // LUCENE-5090: make sure the provided reader context "matches"
       // the top-level reader passed to the

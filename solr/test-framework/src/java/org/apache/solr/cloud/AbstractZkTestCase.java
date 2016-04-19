@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,20 +14,22 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import java.io.File;
-import java.util.HashMap;
-import java.util.Map;
+package org.apache.solr.cloud;
 
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkNodeProps;
-import org.apache.solr.common.cloud.ZkStateReader;
+import org.apache.solr.common.util.Utils;
 import org.apache.zookeeper.CreateMode;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.lang.invoke.MethodHandles;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Base test class for ZooKeeper tests.
@@ -37,12 +37,11 @@ import org.slf4j.LoggerFactory;
 public abstract class AbstractZkTestCase extends SolrTestCaseJ4 {
   private static final String ZOOKEEPER_FORCE_SYNC = "zookeeper.forceSync";
   
-  static final int TIMEOUT = 10000;
+  public static final int TIMEOUT = 45000;
 
   private static final boolean DEBUG = false;
 
-  protected static Logger log = LoggerFactory
-      .getLogger(AbstractZkTestCase.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   
   public static File SOLRHOME;
@@ -63,7 +62,7 @@ public abstract class AbstractZkTestCase extends SolrTestCaseJ4 {
 
   @BeforeClass
   public static void azt_beforeClass() throws Exception {
-    zkDir = createTempDir("zkData").getAbsolutePath();
+    zkDir = createTempDir("zkData").toFile().getAbsolutePath();
     zkServer = new ZkTestServer(zkDir);
     zkServer.run();
     
@@ -74,7 +73,7 @@ public abstract class AbstractZkTestCase extends SolrTestCaseJ4 {
     
     buildZooKeeper(zkServer.getZkHost(), zkServer.getZkAddress(), SOLRHOME,
         "solrconfig.xml", "schema.xml");
-    
+
     initCore("solrconfig.xml", "schema.xml");
   }
 
@@ -86,7 +85,7 @@ public abstract class AbstractZkTestCase extends SolrTestCaseJ4 {
   // static to share with distrib test
   public static void buildZooKeeper(String zkHost, String zkAddress, File solrhome, String config,
       String schema) throws Exception {
-    SolrZkClient zkClient = new SolrZkClient(zkHost, AbstractZkTestCase.TIMEOUT, 45000, null);
+    SolrZkClient zkClient = new SolrZkClient(zkHost, AbstractZkTestCase.TIMEOUT, AbstractZkTestCase.TIMEOUT, null);
     zkClient.makePath("/solr", false, true);
     zkClient.close();
 
@@ -96,9 +95,9 @@ public abstract class AbstractZkTestCase extends SolrTestCaseJ4 {
     props.put("configName", "conf1");
     final ZkNodeProps zkProps = new ZkNodeProps(props);
     
-    zkClient.makePath("/collections/collection1", ZkStateReader.toJSON(zkProps), CreateMode.PERSISTENT, true);
+    zkClient.makePath("/collections/collection1", Utils.toJSON(zkProps), CreateMode.PERSISTENT, true);
     zkClient.makePath("/collections/collection1/shards", CreateMode.PERSISTENT, true);
-    zkClient.makePath("/collections/control_collection", ZkStateReader.toJSON(zkProps), CreateMode.PERSISTENT, true);
+    zkClient.makePath("/collections/control_collection", Utils.toJSON(zkProps), CreateMode.PERSISTENT, true);
     zkClient.makePath("/collections/control_collection/shards", CreateMode.PERSISTENT, true);
 
     // for now, always upload the config and schema to the canonical names
@@ -147,6 +146,8 @@ public abstract class AbstractZkTestCase extends SolrTestCaseJ4 {
   
   @AfterClass
   public static void azt_afterClass() throws Exception {
+    deleteCore();
+
     System.clearProperty("zkHost");
     System.clearProperty("solr.test.sys.prop1");
     System.clearProperty("solr.test.sys.prop2");

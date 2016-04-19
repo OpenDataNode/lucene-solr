@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.compound;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,15 @@ package org.apache.lucene.analysis.compound;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.compound;
+
 
 import java.io.Reader;
 import java.io.StringReader;
 
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.util.BaseTokenStreamFactoryTestCase;
 
 /**
@@ -33,7 +34,8 @@ public class TestHyphenationCompoundWordTokenFilterFactory extends BaseTokenStre
    */
   public void testHyphenationWithDictionary() throws Exception {
     Reader reader = new StringReader("min veninde som er lidt af en læsehest");
-    TokenStream stream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream stream = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    ((Tokenizer)stream).setReader(reader);
     stream = tokenFilterFactory("HyphenationCompoundWord", 
         "hyphenator", "da_UTF8.xml",
         "dictionary", "da_compoundDictionary.txt").create(stream);
@@ -47,11 +49,12 @@ public class TestHyphenationCompoundWordTokenFilterFactory extends BaseTokenStre
   /**
    * Ensure the factory works with no dictionary: using hyphenation grammar only.
    * Also change the min/max subword sizes from the default. When using no dictionary,
-   * its generally necessary to tweak these, or you get lots of expansions.
+   * it's generally necessary to tweak these, or you get lots of expansions.
    */
   public void testHyphenationOnly() throws Exception {
     Reader reader = new StringReader("basketballkurv");
-    TokenStream stream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream stream = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    ((Tokenizer)stream).setReader(reader);
     stream = tokenFilterFactory("HyphenationCompoundWord", 
         "hyphenator", "da_UTF8.xml",
         "minSubwordSize", "2",

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.pattern;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,7 +14,9 @@ package org.apache.lucene.analysis.pattern;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import java.io.Reader;
+package org.apache.lucene.analysis.pattern;
+
+
 import java.io.StringReader;
 import java.util.regex.Pattern;
 
@@ -597,10 +597,8 @@ public class TestPatternCaptureGroupTokenFilter extends BaseTokenStreamTestCase 
     Analyzer a = new Analyzer() {
 
       @Override
-      protected TokenStreamComponents createComponents(String fieldName,
-          Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader,
-            MockTokenizer.WHITESPACE, false);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
         return new TokenStreamComponents(tokenizer,
             new PatternCaptureGroupTokenFilter(tokenizer, false,
                 Pattern.compile("((..)(..))")));
@@ -608,6 +606,7 @@ public class TestPatternCaptureGroupTokenFilter extends BaseTokenStreamTestCase 
     };
 
     checkRandomData(random(), a, 1000 * RANDOM_MULTIPLIER);
+    a.close();
   }
 
   private void testPatterns(String input, String[] regexes, String[] tokens,
@@ -617,9 +616,10 @@ public class TestPatternCaptureGroupTokenFilter extends BaseTokenStreamTestCase 
     for (int i = 0; i < regexes.length; i++) {
       patterns[i] = Pattern.compile(regexes[i]);
     }
-    TokenStream ts = new PatternCaptureGroupTokenFilter(new MockTokenizer(
-        new StringReader(input), MockTokenizer.WHITESPACE, false),
-        preserveOriginal, patterns);
+
+    Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    tokenizer.setReader( new StringReader(input));
+    TokenStream ts = new PatternCaptureGroupTokenFilter(tokenizer, preserveOriginal, patterns);
     assertTokenStreamContents(ts, tokens, startOffsets, endOffsets, positions);
   }
 

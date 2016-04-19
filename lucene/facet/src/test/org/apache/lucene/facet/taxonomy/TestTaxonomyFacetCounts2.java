@@ -1,5 +1,3 @@
-package org.apache.lucene.facet.taxonomy;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.facet.taxonomy;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet.taxonomy;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -37,8 +36,6 @@ import org.apache.lucene.facet.Facets;
 import org.apache.lucene.facet.FacetsCollector;
 import org.apache.lucene.facet.FacetsConfig;
 import org.apache.lucene.facet.LabelAndValue;
-import org.apache.lucene.facet.taxonomy.TaxonomyReader;
-import org.apache.lucene.facet.taxonomy.TaxonomyWriter;
 import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyReader;
 import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter;
 import org.apache.lucene.index.DirectoryReader;
@@ -94,6 +91,7 @@ public class TestTaxonomyFacetCounts2 extends FacetTestCase {
   @AfterClass
   public static void afterClassCountingFacetsAggregatorTest() throws Exception {
     IOUtils.close(indexDir, taxoDir); 
+    indexDir = taxoDir = null;
   }
   
   private static List<FacetField> randomCategories(Random random) {
@@ -260,8 +258,9 @@ public class TestTaxonomyFacetCounts2 extends FacetTestCase {
     
     // segment w/ categories and some content
     indexDocsWithFacetsAndSomeTerms(indexWriter, taxoWriter, allExpectedCounts);
-    
-    IOUtils.close(indexWriter, taxoWriter);
+
+    indexWriter.close();
+    IOUtils.close(taxoWriter);
   }
   
   @Test

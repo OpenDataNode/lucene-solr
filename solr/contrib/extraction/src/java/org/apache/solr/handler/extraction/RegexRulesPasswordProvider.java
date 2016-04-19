@@ -14,12 +14,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler.extraction;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.invoke.MethodHandles;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map.Entry;
@@ -40,7 +40,7 @@ import org.slf4j.LoggerFactory;
  * If an explicit password is set, it will be used.
  */
 public class RegexRulesPasswordProvider implements PasswordProvider {
-  private static final Logger log = LoggerFactory.getLogger(RegexRulesPasswordProvider.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   private LinkedHashMap<Pattern,String> passwordMap = new LinkedHashMap<>();
   private String explicitPassword; 
@@ -103,7 +103,7 @@ public class RegexRulesPasswordProvider implements PasswordProvider {
       }
       is.close();
     } catch (IOException e) {
-      throw new RuntimeException();
+      throw new RuntimeException(e);
     }
     return rules;
   }

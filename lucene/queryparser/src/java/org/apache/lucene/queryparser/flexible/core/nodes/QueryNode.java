@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.core.nodes;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.core.nodes;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.core.nodes;
 
 import org.apache.lucene.queryparser.flexible.core.parser.EscapeQuerySyntax;
 
@@ -95,4 +94,11 @@ public interface QueryNode {
    * Removes this query node from its parent.
    */
   public void removeFromParent();
+
+
+  /**
+   * Remove a child node
+   * @param childNode Which child to remove
+   */
+  public void removeChildren(QueryNode childNode);
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,56 +14,49 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
 import java.io.IOException;
 import java.util.Random;
 
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 
-/** Wraps another Collector and checks that
- *  acceptsDocsOutOfOrder is respected. */
+/**
+ * A collector that asserts that it is used correctly.
+ */
+class AssertingCollector extends FilterCollector {
 
-public class AssertingCollector extends Collector {
+  private final Random random;
+  private int maxDoc = -1;
 
-  public static Collector wrap(Random random, Collector other, boolean inOrder) {
-    return other instanceof AssertingCollector ? other : new AssertingCollector(random, other, inOrder);
-  }
-
-  final Random random;
-  final Collector in;
-  final boolean inOrder;
-  int lastCollected;
-
-  AssertingCollector(Random random, Collector in, boolean inOrder) {
-    this.random = random;
-    this.in = in;
-    this.inOrder = inOrder;
-    lastCollected = -1;
-  }
-
-  @Override
-  public void setScorer(Scorer scorer) throws IOException {
-    in.setScorer(AssertingScorer.getAssertingScorer(random, scorer));
-  }
-
-  @Override
-  public void collect(int doc) throws IOException {
-    if (inOrder || !acceptsDocsOutOfOrder()) {
-      assert doc > lastCollected : "Out of order : " + lastCollected + " " + doc;
+  /** Wrap the given collector in order to add assertions. */
+  public static Collector wrap(Random random, Collector in) {
+    if (in instanceof AssertingCollector) {
+      return in;
     }
-    in.collect(doc);
-    lastCollected = doc;
+    return new AssertingCollector(random, in);
+  }
+
+  private AssertingCollector(Random random, Collector in) {
+    super(in);
+    this.random = random;
   }
 
   @Override
-  public void setNextReader(AtomicReaderContext context) throws IOException {
-    lastCollected = -1;
-  }
-
-  @Override
-  public boolean acceptsDocsOutOfOrder() {
-    return in.acceptsDocsOutOfOrder();
+  public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
+    final LeafCollector in = super.getLeafCollector(context);
+    final int docBase = context.docBase;
+    return new AssertingLeafCollector(random, in, 0, DocIdSetIterator.NO_MORE_DOCS) {
+      @Override
+      public void collect(int doc) throws IOException {
+        // check that documents are scored in order globally,
+        // not only per segment
+        assert docBase + doc >= maxDoc : "collection is not in order: current doc="
+            + (docBase + doc) + " while " + maxDoc + " has already been collected";
+        super.collect(doc);
+        maxDoc = docBase + doc;
+      }
+    };
   }
 
 }
-

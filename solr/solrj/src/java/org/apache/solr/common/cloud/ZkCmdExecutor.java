@@ -1,5 +1,3 @@
-package org.apache.solr.common.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,25 +14,21 @@ package org.apache.solr.common.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import java.util.List;
+package org.apache.solr.common.cloud;
 
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.KeeperException.NodeExistsException;
-import org.apache.zookeeper.ZooDefs;
-import org.apache.zookeeper.data.ACL;
 
 
 public class ZkCmdExecutor {
   private long retryDelay = 1500L; // 1 second would match timeout, so 500 ms over for padding
   private int retryCount;
-  private List<ACL> acl = ZooDefs.Ids.OPEN_ACL_UNSAFE;
   private double timeouts;
   
   /**
    * TODO: At this point, this should probably take a SolrZkClient in
-   * it's constructor.
+   * its constructor.
    * 
    * @param timeoutms
    *          the client timeout for the ZooKeeper clients that will be used
@@ -43,14 +37,6 @@ public class ZkCmdExecutor {
   public ZkCmdExecutor(int timeoutms) {
     timeouts = timeoutms / 1000.0;
     this.retryCount = Math.round(0.5f * ((float)Math.sqrt(8.0f * timeouts + 1.0f) - 1.0f)) + 1;
-  }
-  
-  public List<ACL> getAcl() {
-    return acl;
-  }
-  
-  public void setAcl(List<ACL> acl) {
-    this.acl = acl;
   }
   
   public long getRetryDelay() {
@@ -104,9 +90,9 @@ public class ZkCmdExecutor {
       return;
     }
     try {
-      zkClient.makePath(path, data, true);
+      zkClient.makePath(path, data, createMode, true);
     } catch (NodeExistsException e) {
-      // its okay if another beats us creating the node
+      // it's okay if another beats us creating the node
     }
     
   }

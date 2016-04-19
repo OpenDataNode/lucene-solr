@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,46 +14,26 @@ package org.apache.lucene.analysis.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.core;
 
-import java.io.Reader;
 
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.util.CharTokenizer;
 import org.apache.lucene.util.AttributeFactory;
-import org.apache.lucene.util.Version;
 
 /**
- * A WhitespaceTokenizer is a tokenizer that divides text at whitespace.
- * Adjacent sequences of non-Whitespace characters form tokens. <a
- * name="version"/>
- * <p>
- * You may specify the {@link Version} compatibility when creating
- * {@link WhitespaceTokenizer}:
- * <ul>
- * <li>As of 3.1, {@link CharTokenizer} uses an int based API to normalize and
- * detect token characters. See {@link CharTokenizer#isTokenChar(int)} and
- * {@link CharTokenizer#normalize(int)} for details.</li>
- * </ul>
+ * A tokenizer that divides text at whitespace characters as defined by
+ * {@link Character#isWhitespace(int)}.  Note: That definition explicitly excludes the non-breaking space.
+ * Adjacent sequences of non-Whitespace characters form tokens.
+ *
+ * @see UnicodeWhitespaceTokenizer
  */
 public final class WhitespaceTokenizer extends CharTokenizer {
   
   /**
-   * Construct a new WhitespaceTokenizer. * @param matchVersion Lucene version
-   * to match See {@link <a href="#version">above</a>}
-   * 
-   * @param in
-   *          the input to split up into tokens
+   * Construct a new WhitespaceTokenizer.
    */
-  public WhitespaceTokenizer(Reader in) {
-    super(in);
-  }
-
-  /**
-   * @deprecated Use {@link #WhitespaceTokenizer(Reader)}
-   */
-  @Deprecated
-  public WhitespaceTokenizer(Version matchVersion, Reader in) {
-    super(matchVersion, in);
+  public WhitespaceTokenizer() {
   }
 
   /**
@@ -64,19 +42,9 @@ public final class WhitespaceTokenizer extends CharTokenizer {
    *
    * @param factory
    *          the attribute factory to use for this {@link Tokenizer}
-   * @param in
-   *          the input to split up into tokens
    */
-  public WhitespaceTokenizer(AttributeFactory factory, Reader in) {
-    super(factory, in);
-  }
-
-  /**
-   * @deprecated Use {@link #WhitespaceTokenizer(AttributeFactory, Reader)}
-   */
-  @Deprecated
-  public WhitespaceTokenizer(Version matchVersion, AttributeFactory factory, Reader in) {
-    super(matchVersion, factory, in);
+  public WhitespaceTokenizer(AttributeFactory factory) {
+    super(factory);
   }
   
   /** Collects only characters which do not satisfy

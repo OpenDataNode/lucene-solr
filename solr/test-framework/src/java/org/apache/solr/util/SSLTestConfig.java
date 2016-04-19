@@ -1,5 +1,3 @@
-package org.apache.solr.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.util;
 
 import java.io.File;
 import java.security.KeyManagementException;
@@ -38,8 +37,8 @@ import org.apache.solr.common.params.SolrParams;
 import org.eclipse.jetty.util.security.CertificateUtils;
 
 public class SSLTestConfig extends SSLConfig {
-  public static File TEST_KEYSTORE = ExternalPaths.EXAMPLE_HOME == null ? null
-      : new File(ExternalPaths.EXAMPLE_HOME, "../etc/solrtest.keystore");
+  public static File TEST_KEYSTORE = ExternalPaths.SERVER_HOME == null ? null
+      : new File(ExternalPaths.SERVER_HOME, "../etc/test/solrtest.keystore");
   
   private static String TEST_KEYSTORE_PATH = TEST_KEYSTORE != null
       && TEST_KEYSTORE.exists() ? TEST_KEYSTORE.getAbsolutePath() : null;
@@ -90,20 +89,15 @@ public class SSLTestConfig extends SSLConfig {
   
   private class SSLHttpClientConfigurer extends HttpClientConfigurer {
     @SuppressWarnings("deprecation")
-    protected void configure(DefaultHttpClient httpClient, SolrParams config) {
+    public void configure(DefaultHttpClient httpClient, SolrParams config) {
       super.configure(httpClient, config);
       SchemeRegistry registry = httpClient.getConnectionManager().getSchemeRegistry();
       // Make sure no tests cheat by using HTTP
       registry.unregister("http");
       try {
         registry.register(new Scheme("https", 443, new SSLSocketFactory(buildSSLContext())));
-      } catch (KeyManagementException ex) {
-        throw new IllegalStateException("Unable to setup https scheme for HTTPClient to test SSL.", ex);
-      } catch (UnrecoverableKeyException ex) {
-        throw new IllegalStateException("Unable to setup https scheme for HTTPClient to test SSL.", ex);
-      } catch (NoSuchAlgorithmException ex) {
-        throw new IllegalStateException("Unable to setup https scheme for HTTPClient to test SSL.", ex);
-      } catch (KeyStoreException ex) {
+      } catch (KeyManagementException | UnrecoverableKeyException
+          | NoSuchAlgorithmException | KeyStoreException ex) {
         throw new IllegalStateException("Unable to setup https scheme for HTTPClient to test SSL.", ex);
       }
     }

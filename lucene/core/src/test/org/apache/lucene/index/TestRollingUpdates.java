@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.util.Random;
 
@@ -43,11 +43,11 @@ public class TestRollingUpdates extends LuceneTestCase {
     if (dir instanceof MockDirectoryWrapper) {
       ((MockDirectoryWrapper)dir).setEnableVirusScanner(false);
     }
-
-    final LineFileDocs docs = new LineFileDocs(random, defaultCodecSupportsDocValues());
+    
+    final LineFileDocs docs = new LineFileDocs(random, true);
 
     //provider.register(new MemoryCodec());
-    if ( (!"Lucene3x".equals(Codec.getDefault().getName())) && random().nextBoolean()) {
+    if (random().nextBoolean()) {
       Codec.setDefault(TestUtil.alwaysPostingsFormat(new MemoryPostingsFormat(random().nextBoolean(), random.nextFloat())));
     }
 
@@ -67,7 +67,7 @@ public class TestRollingUpdates extends LuceneTestCase {
     // TODO: sometimes update ids not in order...
     for(int docIter=0;docIter<numUpdates;docIter++) {
       final Document doc = docs.nextDoc();
-      final String myID = ""+id;
+      final String myID = Integer.toString(id);
       if (id == SIZE-1) {
         id = 0;
       } else {
@@ -102,7 +102,13 @@ public class TestRollingUpdates extends LuceneTestCase {
       updateCount++;
 
       if (doUpdate) {
-        w.updateDocument(idTerm, doc);
+        if (random().nextBoolean()) {
+          w.updateDocument(idTerm, doc);
+        } else {
+          // It's OK to not be atomic for this test (no separate thread reopening readers):
+          w.deleteDocuments(new TermQuery(idTerm));
+          w.addDocument(doc);
+        }
       } else {
         w.addDocument(doc);
       }
@@ -143,15 +149,15 @@ public class TestRollingUpdates extends LuceneTestCase {
     docs.close();
     
     // LUCENE-4455:
-    SegmentInfos infos = new SegmentInfos();
-    infos.read(dir);
+    SegmentInfos infos = SegmentInfos.readLatestCommit(dir);
     long totalBytes = 0;
     for(SegmentCommitInfo sipc : infos) {
       totalBytes += sipc.sizeInBytes();
     }
     long totalBytes2 = 0;
+    
     for(String fileName : dir.listAll()) {
-      if (!fileName.startsWith(IndexFileNames.SEGMENTS)) {
+      if (IndexFileNames.CODEC_FILE_PATTERN.matcher(fileName).matches()) {
         totalBytes2 += dir.fileLength(fileName);
       }
     }
@@ -207,11 +213,12 @@ public class TestRollingUpdates extends LuceneTestCase {
         DirectoryReader open = null;
         for (int i = 0; i < num; i++) {
           Document doc = new Document();// docs.nextDoc();
-          doc.add(newStringField("id", "test", Field.Store.NO));
-          writer.updateDocument(new Term("id", "test"), doc);
+          BytesRef br = new BytesRef("test");
+          doc.add(newStringField("id", br, Field.Store.NO));
+          writer.updateDocument(new Term("id", br), doc);
           if (random().nextInt(3) == 0) {
             if (open == null) {
-              open = DirectoryReader.open(writer, true);
+              open = DirectoryReader.open(writer);
             }
             DirectoryReader reader = DirectoryReader.openIfChanged(open);
             if (reader != null) {

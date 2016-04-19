@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.processors;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard.processors;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.processors;
 
 import java.util.List;
 
@@ -32,7 +31,7 @@ import org.apache.lucene.queryparser.flexible.standard.config.StandardQueryConfi
 /**
  * This processor iterates the query node tree looking for every
  * {@link FieldableNode} that has {@link ConfigurationKeys#BOOST} in its
- * config. If there is, the boost is applied to that {@link FieldableNode}. <br/>
+ * config. If there is, the boost is applied to that {@link FieldableNode}.
  * 
  * @see ConfigurationKeys#BOOST
  * @see QueryConfigHandler

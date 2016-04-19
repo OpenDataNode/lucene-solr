@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.spans;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.spans;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.spans;
 
 import org.apache.lucene.queryparser.flexible.core.QueryNodeException;
 import org.apache.lucene.queryparser.flexible.core.nodes.OrQueryNode;
@@ -31,33 +30,33 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.util.LuceneTestCase;
 
 /**
- * This test case demonstrates how the new query parser can be used.<br/>
- * <br/>
+ * This test case demonstrates how the new query parser can be used.<br>
+ * <br>
  * 
  * It tests queries likes "term", "field:term" "term1 term2" "term1 OR term2",
  * which are all already supported by the current syntax parser (
- * {@link StandardSyntaxParser}).<br/>
- * <br/>
+ * {@link StandardSyntaxParser}).<br>
+ * <br>
  * 
  * The goals is to create a new query parser that supports only the pair
  * "field:term" or a list of pairs separated or not by an OR operator, and from
  * this query generate {@link SpanQuery} objects instead of the regular
  * {@link Query} objects. Basically, every pair will be converted to a
  * {@link SpanTermQuery} object and if there are more than one pair they will be
- * grouped by an {@link OrQueryNode}.<br/>
- * <br/>
+ * grouped by an {@link OrQueryNode}.<br>
+ * <br>
  * 
  * Another functionality that will be added is the ability to convert every
- * field defined in the query to an unique specific field.<br/>
- * <br/>
+ * field defined in the query to an unique specific field.<br>
+ * <br>
  * 
  * The query generation is divided in three different steps: parsing (syntax),
- * processing (semantic) and building.<br/>
- * <br/>
+ * processing (semantic) and building.<br>
+ * <br>
  * 
  * The parsing phase, as already mentioned will be performed by the current
- * query parser: {@link StandardSyntaxParser}.<br/>
- * <br/>
+ * query parser: {@link StandardSyntaxParser}.<br>
+ * <br>
  * 
  * The processing phase will be performed by a processor pipeline which is
  * compound by 2 processors: {@link SpansValidatorQueryNodeProcessor} and
@@ -79,8 +78,8 @@ import org.apache.lucene.util.LuceneTestCase;
  * 
  * The building phase is performed by the {@link SpansQueryTreeBuilder}, which
  * basically contains a map that defines which builder will be used to generate
- * {@link SpanQuery} objects from {@link QueryNode} objects.<br/>
- * <br/>
+ * {@link SpanQuery} objects from {@link QueryNode} objects.<br>
+ * <br>
  * 
  * @see SpansQueryConfigHandler
  * @see SpansQueryTreeBuilder

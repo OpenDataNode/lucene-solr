@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.pattern;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.pattern;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.pattern;
+
 import java.io.IOException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -58,15 +58,15 @@ import org.apache.lucene.util.CharsRefBuilder;
  * </p>
  * <p>
  * <code>
- *   "([A-Z]{2,})",                                 <br />
- *   "(?&lt;![A-Z])([A-Z][a-z]+)",                     <br />
- *   "(?:^|\\b|(?&lt;=[0-9_])|(?&lt;=[A-Z]{2}))([a-z]+)", <br />
+ *   "([A-Z]{2,})",                                 
+ *   "(?&lt;![A-Z])([A-Z][a-z]+)",                     
+ *   "(?:^|\\b|(?&lt;=[0-9_])|(?&lt;=[A-Z]{2}))([a-z]+)",
  *   "([0-9]+)"
  * </code>
  * </p>
  * <p>
  * plus if {@link #preserveOriginal} is true, it would also return
- * <code>"camelCaseFilter</code>
+ * <code>"camelCaseFilter"</code>
  * </p>
  */
 public final class PatternCaptureGroupTokenFilter extends TokenFilter {

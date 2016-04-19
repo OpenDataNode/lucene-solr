@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,10 @@ package org.apache.lucene.analysis.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.core;
+
 
 import java.io.IOException;
-import java.io.Reader;
 
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
@@ -37,20 +36,19 @@ public final class KeywordTokenizer extends Tokenizer {
   private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
   private OffsetAttribute offsetAtt = addAttribute(OffsetAttribute.class);
   
-  public KeywordTokenizer(Reader input) {
-    this(input, DEFAULT_BUFFER_SIZE);
+  public KeywordTokenizer() {
+    this(DEFAULT_BUFFER_SIZE);
   }
 
-  public KeywordTokenizer(Reader input, int bufferSize) {
-    super(input);
+  public KeywordTokenizer(int bufferSize) {
     if (bufferSize <= 0) {
       throw new IllegalArgumentException("bufferSize must be > 0");
     }
     termAtt.resizeBuffer(bufferSize);
   }
 
-  public KeywordTokenizer(AttributeFactory factory, Reader input, int bufferSize) {
-    super(factory, input);
+  public KeywordTokenizer(AttributeFactory factory, int bufferSize) {
+    super(factory);
     if (bufferSize <= 0) {
       throw new IllegalArgumentException("bufferSize must be > 0");
     }

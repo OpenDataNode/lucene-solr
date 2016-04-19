@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -174,7 +174,7 @@ public class TestShardSearching extends ShardSearchingTestBase {
           if (terms == null && docCount > minDocsToMakeTerms) {
             // TODO: try to "focus" on high freq terms sometimes too
             // TODO: maybe also periodically reset the terms...?
-            final TermsEnum termsEnum = MultiFields.getTerms(mockReader, "body").iterator(null);
+            final TermsEnum termsEnum = MultiFields.getTerms(mockReader, "body").iterator();
             terms = new ArrayList<>();
             while(termsEnum.next() != null) {
               terms.add(BytesRef.deepCopyOf(termsEnum.term()));
@@ -219,9 +219,9 @@ public class TestShardSearching extends ShardSearchingTestBase {
                 //sort = new Sort(SortField.FIELD_DOC);
                 sort = null;
               } else if (what == 2) {
-                sort = new Sort(new SortField[] {new SortField("docid", SortField.Type.INT, random().nextBoolean())});
+                sort = new Sort(new SortField[] {new SortField("docid_intDV", SortField.Type.INT, random().nextBoolean())});
               } else {
-                sort = new Sort(new SortField[] {new SortField("title", SortField.Type.STRING, random().nextBoolean())});
+                sort = new Sort(new SortField[] {new SortField("titleDV", SortField.Type.STRING, random().nextBoolean())});
               }
             }
           } else {

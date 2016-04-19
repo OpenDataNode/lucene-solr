@@ -1,5 +1,3 @@
-package org.apache.solr.analysis;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.analysis;
 
 import java.io.Reader;
 import java.util.Arrays;
@@ -52,8 +51,8 @@ public class MockTokenizerFactory extends TokenizerFactory {
   }
 
   @Override
-  public MockTokenizer create(AttributeFactory factory, Reader input) {
-    MockTokenizer t = new MockTokenizer(factory, input, pattern, false);
+  public MockTokenizer create(AttributeFactory factory) {
+    MockTokenizer t = new MockTokenizer(factory, pattern, false);
     t.setEnableChecks(enableChecks);
     return t;
   }

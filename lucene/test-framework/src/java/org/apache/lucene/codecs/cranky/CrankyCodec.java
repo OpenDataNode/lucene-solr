@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.cranky;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,12 @@ package org.apache.lucene.codecs.cranky;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.cranky;
 
 import java.util.Random;
 
 import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.CompoundFormat;
 import org.apache.lucene.codecs.DocValuesFormat;
 import org.apache.lucene.codecs.FieldInfosFormat;
 import org.apache.lucene.codecs.FilterCodec;
@@ -83,6 +83,11 @@ public class CrankyCodec extends FilterCodec {
   @Override
   public TermVectorsFormat termVectorsFormat() {
     return new CrankyTermVectorsFormat(delegate.termVectorsFormat(), random);
+  }
+
+  @Override
+  public CompoundFormat compoundFormat() {
+    return new CrankyCompoundFormat(delegate.compoundFormat(), random);
   }
 
   @Override

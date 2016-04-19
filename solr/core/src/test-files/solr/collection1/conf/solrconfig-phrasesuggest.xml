@@ -19,7 +19,7 @@
 
 <!-- solrconfig.xml for a WFST phrase suggester -->
 <config>
-  <luceneMatchVersion>${tests.luceneMatchVersion:LUCENE_CURRENT}</luceneMatchVersion>
+  <luceneMatchVersion>${tests.luceneMatchVersion:LATEST}</luceneMatchVersion>
   <xi:include href="solrconfig.snippet.randomindexconfig.xml" xmlns:xi="http://www.w3.org/2001/XInclude"/>
   <dataDir>${solr.data.dir:}</dataDir>
   <directoryFactory name="DirectoryFactory" class="${solr.directoryFactory:solr.RAMDirectoryFactory}"/>
@@ -40,7 +40,7 @@
       <str name="sourceLocation">phrasesuggest.txt</str>
     </lst>
     
-    <!-- specify a fieldtype using keywordtokenizer + lowercase + cleanup -->
+    <!-- specify a fieldType using keywordtokenizer + lowercase + cleanup -->
     <str name="queryAnalyzerFieldType">phrase_suggest</str>
   </searchComponent>
   
@@ -61,7 +61,7 @@
       <str name="sourceLocation">jasuggest.txt</str>
     </lst>
     
-    <!-- specify a fieldtype using keywordtokenizer + lowercase + cleanup -->
+    <!-- specify a fieldType using keywordtokenizer + lowercase + cleanup -->
     <str name="queryAnalyzerFieldType">phrase_suggest</str>
   </searchComponent>
   
@@ -79,10 +79,46 @@
       <str name="sourceLocation">analyzingInfixSuggest.txt</str>
     </lst>
     
-    <!-- specify a fieldtype using keywordtokenizer + lowercase + cleanup -->
+    <!-- specify a fieldType using keywordtokenizer + lowercase + cleanup -->
     <str name="queryAnalyzerFieldType">phrase_suggest</str>
   </searchComponent>
-
+  
+  <!-- AnalyzingInfixLookup suggest component (SolrSuggester - default) -->
+  <searchComponent class="solr.SuggestComponent" name="analyzing_infix_suggest">
+    <!-- Default: highlight - true, allTermsRequired - true -->
+    <lst name="suggester">
+      <str name="name">analyzing_infix_suggest_default</str>
+      <str name="lookupImpl">AnalyzingInfixLookupFactory</str>
+      <str name="dictionaryImpl">FileDictionaryFactory</str>
+      <str name="buildOnCommit">false</str>
+      <str name="indexPath">analyzing_infix_suggest_default</str>
+      <str name="sourceLocation">analyzingInfixSuggest.txt</str>
+      <str name="suggestAnalyzerFieldType">text</str>
+    </lst>
+    
+    <lst name="suggester">
+      <str name="name">analyzing_infix_suggest_without_highlight</str>
+      <str name="lookupImpl">AnalyzingInfixLookupFactory</str>
+      <str name="dictionaryImpl">FileDictionaryFactory</str>
+      <str name="buildOnCommit">false</str>
+      <str name="indexPath">analyzing_infix_suggest_without_highlight</str>
+      <str name="sourceLocation">analyzingInfixSuggest.txt</str>
+      <str name="suggestAnalyzerFieldType">text</str>
+      <bool name="highlight">false</bool>
+    </lst>
+    
+    <lst name="suggester">
+      <str name="name">analyzing_infix_suggest_not_all_terms_required</str>
+      <str name="lookupImpl">AnalyzingInfixLookupFactory</str>
+      <str name="dictionaryImpl">FileDictionaryFactory</str>
+      <str name="buildOnCommit">false</str>
+      <str name="indexPath">analyzing_infix_suggest_not_all_terms_required</str>
+      <str name="sourceLocation">analyzingInfixSuggest.txt</str>
+      <str name="suggestAnalyzerFieldType">text</str>
+      <bool name="allTermsRequired">false</bool>
+    </lst>
+  </searchComponent>
+  
   
   <!-- FuzzyLookup suggest component with HighFrequencyDictionary -->
   <searchComponent class="solr.SuggestComponent" name="fuzzy_suggest_analyzing_with_high_freq_dict">
@@ -114,7 +150,7 @@
       <!-- Suggester properties -->
       <str name="separator"> </str>
       <str name="suggestFreeTextAnalyzerFieldType">text</str>
-	  <int name="ngrams">2</int>
+    <int name="ngrams">2</int>
     </lst>
     
   </searchComponent>
@@ -129,7 +165,8 @@
       <str name="indexPath">blendedInfixDir1</str>
 
       <!-- Suggester properties -->
-      <str name="blenderType">linear</str>
+      <!--full enum name of BlenderType-->
+      <str name="blenderType">position_linear</str>
       <str name="suggestAnalyzerFieldType">text</str>
     </lst>
     
@@ -142,10 +179,40 @@
       <str name="indexPath">blendedInfixDir2</str>
 
       <!-- Suggester properties -->
-      <str name="blenderType">reciprocal</str>
+      <!--full enum name of BlenderType-->
+      <str name="blenderType">position_reciprocal</str>
       <str name="suggestAnalyzerFieldType">text</str>
     </lst>
-    
+
+    <lst name="suggester">
+      <!-- exponential with default exponent -->
+      <str name="name">blended_infix_suggest_exponential_reciprocal</str>
+      <str name="lookupImpl">BlendedInfixLookupFactory</str>
+      <str name="dictionaryImpl">FileDictionaryFactory</str>
+      <str name="buildOnCommit">false</str>
+      <str name="sourceLocation">blendedInfixSuggest.txt</str>
+      <str name="indexPath">blended_infix_suggest_exponential_reciprocal</str>
+
+      <!-- Suggester properties -->
+      <!--full enum name of BlenderType-->
+      <str name="blenderType">position_exponential_reciprocal</str>
+      <str name="suggestAnalyzerFieldType">text</str>
+    </lst>
+
+    <lst name="suggester">
+      <str name="name">blended_infix_suggest_exponential_reciprocal_1</str>
+      <str name="lookupImpl">BlendedInfixLookupFactory</str>
+      <str name="dictionaryImpl">FileDictionaryFactory</str>
+      <str name="buildOnCommit">false</str>
+      <str name="sourceLocation">blendedInfixSuggest.txt</str>
+      <str name="indexPath">blended_infix_suggest_exponential_reciprocal_1</str>
+
+      <!-- Suggester properties -->
+      <str name="blenderType">position_exponential_reciprocal</str>
+      <double name="exponent">1.0</double>
+      <str name="suggestAnalyzerFieldType">text</str>
+    </lst>
+
   </searchComponent>
   
   <!-- FuzzyLookup suggest component with FileDictionaryFactory -->
@@ -182,7 +249,7 @@
       <str name="sourceLocation">fuzzysuggest.txt</str>
     </lst>
     
-    <!-- specify a fieldtype using keywordtokenizer + lowercase + cleanup -->
+    <!-- specify a fieldType using keywordtokenizer + lowercase + cleanup -->
     <str name="queryAnalyzerFieldType">phrase_suggest</str>
   </searchComponent>
   
@@ -204,7 +271,7 @@
       <str name="sourceLocation">fuzzysuggest.txt</str>
     </lst>
     
-    <!-- specify a fieldtype using keywordtokenizer + lowercase + cleanup -->
+    <!-- specify a fieldType using keywordtokenizer + lowercase + cleanup -->
     <str name="queryAnalyzerFieldType">phrase_suggest</str>
   </searchComponent>
   
@@ -226,7 +293,7 @@
       <str name="sourceLocation">fuzzysuggest.txt</str>
     </lst>
     
-    <!-- specify a fieldtype using keywordtokenizer + lowercase + cleanup -->
+    <!-- specify a fieldType using keywordtokenizer + lowercase + cleanup -->
     <str name="queryAnalyzerFieldType">phrase_suggest</str>
   </searchComponent>
   
@@ -248,7 +315,7 @@
       <str name="sourceLocation">fuzzysuggest.txt</str>
     </lst>
  
-    <!-- specify a fieldtype using keywordtokenizer + lowercase + cleanup -->
+    <!-- specify a fieldType using keywordtokenizer + lowercase + cleanup -->
     <str name="queryAnalyzerFieldType">phrase_suggest</str>
   </searchComponent>
   
@@ -306,6 +373,14 @@
     </arr>
   </requestHandler>
   
+  <requestHandler class="org.apache.solr.handler.component.SearchHandler" name="/analyzing_infix_suggest">
+    <lst name="defaults">
+      <str name="suggest">true</str>
+    </lst>
+    <arr name="components">
+      <str>analyzing_infix_suggest</str>
+    </arr>
+  </requestHandler>
   
   <requestHandler class="org.apache.solr.handler.component.SearchHandler" name="/blended_infix_suggest">
     <lst name="defaults">

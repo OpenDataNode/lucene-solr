@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.miscellaneous;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.miscellaneous;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.miscellaneous;
+
 
 import java.io.IOException;
 import java.util.Collection;
@@ -28,7 +28,7 @@ import org.apache.lucene.analysis.util.CharArraySet;
 /** 
  * A filter to apply normal capitalization rules to Tokens.  It will make the first letter
  * capital and the rest lower case.
- * <p/>
+ * <p>
  * This filter is particularly useful to build nice looking facet parameters.  This filter
  * is not appropriate if you intend to use a prefix query.
  */
@@ -65,7 +65,7 @@ public final class CapitalizationFilter extends TokenFilter {
    * @param forceFirstLetter Force the first letter to be capitalized even if it is in the keep list.
    * @param okPrefix do not change word capitalization if a word begins with something in this list.
    * @param minWordLength how long the word needs to be to get capitalization applied.  If the
-   *                      minWordLength is 3, "and" > "And" but "or" stays "or".
+   *                      minWordLength is 3, "and" &gt; "And" but "or" stays "or".
    * @param maxWordCount if the token contains more then maxWordCount words, the capitalization is
    *                     assumed to be correct.
    * @param maxTokenLength ???

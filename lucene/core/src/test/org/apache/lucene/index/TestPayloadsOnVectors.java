@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.StringReader;
 
@@ -24,6 +24,7 @@ import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.Token;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.tokenattributes.PayloadAttribute;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -32,9 +33,7 @@ import org.apache.lucene.document.TextField;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 
-@SuppressCodecs("Lucene3x")
 public class TestPayloadsOnVectors extends LuceneTestCase {
 
   /** some docs have payload att, some not */
@@ -50,7 +49,8 @@ public class TestPayloadsOnVectors extends LuceneTestCase {
     customType.setStoreTermVectorPayloads(true);
     customType.setStoreTermVectorOffsets(random().nextBoolean());
     Field field = new Field("field", "", customType);
-    TokenStream ts = new MockTokenizer(new StringReader("here we go"), MockTokenizer.WHITESPACE, true);
+    TokenStream ts = new MockTokenizer(MockTokenizer.WHITESPACE, true);
+    ((Tokenizer)ts).setReader(new StringReader("here we go"));
     field.setTokenStream(ts);
     doc.add(field);
     writer.addDocument(doc);
@@ -62,16 +62,17 @@ public class TestPayloadsOnVectors extends LuceneTestCase {
     field.setTokenStream(ts);
     writer.addDocument(doc);
     
-    ts = new MockTokenizer(new StringReader("another"), MockTokenizer.WHITESPACE, true);
+    ts = new MockTokenizer(MockTokenizer.WHITESPACE, true);
+    ((Tokenizer)ts).setReader(new StringReader("another"));
     field.setTokenStream(ts);
     writer.addDocument(doc);
     
     DirectoryReader reader = writer.getReader();
     Terms terms = reader.getTermVector(1, "field");
     assert terms != null;
-    TermsEnum termsEnum = terms.iterator(null);
+    TermsEnum termsEnum = terms.iterator();
     assertTrue(termsEnum.seekExact(new BytesRef("withPayload")));
-    DocsAndPositionsEnum de = termsEnum.docsAndPositions(null, null);
+    PostingsEnum de = termsEnum.postings(null, PostingsEnum.ALL);
     assertEquals(0, de.nextDoc());
     assertEquals(0, de.nextPosition());
     assertEquals(new BytesRef("test"), de.getPayload());
@@ -91,7 +92,8 @@ public class TestPayloadsOnVectors extends LuceneTestCase {
     customType.setStoreTermVectorPayloads(true);
     customType.setStoreTermVectorOffsets(random().nextBoolean());
     Field field = new Field("field", "", customType);
-    TokenStream ts = new MockTokenizer(new StringReader("here we go"), MockTokenizer.WHITESPACE, true);
+    TokenStream ts = new MockTokenizer(MockTokenizer.WHITESPACE, true);
+    ((Tokenizer)ts).setReader(new StringReader("here we go"));
     field.setTokenStream(ts);
     doc.add(field);
     Field field2 = new Field("field", "", customType);
@@ -102,16 +104,17 @@ public class TestPayloadsOnVectors extends LuceneTestCase {
     field2.setTokenStream(ts);
     doc.add(field2);
     Field field3 = new Field("field", "", customType);
-    ts = new MockTokenizer(new StringReader("nopayload"), MockTokenizer.WHITESPACE, true);
+    ts = new MockTokenizer(MockTokenizer.WHITESPACE, true);
+    ((Tokenizer)ts).setReader(new StringReader("nopayload"));
     field3.setTokenStream(ts);
     doc.add(field3);
     writer.addDocument(doc);
     DirectoryReader reader = writer.getReader();
     Terms terms = reader.getTermVector(0, "field");
     assert terms != null;
-    TermsEnum termsEnum = terms.iterator(null);
+    TermsEnum termsEnum = terms.iterator();
     assertTrue(termsEnum.seekExact(new BytesRef("withPayload")));
-    DocsAndPositionsEnum de = termsEnum.docsAndPositions(null, null);
+    PostingsEnum de = termsEnum.postings(null, PostingsEnum.ALL);
     assertEquals(0, de.nextDoc());
     assertEquals(3, de.nextPosition());
     assertEquals(new BytesRef("test"), de.getPayload());

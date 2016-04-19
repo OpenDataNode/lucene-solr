@@ -22,7 +22,7 @@
 
   -->
 <config>
-  <luceneMatchVersion>${tests.luceneMatchVersion:LUCENE_CURRENT}</luceneMatchVersion>
+  <luceneMatchVersion>${tests.luceneMatchVersion:LATEST}</luceneMatchVersion>
   <xi:include href="solrconfig.snippet.randomindexconfig.xml" xmlns:xi="http://www.w3.org/2001/XInclude"/>
   <requestHandler name="standard" class="solr.StandardRequestHandler"></requestHandler>
   <directoryFactory name="DirectoryFactory" class="${solr.directoryFactory:solr.RAMDirectoryFactory}"/>
@@ -103,9 +103,16 @@
       <str name="script">throw.error.on.add.updateprocessor.js</str>
     </processor>
   </updateRequestProcessorChain>
+
   <updateRequestProcessorChain name="missing-functions">
     <processor class="solr.StatelessScriptUpdateProcessorFactory">
       <str name="script">missing.functions.updateprocessor.js</str>
+    </processor>
+  </updateRequestProcessorChain>
+
+  <updateRequestProcessorChain name="javascript-compatibility">
+    <processor class="solr.StatelessScriptUpdateProcessorFactory">
+      <str name="script">cross-compatible.js</str>
     </processor>
   </updateRequestProcessorChain>
 

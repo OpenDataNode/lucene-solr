@@ -1,4 +1,3 @@
-package org.apache.lucene.queryparser.surround.query;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.lucene.queryparser.surround.query;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.lucene.queryparser.surround.query;
 /*
 SpanNearClauseFactory:
 
@@ -46,19 +45,21 @@ Operations:
    Are SpanQuery weights handled correctly during search by Lucene?
    Should the resulting SpanOrQuery be sorted?
    Could other SpanQueries be added for use in this factory:
-   - SpanOrQuery: in principle yes, but it only has access to it's terms
+   - SpanOrQuery: in principle yes, but it only has access to its terms
                   via getTerms(); are the corresponding weights available?
    - SpanFirstQuery: treat similar to subquery SpanNearQuery. (ok?)
    - SpanNotQuery: treat similar to subquery SpanNearQuery. (ok?)
  */
 
 import java.io.IOException;
-import java.util.Iterator;
 import java.util.HashMap;
+import java.util.Iterator;
+
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.MatchNoDocsQuery;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.spans.SpanNearQuery;
+import org.apache.lucene.search.spans.SpanBoostQuery;
 import org.apache.lucene.search.spans.SpanOrQuery;
 import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.search.spans.SpanTermQuery;
@@ -105,11 +106,17 @@ public class SpanNearClauseFactory { // FIXME: rename to SpanClauseFactory
   }
 
   public void addSpanQuery(Query q) {
-    if (q == SrndQuery.theEmptyLcnQuery)
+    if (q.getClass() == MatchNoDocsQuery.class)
       return;
     if (! (q instanceof SpanQuery))
       throw new AssertionError("Expected SpanQuery: " + q.toString(getFieldName()));
-    addSpanQueryWeighted((SpanQuery)q, q.getBoost());
+    float boost = 1f;
+    if (q instanceof SpanBoostQuery) {
+      SpanBoostQuery bq = (SpanBoostQuery) q;
+      boost = bq.getBoost();
+      q = bq.getQuery();
+    }
+    addSpanQueryWeighted((SpanQuery)q, boost);
   }
 
   public SpanQuery makeSpanClause() {
@@ -118,7 +125,10 @@ public class SpanNearClauseFactory { // FIXME: rename to SpanClauseFactory
     int i = 0;
     while (sqi.hasNext()) {
       SpanQuery sq = sqi.next();
-      sq.setBoost(weightBySpanQuery.get(sq).floatValue());
+      float boost = weightBySpanQuery.get(sq);
+      if (boost != 1f) {
+        sq = new SpanBoostQuery(sq, boost);
+      }
       spanQueries[i++] = sq;
     }
     

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.charfilter;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.analysis.charfilter;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.charfilter;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -27,11 +26,11 @@ import java.util.Set;
 import org.apache.lucene.analysis.util.CharArrayMap;
 import org.apache.lucene.analysis.util.CharArraySet;
 import org.apache.lucene.analysis.util.OpenStringBuilder;
-import org.apache.lucene.util.Version;
 
 /**
  * A CharFilter that wraps another Reader and attempts to strip out HTML constructs.
  */
+@SuppressWarnings("fallthrough")
 %%
 
 %unicode 6.3

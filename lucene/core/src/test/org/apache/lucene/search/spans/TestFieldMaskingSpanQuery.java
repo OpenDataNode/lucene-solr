@@ -1,5 +1,3 @@
-package org.apache.lucene.search.spans;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search.spans;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.spans;
+
 
 import java.util.HashSet;
 import java.util.Set;
@@ -35,6 +35,9 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+
+import static org.apache.lucene.search.spans.SpanTestUtil.assertFinished;
+import static org.apache.lucene.search.spans.SpanTestUtil.assertNext;
 
 public class TestFieldMaskingSpanQuery extends LuceneTestCase {
 
@@ -133,13 +136,12 @@ public class TestFieldMaskingSpanQuery extends LuceneTestCase {
   public void testRewrite0() throws Exception {
     SpanQuery q = new FieldMaskingSpanQuery
       (new SpanTermQuery(new Term("last", "sally")) , "first");
-    q.setBoost(8.7654321f);
     SpanQuery qr = (SpanQuery) searcher.rewrite(q);
 
     QueryUtils.checkEqual(q, qr);
 
     Set<Term> terms = new HashSet<>();
-    qr.extractTerms(terms);
+    qr.createWeight(searcher, false).extractTerms(terms);
     assertEquals(1, terms.size());
   }
   
@@ -159,7 +161,7 @@ public class TestFieldMaskingSpanQuery extends LuceneTestCase {
     QueryUtils.checkUnequal(q, qr);
 
     Set<Term> terms = new HashSet<>();
-    qr.extractTerms(terms);
+    qr.createWeight(searcher, false).extractTerms(terms);
     assertEquals(2, terms.size());
   }
   
@@ -173,7 +175,7 @@ public class TestFieldMaskingSpanQuery extends LuceneTestCase {
     QueryUtils.checkEqual(q, qr);
 
     HashSet<Term> set = new HashSet<>();
-    qr.extractTerms(set);
+    qr.createWeight(searcher, true).extractTerms(set);
     assertEquals(2, set.size());
   }
   
@@ -192,16 +194,6 @@ public class TestFieldMaskingSpanQuery extends LuceneTestCase {
     QueryUtils.checkUnequal(q1, q3);
     QueryUtils.checkUnequal(q1, q4);
     QueryUtils.checkUnequal(q1, q5);
-    
-    SpanQuery qA = new FieldMaskingSpanQuery
-      (new SpanTermQuery(new Term("last", "sally")) , "first");
-    qA.setBoost(9f);
-    SpanQuery qB = new FieldMaskingSpanQuery
-      (new SpanTermQuery(new Term("last", "sally")) , "first");
-    QueryUtils.checkUnequal(qA, qB);
-    qB.setBoost(9f);
-    QueryUtils.checkEqual(qA, qB);
-    
   }
   
   public void testNoop0() throws Exception {
@@ -241,7 +233,7 @@ public class TestFieldMaskingSpanQuery extends LuceneTestCase {
   
   public void testSimple2() throws Exception {
     assumeTrue("Broken scoring: LUCENE-3723", 
-        searcher.getSimilarity() instanceof TFIDFSimilarity);
+        searcher.getSimilarity(true) instanceof TFIDFSimilarity);
     SpanQuery q1 = new SpanTermQuery(new Term("gender", "female"));
     SpanQuery q2 = new SpanTermQuery(new Term("last", "smith"));
     SpanQuery q = new SpanNearQuery(new SpanQuery[]
@@ -258,37 +250,18 @@ public class TestFieldMaskingSpanQuery extends LuceneTestCase {
     SpanQuery q2 = new SpanTermQuery(new Term("first",  "james"));
     SpanQuery q  = new SpanOrQuery(q1, new FieldMaskingSpanQuery(q2, "gender"));
     check(q, new int[] { 0, 1, 2, 3, 4 });
-  
-    Spans span = MultiSpansWrapper.wrap(searcher.getTopReaderContext(), q);
-    
-    assertEquals(true, span.next());
-    assertEquals(s(0,0,1), s(span));
 
-    assertEquals(true, span.next());
-    assertEquals(s(1,0,1), s(span));
-
-    assertEquals(true, span.next());
-    assertEquals(s(1,1,2), s(span));
-
-    assertEquals(true, span.next());
-    assertEquals(s(2,0,1), s(span));
-
-    assertEquals(true, span.next());
-    assertEquals(s(2,1,2), s(span));
-
-    assertEquals(true, span.next());
-    assertEquals(s(2,2,3), s(span));
-
-    assertEquals(true, span.next());
-    assertEquals(s(3,0,1), s(span));
-
-    assertEquals(true, span.next());
-    assertEquals(s(4,0,1), s(span));
-
-    assertEquals(true, span.next());
-    assertEquals(s(4,1,2), s(span));
-
-    assertEquals(false, span.next());
+    Spans span = MultiSpansWrapper.wrap(searcher.getIndexReader(), q);
+    assertNext(span, 0,0,1);
+    assertNext(span, 1,0,1);
+    assertNext(span, 1,1,2);
+    assertNext(span, 2,0,1);
+    assertNext(span, 2,1,2);
+    assertNext(span, 2,2,3);
+    assertNext(span, 3,0,1);
+    assertNext(span, 4,0,1);
+    assertNext(span, 4,1,2);
+    assertFinished(span);
   }
   
   public void testSpans1() throws Exception {
@@ -300,20 +273,23 @@ public class TestFieldMaskingSpanQuery extends LuceneTestCase {
     check(qA, new int[] { 0, 1, 2, 4 });
     check(qB, new int[] { 0, 1, 2, 4 });
   
-    Spans spanA = MultiSpansWrapper.wrap(searcher.getTopReaderContext(), qA);
-    Spans spanB = MultiSpansWrapper.wrap(searcher.getTopReaderContext(), qB);
+    Spans spanA = MultiSpansWrapper.wrap(searcher.getIndexReader(), qA);
+    Spans spanB = MultiSpansWrapper.wrap(searcher.getIndexReader(), qB);
     
-    while (spanA.next()) {
-      assertTrue("spanB not still going", spanB.next());
-      assertEquals("spanA not equal spanB", s(spanA), s(spanB));
+    while (spanA.nextDoc() != Spans.NO_MORE_DOCS) {
+      assertNotSame("spanB not still going", Spans.NO_MORE_DOCS, spanB.nextDoc());
+      while (spanA.nextStartPosition() != Spans.NO_MORE_POSITIONS) {
+        assertEquals("spanB start position", spanA.startPosition(), spanB.nextStartPosition());
+        assertEquals("spanB end position", spanA.endPosition(), spanB.endPosition());
+      }
+      assertEquals("spanB start position", Spans.NO_MORE_POSITIONS, spanB.nextStartPosition());
     }
-    assertTrue("spanB still going even tough spanA is done", !(spanB.next()));
-
+    assertEquals("spanB end doc", Spans.NO_MORE_DOCS, spanB.nextDoc());
   }
   
   public void testSpans2() throws Exception {
-    assumeTrue("Broken scoring: LUCENE-3723", 
-        searcher.getSimilarity() instanceof TFIDFSimilarity);
+    assumeTrue("Broken scoring: LUCENE-3723",
+        searcher.getSimilarity(true) instanceof TFIDFSimilarity);
     SpanQuery qA1 = new SpanTermQuery(new Term("gender", "female"));
     SpanQuery qA2 = new SpanTermQuery(new Term("first",  "james"));
     SpanQuery qA  = new SpanOrQuery(qA1, new FieldMaskingSpanQuery(qA2, "gender"));
@@ -322,30 +298,16 @@ public class TestFieldMaskingSpanQuery extends LuceneTestCase {
       { new FieldMaskingSpanQuery(qA, "id"),
         new FieldMaskingSpanQuery(qB, "id") }, -1, false );
     check(q, new int[] { 0, 1, 2, 3 });
-  
-    Spans span = MultiSpansWrapper.wrap(searcher.getTopReaderContext(), q);
-    
-    assertEquals(true, span.next());
-    assertEquals(s(0,0,1), s(span));
 
-    assertEquals(true, span.next());
-    assertEquals(s(1,1,2), s(span));
-
-    assertEquals(true, span.next());
-    assertEquals(s(2,0,1), s(span));
-
-    assertEquals(true, span.next());
-    assertEquals(s(2,2,3), s(span));
-
-    assertEquals(true, span.next());
-    assertEquals(s(3,0,1), s(span));
-
-    assertEquals(false, span.next());
+    Spans span = MultiSpansWrapper.wrap(searcher.getIndexReader(), q);
+    assertNext(span, 0,0,1);
+    assertNext(span, 1,1,2);
+    assertNext(span, 2,0,1);
+    assertNext(span, 2,2,3);
+    assertNext(span, 3,0,1);
+    assertFinished(span);
   }
   
-  public String s(Spans span) {
-    return s(span.doc(), span.start(), span.end());
-  }
   public String s(int doc, int start, int end) {
     return "s(" + doc + "," + start + "," + end +")";
   }

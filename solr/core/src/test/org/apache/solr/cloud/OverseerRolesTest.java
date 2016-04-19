@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,87 +14,67 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-
-import static org.apache.solr.cloud.OverseerCollectionProcessor.NUM_SLICES;
-import static org.apache.solr.common.cloud.ZkStateReader.REPLICATION_FACTOR;
-import static org.apache.solr.common.cloud.ZkStateReader.MAX_SHARDS_PER_NODE;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.getSortedOverseerNodeNames;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.getLeaderNode;
-import static org.apache.solr.common.cloud.ZkNodeProps.makeMap;
-
-import java.io.IOException;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+package org.apache.solr.cloud;
 
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.solr.SolrTestCaseJ4.SuppressSSL;
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.embedded.JettySolrRunner;
-import org.apache.solr.client.solrj.impl.CloudSolrServer;
+import org.apache.solr.client.solrj.impl.CloudSolrClient;
 import org.apache.solr.client.solrj.request.QueryRequest;
+import org.apache.solr.cloud.overseer.OverseerAction;
 import org.apache.solr.common.cloud.SolrZkClient;
 import org.apache.solr.common.cloud.ZkNodeProps;
-import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.CollectionParams.CollectionAction;
 import org.apache.solr.common.params.MapSolrParams;
 import org.apache.solr.common.params.SolrParams;
+import org.apache.solr.common.util.Utils;
+import org.apache.solr.util.TimeOut;
 import org.apache.zookeeper.data.Stat;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.BeforeClass;
+import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.lang.invoke.MethodHandles;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+import static org.apache.solr.cloud.OverseerCollectionConfigSetProcessor.getLeaderNode;
+import static org.apache.solr.cloud.OverseerCollectionConfigSetProcessor.getSortedOverseerNodeNames;
+import static org.apache.solr.cloud.OverseerCollectionMessageHandler.NUM_SLICES;
+import static org.apache.solr.common.util.Utils.makeMap;
+import static org.apache.solr.common.cloud.ZkStateReader.MAX_SHARDS_PER_NODE;
+import static org.apache.solr.common.cloud.ZkStateReader.REPLICATION_FACTOR;
 
 @LuceneTestCase.Slow
-@SuppressSSL     // Currently unknown why SSL does not work
+@SuppressSSL(bugUrl = "SOLR-5776")
 public class OverseerRolesTest  extends AbstractFullDistribZkTestBase{
-  private CloudSolrServer client;
 
-  @BeforeClass
-  public static void beforeThisClass2() throws Exception {
-
-  }
-
-  @Before
-  @Override
-  public void setUp() throws Exception {
-    super.setUp();
-    System.setProperty("numShards", Integer.toString(sliceCount));
-    System.setProperty("solr.xml.persist", "true");
-    client = createCloudClient(null);
-  }
-
-  @After
-  public void tearDown() throws Exception {
-    super.tearDown();
-    client.shutdown();
-  }
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   protected String getSolrXml() {
     return "solr-no-core.xml";
   }
 
   public OverseerRolesTest() {
-    fixShardCount = true;
-
     sliceCount = 2;
-    shardCount = 6;
-
-    checkCreatedVsState = false;
+    fixShardCount(TEST_NIGHTLY ? 6 : 2);
   }
 
-  @Override
-  public void doTest() throws Exception {
-    testQuitCommand();
-    testOverseerRole();
-
+  @Test
+  public void test() throws Exception {
+    try (CloudSolrClient client = createCloudClient(null))  {
+      testQuitCommand(client);
+      testOverseerRole(client);
+    }
   }
 
-  private void testQuitCommand() throws Exception{
+  private void testQuitCommand(CloudSolrClient client) throws Exception{
     String collectionName = "testOverseerQuit";
 
     createCollection(collectionName, client);
@@ -106,14 +84,14 @@ public class OverseerRolesTest  extends AbstractFullDistribZkTestBase{
     SolrZkClient zk = client.getZkStateReader().getZkClient();
     byte[] data = new byte[0];
     data = zk.getData("/overseer_elect/leader", null, new Stat(), true);
-    Map m = (Map) ZkStateReader.fromJSON(data);
+    Map m = (Map) Utils.fromJSON(data);
     String s = (String) m.get("id");
     String leader = LeaderElector.getNodeName(s);
-    Overseer.getInQueue(zk).offer(ZkStateReader.toJSON(new ZkNodeProps(Overseer.QUEUE_OPERATION, Overseer.QUIT)));
-    long timeout = System.currentTimeMillis()+10000;
+    Overseer.getInQueue(zk).offer(Utils.toJSON(new ZkNodeProps(Overseer.QUEUE_OPERATION, OverseerAction.QUIT.toLower())));
+    final TimeOut timeout = new TimeOut(10, TimeUnit.SECONDS);
     String newLeader=null;
-    for(;System.currentTimeMillis() < timeout;){
-      newLeader = OverseerCollectionProcessor.getLeaderNode(zk);
+    for(;! timeout.hasTimedOut();){
+      newLeader = OverseerCollectionConfigSetProcessor.getLeaderNode(zk);
       if(newLeader!=null && !newLeader.equals(leader)) break;
       Thread.sleep(100);
     }
@@ -121,35 +99,35 @@ public class OverseerRolesTest  extends AbstractFullDistribZkTestBase{
 
 
 
-    assertTrue("The old leader should have rejoined election ", OverseerCollectionProcessor.getSortedOverseerNodeNames(zk).contains(leader));
+    assertTrue("The old leader should have rejoined election ", OverseerCollectionConfigSetProcessor.getSortedOverseerNodeNames(zk).contains(leader));
   }
 
 
 
 
-  private void testOverseerRole() throws Exception {
+  private void testOverseerRole(CloudSolrClient client) throws Exception {
     String collectionName = "testOverseerCol";
 
     createCollection(collectionName, client);
 
     waitForRecoveriesToFinish(collectionName, false);
-    List<String> l = OverseerCollectionProcessor.getSortedOverseerNodeNames(client.getZkStateReader().getZkClient()) ;
+    List<String> l = OverseerCollectionConfigSetProcessor.getSortedOverseerNodeNames(client.getZkStateReader().getZkClient()) ;
 
     log.info("All nodes {}", l);
-    String currentLeader = OverseerCollectionProcessor.getLeaderNode(client.getZkStateReader().getZkClient());
+    String currentLeader = OverseerCollectionConfigSetProcessor.getLeaderNode(client.getZkStateReader().getZkClient());
     log.info("Current leader {} ", currentLeader);
     l.remove(currentLeader);
 
-    Collections.shuffle(l);
+    Collections.shuffle(l, random());
     String overseerDesignate = l.get(0);
     log.info("overseerDesignate {}",overseerDesignate);
-    setOverseerRole(CollectionAction.ADDROLE,overseerDesignate);
+    setOverseerRole(client, CollectionAction.ADDROLE,overseerDesignate);
 
-    long timeout = System.currentTimeMillis()+15000;
+    TimeOut timeout = new TimeOut(15, TimeUnit.SECONDS);
 
     boolean leaderchanged = false;
-    for(;System.currentTimeMillis() < timeout;){
-      if(overseerDesignate.equals(OverseerCollectionProcessor.getLeaderNode(client.getZkStateReader().getZkClient()))){
+    for(;!timeout.hasTimedOut();){
+      if(overseerDesignate.equals(OverseerCollectionConfigSetProcessor.getLeaderNode(client.getZkStateReader().getZkClient()))){
         log.info("overseer designate is the new overseer");
         leaderchanged =true;
         break;
@@ -159,7 +137,7 @@ public class OverseerRolesTest  extends AbstractFullDistribZkTestBase{
     assertTrue("could not set the new overseer . expected "+
         overseerDesignate + " current order : " +
         getSortedOverseerNodeNames(client.getZkStateReader().getZkClient()) +
-        " ldr :"+ OverseerCollectionProcessor.getLeaderNode(client.getZkStateReader().getZkClient()) ,leaderchanged);
+        " ldr :"+ OverseerCollectionConfigSetProcessor.getLeaderNode(client.getZkStateReader().getZkClient()) ,leaderchanged);
 
 
 
@@ -168,11 +146,11 @@ public class OverseerRolesTest  extends AbstractFullDistribZkTestBase{
 
     l.remove(overseerDesignate);
 
-    Collections.shuffle(l);
+    Collections.shuffle(l, random());
 
     String anotherOverseer = l.get(0);
     log.info("Adding another overseer designate {}", anotherOverseer);
-    setOverseerRole(CollectionAction.ADDROLE, anotherOverseer);
+    setOverseerRole(client, CollectionAction.ADDROLE, anotherOverseer);
 
     String currentOverseer = getLeaderNode(client.getZkStateReader().getZkClient());
 
@@ -200,11 +178,13 @@ public class OverseerRolesTest  extends AbstractFullDistribZkTestBase{
     assertNotNull("Could not find a jetty2 kill",  leaderJetty);
 
     log.info("leader node {}", leaderJetty.getBaseUrl());
-    log.info ("current election Queue", OverseerCollectionProcessor.getSortedElectionNodes(client.getZkStateReader().getZkClient()));
+    log.info ("current election Queue",
+        OverseerCollectionConfigSetProcessor.getSortedElectionNodes(client.getZkStateReader().getZkClient(),
+            "/overseer_elect/election"));
     ChaosMonkey.stop(leaderJetty);
-    timeout = System.currentTimeMillis() + 10000;
+    timeout = new TimeOut(10, TimeUnit.SECONDS);
     leaderchanged = false;
-    for (; System.currentTimeMillis() < timeout; ) {
+    for (; !timeout.hasTimedOut(); ) {
       currentOverseer = getLeaderNode(client.getZkStateReader().getZkClient());
       if (anotherOverseer.equals(currentOverseer)) {
         leaderchanged = true;
@@ -215,7 +195,7 @@ public class OverseerRolesTest  extends AbstractFullDistribZkTestBase{
     assertTrue("New overseer designate has not become the overseer, expected : " + anotherOverseer + "actual : " + getLeaderNode(client.getZkStateReader().getZkClient()), leaderchanged);
   }
 
-  private void setOverseerRole(CollectionAction action, String overseerDesignate) throws Exception, IOException {
+  private void setOverseerRole(CloudSolrClient client, CollectionAction action, String overseerDesignate) throws Exception, IOException {
     log.info("Adding overseer designate {} ", overseerDesignate);
     Map m = makeMap(
         "action", action.toString().toLowerCase(Locale.ROOT),
@@ -228,10 +208,10 @@ public class OverseerRolesTest  extends AbstractFullDistribZkTestBase{
   }
 
 
-  protected void createCollection(String COLL_NAME, CloudSolrServer client) throws Exception {
+  protected void createCollection(String COLL_NAME, CloudSolrClient client) throws Exception {
     int replicationFactor = 2;
     int numShards = 4;
-    int maxShardsPerNode = ((((numShards+1) * replicationFactor) / getCommonCloudSolrServer()
+    int maxShardsPerNode = ((((numShards+1) * replicationFactor) / getCommonCloudSolrClient()
         .getZkStateReader().getClusterState().getLiveNodes().size())) + 1;
 
     Map<String, Object> props = makeMap(

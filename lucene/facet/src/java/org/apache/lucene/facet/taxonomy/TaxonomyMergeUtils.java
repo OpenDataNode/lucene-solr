@@ -1,18 +1,3 @@
-package org.apache.lucene.facet.taxonomy;
-
-import java.io.IOException;
-import java.util.List;
-
-import org.apache.lucene.facet.FacetsConfig;
-import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter;
-import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter.OrdinalMap;
-import org.apache.lucene.index.AtomicReader;
-import org.apache.lucene.index.AtomicReaderContext;
-import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.MultiReader;
-import org.apache.lucene.store.Directory;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -29,6 +14,20 @@ import org.apache.lucene.store.Directory;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet.taxonomy;
+
+import java.io.IOException;
+import java.util.List;
+
+import org.apache.lucene.facet.FacetsConfig;
+import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter;
+import org.apache.lucene.facet.taxonomy.directory.DirectoryTaxonomyWriter.OrdinalMap;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.CodecReader;
+import org.apache.lucene.index.SlowCodecReaderWrapper;
+import org.apache.lucene.store.Directory;
 
 /**
  * Utility methods for merging index and taxonomy directories.
@@ -50,13 +49,13 @@ public abstract class TaxonomyMergeUtils {
     int ordinalMap[] = map.getMap();
     DirectoryReader reader = DirectoryReader.open(srcIndexDir);
     try {
-      List<AtomicReaderContext> leaves = reader.leaves();
+      List<LeafReaderContext> leaves = reader.leaves();
       int numReaders = leaves.size();
-      AtomicReader wrappedLeaves[] = new AtomicReader[numReaders];
+      CodecReader wrappedLeaves[] = new CodecReader[numReaders];
       for (int i = 0; i < numReaders; i++) {
-        wrappedLeaves[i] = new OrdinalMappingAtomicReader(leaves.get(i).reader(), ordinalMap, srcConfig);
+        wrappedLeaves[i] = SlowCodecReaderWrapper.wrap(new OrdinalMappingLeafReader(leaves.get(i).reader(), ordinalMap, srcConfig));
       }
-      destIndexWriter.addIndexes(new MultiReader(wrappedLeaves));
+      destIndexWriter.addIndexes(wrappedLeaves);
       
       // commit changes to taxonomy and index respectively.
       destTaxoWriter.commit();

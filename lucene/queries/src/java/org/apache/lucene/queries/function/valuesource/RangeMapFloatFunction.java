@@ -14,10 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.queries.function.valuesource;
 
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.docvalues.FloatDocValues;
@@ -55,11 +54,11 @@ public class RangeMapFloatFunction extends ValueSource {
 
   @Override
   public String description() {
-    return "map(" + source.description() + "," + min + "," + max + "," + target.description() + ")";
+    return "map(" + source.description() + "," + min + "," + max + "," + target.description() + "," + (defaultVal == null ? "null" : defaultVal.description()) + ")";
   }
 
   @Override
-  public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+  public FunctionValues getValues(Map context, LeafReaderContext readerContext) throws IOException {
     final FunctionValues vals =  source.getValues(context, readerContext);
     final FunctionValues targets = target.getValues(context, readerContext);
     final FunctionValues defaults = (this.defaultVal == null) ? null : defaultVal.getValues(context, readerContext);
@@ -71,7 +70,7 @@ public class RangeMapFloatFunction extends ValueSource {
       }
       @Override
       public String toString(int doc) {
-        return "map(" + vals.toString(doc) + ",min=" + min + ",max=" + max + ",target=" + targets.toString(doc) + ")";
+        return "map(" + vals.toString(doc) + ",min=" + min + ",max=" + max + ",target=" + targets.toString(doc) + ",defaultVal=" + (defaults == null ? "null" : (defaults.toString(doc))) + ")";
       }
     };
   }

@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -34,12 +33,8 @@ import org.apache.solr.common.cloud.ZkStateReader;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class AssignTest extends SolrTestCaseJ4 {
-  protected static Logger log = LoggerFactory.getLogger(AssignTest.class);
-
   
   @Override
   @Before
@@ -65,7 +60,7 @@ public class AssignTest extends SolrTestCaseJ4 {
     Map<String,Replica> replicas = new HashMap<>();
     
     ZkNodeProps m = new ZkNodeProps(Overseer.QUEUE_OPERATION, "state", 
-        ZkStateReader.STATE_PROP, "ACTIVE", 
+        ZkStateReader.STATE_PROP, Replica.State.ACTIVE.toString(), 
         ZkStateReader.BASE_URL_PROP, "0.0.0.0", 
         ZkStateReader.CORE_NAME_PROP, "core1",
         ZkStateReader.ROLES_PROP, null,

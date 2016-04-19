@@ -1,5 +1,3 @@
-package org.apache.lucene.search.suggest.fst;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,18 +14,18 @@ package org.apache.lucene.search.suggest.fst;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.suggest.fst;
 
 import java.io.Closeable;
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Comparator;
 
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefIterator;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.OfflineSorter;
-import org.apache.lucene.util.OfflineSorter.ByteSequencesReader;
-
 
 /**
  * Builds and iterates over sequences stored on disk.
@@ -37,16 +35,15 @@ import org.apache.lucene.util.OfflineSorter.ByteSequencesReader;
 public class ExternalRefSorter implements BytesRefSorter, Closeable {
   private final OfflineSorter sort;
   private OfflineSorter.ByteSequencesWriter writer;
-  private File input;
-  private File sorted;
+  private Path input;
+  private Path sorted;
   
   /**
    * Will buffer all sequences to a temporary file and then sort (all on-disk).
    */
   public ExternalRefSorter(OfflineSorter sort) throws IOException {
     this.sort = sort;
-    this.input = File.createTempFile("RefSorter-", ".raw",
-        OfflineSorter.defaultTempDir());
+    this.input = Files.createTempFile(OfflineSorter.getDefaultTempDir(), "RefSorter-", ".raw");
     this.writer = new OfflineSorter.ByteSequencesWriter(input);
   }
   
@@ -61,16 +58,23 @@ public class ExternalRefSorter implements BytesRefSorter, Closeable {
     if (sorted == null) {
       closeWriter();
       
-      sorted = File.createTempFile("RefSorter-", ".sorted",
-          OfflineSorter.defaultTempDir());
-      sort.sort(input, sorted);
+      sorted = Files.createTempFile(OfflineSorter.getDefaultTempDir(), "RefSorter-", ".sorted");
+      boolean success = false;
+      try {
+        sort.sort(input, sorted);
+        success = true;
+      } finally {
+        if (success) {
+          Files.delete(input);
+        } else {
+          IOUtils.deleteFilesIgnoringExceptions(input);
+        }
+      }
       
-      input.delete();
       input = null;
     }
     
-    return new ByteSequenceIterator(new OfflineSorter.ByteSequencesReader(sorted),
-        sort.getComparator());
+    return new ByteSequenceIterator(new OfflineSorter.ByteSequencesReader(sorted));
   }
   
   private void closeWriter() throws IOException {
@@ -85,11 +89,16 @@ public class ExternalRefSorter implements BytesRefSorter, Closeable {
    */
   @Override
   public void close() throws IOException {
+    boolean success = false;
     try {
       closeWriter();
+      success = true;
     } finally {
-      if (input != null) input.delete();
-      if (sorted != null) sorted.delete();
+      if (success) {
+        IOUtils.deleteFilesIfExist(input, sorted);
+      } else {
+        IOUtils.deleteFilesIgnoringExceptions(input, sorted);
+      }
     }
   }
   
@@ -97,14 +106,11 @@ public class ExternalRefSorter implements BytesRefSorter, Closeable {
    * Iterate over byte refs in a file.
    */
   class ByteSequenceIterator implements BytesRefIterator {
-    private final ByteSequencesReader reader;
+    private final OfflineSorter.ByteSequencesReader reader;
     private BytesRef scratch = new BytesRef();
-    private final Comparator<BytesRef> comparator;
     
-    public ByteSequenceIterator(ByteSequencesReader reader,
-        Comparator<BytesRef> comparator) {
+    public ByteSequenceIterator(OfflineSorter.ByteSequencesReader reader) {
       this.reader = reader;
-      this.comparator = comparator;
     }
     
     @Override
@@ -130,11 +136,6 @@ public class ExternalRefSorter implements BytesRefSorter, Closeable {
           IOUtils.closeWhileHandlingException(reader);
         }
       }
-    }
-    
-    @Override
-    public Comparator<BytesRef> getComparator() {
-      return comparator;
     }
   }
 

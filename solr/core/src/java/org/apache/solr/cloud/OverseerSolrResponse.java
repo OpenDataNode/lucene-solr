@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
 import org.apache.solr.client.solrj.SolrResponse;
 import org.apache.solr.common.util.NamedList;
@@ -23,6 +22,8 @@ import org.apache.solr.common.util.NamedList;
 public class OverseerSolrResponse extends SolrResponse {
   
   NamedList responseList = null;
+
+  private long elapsedTime;
   
   public OverseerSolrResponse(NamedList list) {
     responseList = list;
@@ -30,15 +31,19 @@ public class OverseerSolrResponse extends SolrResponse {
   
   @Override
   public long getElapsedTime() {
-    // TODO Auto-generated method stub
-    return 0;
+    return elapsedTime;
   }
   
   @Override
   public void setResponse(NamedList<Object> rsp) {
     this.responseList = rsp;
   }
-  
+
+  @Override
+  public void setElapsedTime(long elapsedTime) {
+    this.elapsedTime = elapsedTime;
+  }
+
   @Override
   public NamedList<Object> getResponse() {
     return responseList;

@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -36,6 +35,7 @@ import org.apache.solr.common.cloud.DocCollection;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.Slice;
 import org.apache.solr.common.cloud.ZkStateReader;
+import org.apache.solr.common.util.Utils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -298,22 +298,22 @@ public class SharedFSAutoReplicaFailoverUtilsTest extends SolrTestCaseJ4 {
             node = "1";
           }
           
-          String state = ZkStateReader.ACTIVE;
+          Replica.State state = Replica.State.ACTIVE;
           String stateCode = m.group(3);
 
           if (stateCode != null) {
             switch (stateCode.charAt(0)) {
               case 'S':
-                state = ZkStateReader.ACTIVE;
+                state = Replica.State.ACTIVE;
                 break;
               case 'R':
-                state = ZkStateReader.RECOVERING;
+                state = Replica.State.RECOVERING;
                 break;
               case 'D':
-                state = ZkStateReader.DOWN;
+                state = Replica.State.DOWN;
                 break;
               case 'F':
-                state = ZkStateReader.RECOVERY_FAILED;
+                state = Replica.State.RECOVERY_FAILED;
                 break;
               default:
                 throw new IllegalArgumentException(
@@ -330,7 +330,7 @@ public class SharedFSAutoReplicaFailoverUtilsTest extends SolrTestCaseJ4 {
           
           replicaPropMap.put(ZkStateReader.NODE_NAME_PROP, nodeName);
           replicaPropMap.put(ZkStateReader.BASE_URL_PROP, "http://baseUrl" + node);
-          replicaPropMap.put(ZkStateReader.STATE_PROP, state);
+          replicaPropMap.put(ZkStateReader.STATE_PROP, state.toString());
           
           replica = new Replica(replicaName, replicaPropMap);
           
@@ -356,7 +356,7 @@ public class SharedFSAutoReplicaFailoverUtilsTest extends SolrTestCaseJ4 {
     
     String json;
     try {
-      json = new String(ZkStateReader.toJSON(clusterState), "UTF-8");
+      json = new String(Utils.toJSON(clusterState), "UTF-8");
     } catch (UnsupportedEncodingException e) {
       throw new RuntimeException("Unexpected");
     }

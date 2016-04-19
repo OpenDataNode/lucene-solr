@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,48 +14,62 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
-import org.apache.solr.common.cloud.Slice;
-import org.apache.solr.common.cloud.ZkStateReader;
-import org.apache.solr.common.params.SolrParams;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
+
+import com.google.common.base.Strings;
+import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.core.CoreDescriptor;
 import org.apache.solr.util.PropertiesUtil;
-
-import java.util.Properties;
 
 public class CloudDescriptor {
 
   private final CoreDescriptor cd;
   private String shardId;
   private String collectionName;
-  private SolrParams params;
   private String roles = null;
   private Integer numShards;
   private String nodeName = null;
+  private Map<String, String> collectionParams = new HashMap<>();
 
-  /* shardRange and shardState are used once-only during sub shard creation for shard splits
-   * Use the values from {@link Slice} instead */
-  volatile String shardRange = null;
-  volatile String shardState = Slice.ACTIVE;
-  volatile String shardParent = null;
-
-  volatile boolean isLeader = false;
-  volatile String lastPublished = ZkStateReader.ACTIVE;
+  private volatile boolean isLeader = false;
+  
+  // set to true once a core has registered in zk
+  // set to false on detecting a session expiration
+  private volatile boolean hasRegistered = false;
+  volatile Replica.State lastPublished = Replica.State.ACTIVE;
 
   public static final String NUM_SHARDS = "numShards";
 
   public CloudDescriptor(String coreName, Properties props, CoreDescriptor cd) {
     this.cd = cd;
     this.shardId = props.getProperty(CoreDescriptor.CORE_SHARD, null);
+    if (Strings.isNullOrEmpty(shardId))
+      this.shardId = null;
     // If no collection name is specified, we default to the core name
     this.collectionName = props.getProperty(CoreDescriptor.CORE_COLLECTION, coreName);
     this.roles = props.getProperty(CoreDescriptor.CORE_ROLES, null);
     this.nodeName = props.getProperty(CoreDescriptor.CORE_NODE_NAME);
+    if (Strings.isNullOrEmpty(nodeName))
+      this.nodeName = null;
     this.numShards = PropertiesUtil.toInteger(props.getProperty(CloudDescriptor.NUM_SHARDS), null);
+
+    for (String propName : props.stringPropertyNames()) {
+      if (propName.startsWith(ZkController.COLLECTION_PARAM_PREFIX)) {
+        collectionParams.put(propName.substring(ZkController.COLLECTION_PARAM_PREFIX.length()), props.getProperty(propName));
+      }
+    }
   }
   
-  public String getLastPublished() {
+  public Replica.State getLastPublished() {
     return lastPublished;
+  }
+
+  public void setLastPublished(Replica.State state) {
+    lastPublished = state;
   }
 
   public boolean isLeader() {
@@ -66,6 +78,14 @@ public class CloudDescriptor {
   
   public void setLeader(boolean isLeader) {
     this.isLeader = isLeader;
+  }
+  
+  public boolean hasRegistered() {
+    return hasRegistered;
+  }
+  
+  public void setHasRegistered(boolean hasRegistered) {
+    this.hasRegistered = hasRegistered;
   }
 
   public void setShardId(String shardId) {
@@ -93,12 +113,8 @@ public class CloudDescriptor {
   }
   
   /** Optional parameters that can change how a core is created. */
-  public SolrParams getParams() {
-    return params;
-  }
-
-  public void setParams(SolrParams params) {
-    this.params = params;
+  public Map<String, String> getParams() {
+    return collectionParams;
   }
 
   // setting only matters on core creation

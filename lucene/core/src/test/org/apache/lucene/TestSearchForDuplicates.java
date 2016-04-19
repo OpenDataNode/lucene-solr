@@ -1,5 +1,3 @@
-package org.apache.lucene;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,17 +14,35 @@ package org.apache.lucene;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene;
+
 
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.Random;
 
-import org.apache.lucene.store.*;
-import org.apache.lucene.document.*;
-import org.apache.lucene.analysis.*;
-import org.apache.lucene.index.*;
-import org.apache.lucene.search.*;
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.document.IntField;
+import org.apache.lucene.document.NumericDocValuesField;
+import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.MergePolicy;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.SortField;
+import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
 
 public class TestSearchForDuplicates extends LuceneTestCase {
@@ -81,7 +97,8 @@ public class TestSearchForDuplicates extends LuceneTestCase {
       for (int j = 0; j < MAX_DOCS; j++) {
         Document d = new Document();
         d.add(newTextField(PRIORITY_FIELD, HIGH_PRIORITY, Field.Store.YES));
-        d.add(newTextField(ID_FIELD, Integer.toString(j), Field.Store.YES));
+        d.add(new IntField(ID_FIELD, j, Field.Store.YES));
+        d.add(new NumericDocValuesField(ID_FIELD, j));
         writer.addDocument(d);
       }
       writer.close();
@@ -99,7 +116,7 @@ public class TestSearchForDuplicates extends LuceneTestCase {
       final Sort sort = new Sort(SortField.FIELD_SCORE,
                                  new SortField(ID_FIELD, SortField.Type.INT));
 
-      ScoreDoc[] hits = searcher.search(query, null, MAX_DOCS, sort).scoreDocs;
+      ScoreDoc[] hits = searcher.search(query, MAX_DOCS, sort).scoreDocs;
       printHits(out, hits, searcher);
       checkHits(hits, MAX_DOCS, searcher);
 
@@ -107,12 +124,12 @@ public class TestSearchForDuplicates extends LuceneTestCase {
       searcher = newSearcher(reader);
       hits = null;
 
-      BooleanQuery booleanQuery = new BooleanQuery();
+      BooleanQuery.Builder booleanQuery = new BooleanQuery.Builder();
       booleanQuery.add(new TermQuery(new Term(PRIORITY_FIELD, HIGH_PRIORITY)), BooleanClause.Occur.SHOULD);
       booleanQuery.add(new TermQuery(new Term(PRIORITY_FIELD, MED_PRIORITY)), BooleanClause.Occur.SHOULD);
-      out.println("Query: " + booleanQuery.toString(PRIORITY_FIELD));
+      out.println("Query: " + booleanQuery.build().toString(PRIORITY_FIELD));
 
-      hits = searcher.search(booleanQuery, null, MAX_DOCS, sort).scoreDocs;
+      hits = searcher.search(booleanQuery.build(), MAX_DOCS, sort).scoreDocs;
       printHits(out, hits, searcher);
       checkHits(hits, MAX_DOCS, searcher);
 

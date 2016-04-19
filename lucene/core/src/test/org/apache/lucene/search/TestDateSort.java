@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,15 +14,19 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.util.Arrays;
 
 import org.apache.lucene.index.Term;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.LuceneTestCase;
 
 import org.apache.lucene.document.DateTools;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.store.Directory;
@@ -80,7 +82,7 @@ public class TestDateSort extends LuceneTestCase {
 
     // Execute the search and process the search results.
     String[] actualOrder = new String[5];
-    ScoreDoc[] hits = searcher.search(query, null, 1000, sort).scoreDocs;
+    ScoreDoc[] hits = searcher.search(query, 1000, sort).scoreDocs;
     for (int i = 0; i < hits.length; i++) {
       Document document = searcher.doc(hits[i].doc);
       String text = document.get(TEXT_FIELD);
@@ -109,6 +111,7 @@ public class TestDateSort extends LuceneTestCase {
     String dateTimeString = DateTools.timeToString(time, DateTools.Resolution.SECOND);
     Field dateTimeField = newStringField(DATE_TIME_FIELD, dateTimeString, Field.Store.YES);
     document.add(dateTimeField);
+    document.add(new SortedDocValuesField(DATE_TIME_FIELD, new BytesRef(dateTimeString)));
 
     return document;
   }

@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,13 +14,14 @@ package org.apache.lucene.analysis.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.core;
+
 
 import java.util.Set;
 
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.tokenattributes.TypeAttribute;
 import org.apache.lucene.analysis.util.FilteringTokenFilter;
-import org.apache.lucene.util.Version;
 
 /**
  * Removes tokens whose types appear in a set of blocked types from a token stream.
@@ -33,20 +32,6 @@ public final class TypeTokenFilter extends FilteringTokenFilter {
   private final TypeAttribute typeAttribute = addAttribute(TypeAttribute.class);
   private final boolean useWhiteList;
 
-  /** @deprecated enablePositionIncrements=false is not supported anymore as of Lucene 4.4. */
-  @Deprecated
-  public TypeTokenFilter(Version version, boolean enablePositionIncrements, TokenStream input, Set<String> stopTypes, boolean useWhiteList) {
-    super(version, enablePositionIncrements, input);
-    this.stopTypes = stopTypes;
-    this.useWhiteList = useWhiteList;
-  }
-
-  /** @deprecated enablePositionIncrements=false is not supported anymore as of Lucene 4.4. */
-  @Deprecated
-  public TypeTokenFilter(Version version, boolean enablePositionIncrements, TokenStream input, Set<String> stopTypes) {
-    this(version, enablePositionIncrements, input, stopTypes, false);
-  }
-
   /**
    * Create a new {@link TypeTokenFilter}.
    * @param input        the {@link TokenStream} to consume
@@ -55,15 +40,7 @@ public final class TypeTokenFilter extends FilteringTokenFilter {
    *                     be kept, otherwise they will be filtered out
    */
   public TypeTokenFilter(TokenStream input, Set<String> stopTypes, boolean useWhiteList) {
-    this(Version.LATEST, input, stopTypes, useWhiteList);
-  }
-
-  /**
-   * @deprecated Use {@link #TypeTokenFilter(TokenStream,Set,boolean)}
-   */
-  @Deprecated
-  public TypeTokenFilter(Version version, TokenStream input, Set<String> stopTypes, boolean useWhiteList) {
-    super(version, input);
+    super(input);
     this.stopTypes = stopTypes;
     this.useWhiteList = useWhiteList;
   }
@@ -74,14 +51,6 @@ public final class TypeTokenFilter extends FilteringTokenFilter {
    */
   public TypeTokenFilter(TokenStream input, Set<String> stopTypes) {
     this(input, stopTypes, false);
-  }
-
-  /**
-   * @deprecated Use {@link #TypeTokenFilter(TokenStream,Set)}
-   */
-  @Deprecated
-  public TypeTokenFilter(Version version, TokenStream input, Set<String> stopTypes) {
-    this(version, input, stopTypes, false);
   }
 
   /**

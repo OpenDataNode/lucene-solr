@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 
@@ -76,7 +76,7 @@ final class TermVectorsConsumerPerField extends TermsHashPerField {
     TermVectorsPostingsArray postings = termVectorsPostingsArray;
     final TermVectorsWriter tv = termsWriter.writer;
 
-    final int[] termIDs = sortPostings(tv.getComparator());
+    final int[] termIDs = sortPostings();
 
     tv.startField(fieldInfo, numPostings, doVectorPositions, doVectorOffsets, hasPayloads);
     
@@ -111,7 +111,7 @@ final class TermVectorsConsumerPerField extends TermsHashPerField {
 
   @Override
   boolean start(IndexableField field, boolean first) {
-    assert field.fieldType().indexed();
+    assert field.fieldType().indexOptions() != IndexOptions.NONE;
 
     if (first) {
 

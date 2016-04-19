@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
 
@@ -24,7 +24,6 @@ import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.TestUtil;
 import org.apache.lucene.analysis.MockAnalyzer;
-import org.apache.lucene.codecs.lucene41.Lucene41PostingsFormat;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.store.Directory;
@@ -77,11 +76,11 @@ public class TestSegmentTermEnum extends LuceneTestCase {
   public void testPrevTermAtEnd() throws IOException
   {
     IndexWriter writer  = new IndexWriter(dir, newIndexWriterConfig(new MockAnalyzer(random()))
-                                .setCodec(TestUtil.alwaysPostingsFormat(new Lucene41PostingsFormat())));
+                                .setCodec(TestUtil.alwaysPostingsFormat(TestUtil.getDefaultPostingsFormat())));
     addDoc(writer, "aaa bbb");
     writer.close();
     SegmentReader reader = getOnlySegmentReader(DirectoryReader.open(dir));
-    TermsEnum terms = reader.fields().terms("content").iterator(null);
+    TermsEnum terms = reader.fields().terms("content").iterator();
     assertNotNull(terms.next());
     assertEquals("aaa", terms.term().utf8ToString());
     assertNotNull(terms.next());
@@ -105,7 +104,7 @@ public class TestSegmentTermEnum extends LuceneTestCase {
       throws IOException
   {
       IndexReader reader = DirectoryReader.open(dir);
-      TermsEnum termEnum = MultiFields.getTerms(reader, "content").iterator(null);
+      TermsEnum termEnum = MultiFields.getTerms(reader, "content").iterator();
 
     // create enumeration of all terms
     // go to the first term (aaa)

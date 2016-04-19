@@ -1,5 +1,3 @@
-package org.apache.lucene.expressions;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,17 +14,16 @@ package org.apache.lucene.expressions;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.expressions;
+
 
 import java.util.Arrays;
 import java.util.Collections;
 
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.DoubleField;
+import org.apache.lucene.document.DoubleDocValuesField;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FloatDocValuesField;
-import org.apache.lucene.document.FloatField;
-import org.apache.lucene.document.IntField;
-import org.apache.lucene.document.LongField;
 import org.apache.lucene.document.NumericDocValuesField;
 import org.apache.lucene.expressions.js.JavascriptCompiler;
 import org.apache.lucene.index.IndexReader;
@@ -35,11 +32,9 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.CheckHits;
-import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.QueryWrapperFilter;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermQuery;
@@ -48,13 +43,11 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.English;
 import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 
 /**
  * Tests some basic expressions against different queries,
  * and fieldcache/docvalues fields against an equivalent sort.
  */
-@SuppressCodecs("Lucene3x")
 public class TestExpressionSorts extends LuceneTestCase {
   private Directory dir;
   private IndexReader reader;
@@ -70,16 +63,10 @@ public class TestExpressionSorts extends LuceneTestCase {
       Document document = new Document();
       document.add(newTextField("english", English.intToEnglish(i), Field.Store.NO));
       document.add(newTextField("oddeven", (i % 2 == 0) ? "even" : "odd", Field.Store.NO));
-      document.add(newStringField("byte", "" + ((byte) random().nextInt()), Field.Store.NO));
-      document.add(newStringField("short", "" + ((short) random().nextInt()), Field.Store.NO));
-      document.add(new IntField("int", random().nextInt(), Field.Store.NO));
-      document.add(new LongField("long", random().nextLong(), Field.Store.NO));
-
-      document.add(new FloatField("float", random().nextFloat(), Field.Store.NO));
-      document.add(new DoubleField("double", random().nextDouble(), Field.Store.NO));
-
-      document.add(new NumericDocValuesField("intdocvalues", random().nextInt()));
-      document.add(new FloatDocValuesField("floatdocvalues", random().nextFloat()));
+      document.add(new NumericDocValuesField("int", random().nextInt()));
+      document.add(new NumericDocValuesField("long", random().nextLong()));
+      document.add(new FloatDocValuesField("float", random().nextFloat()));
+      document.add(new DoubleDocValuesField("double", random().nextDouble()));
       iw.addDocument(document);
     }
     reader = iw.getReader();
@@ -97,23 +84,20 @@ public class TestExpressionSorts extends LuceneTestCase {
   public void testQueries() throws Exception {
     int n = atLeast(4);
     for (int i = 0; i < n; i++) {
-      Filter odd = new QueryWrapperFilter(new TermQuery(new Term("oddeven", "odd")));
-      assertQuery(new MatchAllDocsQuery(), null);
-      assertQuery(new TermQuery(new Term("english", "one")), null);
-      assertQuery(new MatchAllDocsQuery(), odd);
-      assertQuery(new TermQuery(new Term("english", "four")), odd);
-      BooleanQuery bq = new BooleanQuery();
+      assertQuery(new MatchAllDocsQuery());
+      assertQuery(new TermQuery(new Term("english", "one")));
+      BooleanQuery.Builder bq = new BooleanQuery.Builder();
       bq.add(new TermQuery(new Term("english", "one")), BooleanClause.Occur.SHOULD);
       bq.add(new TermQuery(new Term("oddeven", "even")), BooleanClause.Occur.SHOULD);
-      assertQuery(bq, null);
+      assertQuery(bq.build());
       // force in order
       bq.add(new TermQuery(new Term("english", "two")), BooleanClause.Occur.SHOULD);
       bq.setMinimumNumberShouldMatch(2);
-      assertQuery(bq, null);
+      assertQuery(bq.build());
     }
   }
   
-  void assertQuery(Query query, Filter filter) throws Exception {
+  void assertQuery(Query query) throws Exception {
     for (int i = 0; i < 10; i++) {
       boolean reversed = random().nextBoolean();
       SortField fields[] = new SortField[] {
@@ -121,19 +105,17 @@ public class TestExpressionSorts extends LuceneTestCase {
           new SortField("long", SortField.Type.LONG, reversed),
           new SortField("float", SortField.Type.FLOAT, reversed),
           new SortField("double", SortField.Type.DOUBLE, reversed),
-          new SortField("intdocvalues", SortField.Type.INT, reversed),
-          new SortField("floatdocvalues", SortField.Type.FLOAT, reversed),
           new SortField("score", SortField.Type.SCORE)
       };
       Collections.shuffle(Arrays.asList(fields), random());
       int numSorts = TestUtil.nextInt(random(), 1, fields.length);
-      assertQuery(query, filter, new Sort(Arrays.copyOfRange(fields, 0, numSorts)));
+      assertQuery(query, new Sort(Arrays.copyOfRange(fields, 0, numSorts)));
     }
   }
 
-  void assertQuery(Query query, Filter filter, Sort sort) throws Exception {
+  void assertQuery(Query query, Sort sort) throws Exception {
     int size = TestUtil.nextInt(random(), 1, searcher.getIndexReader().maxDoc() / 5);
-    TopDocs expected = searcher.search(query, filter, size, sort, random().nextBoolean(), random().nextBoolean());
+    TopDocs expected = searcher.search(query, size, sort, random().nextBoolean(), random().nextBoolean());
     
     // make our actual sort, mutating original by replacing some of the 
     // sortfields with equivalent expressions
@@ -154,12 +136,12 @@ public class TestExpressionSorts extends LuceneTestCase {
     }
     
     Sort mutatedSort = new Sort(mutated);
-    TopDocs actual = searcher.search(query, filter, size, mutatedSort, random().nextBoolean(), random().nextBoolean());
+    TopDocs actual = searcher.search(query, size, mutatedSort, random().nextBoolean(), random().nextBoolean());
     CheckHits.checkEqual(query, expected.scoreDocs, actual.scoreDocs);
     
     if (size < actual.totalHits) {
-      expected = searcher.searchAfter(expected.scoreDocs[size-1], query, filter, size, sort);
-      actual = searcher.searchAfter(actual.scoreDocs[size-1], query, filter, size, mutatedSort);
+      expected = searcher.searchAfter(expected.scoreDocs[size-1], query, size, sort);
+      actual = searcher.searchAfter(actual.scoreDocs[size-1], query, size, mutatedSort);
       CheckHits.checkEqual(query, expected.scoreDocs, actual.scoreDocs);
     }
   }

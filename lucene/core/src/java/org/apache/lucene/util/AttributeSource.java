@@ -1,5 +1,3 @@
-package org.apache.lucene.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
+
 
 import java.util.Collections;
 import java.util.Iterator;
@@ -24,6 +24,7 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.Set;
 
 import org.apache.lucene.analysis.TokenStream; // for javadocs
@@ -38,14 +39,6 @@ import org.apache.lucene.analysis.TokenStream; // for javadocs
  * it creates a new instance and returns it.
  */
 public class AttributeSource {
-  
-  /**
-   * This is the default factory that creates {@link AttributeImpl}s using the
-   * class name of the supplied {@link Attribute} interface class by appending <code>Impl</code> to it.
-   * @deprecated use {@link AttributeFactory#DEFAULT_ATTRIBUTE_FACTORY}
-   */
-  @Deprecated
-  public static final AttributeFactory DEFAULT_ATTRIBUTE_FACTORY = AttributeFactory.DEFAULT_ATTRIBUTE_FACTORY;
   
   /**
    * This class holds the state of an AttributeSource.
@@ -88,9 +81,7 @@ public class AttributeSource {
    * An AttributeSource that uses the same attributes as the supplied one.
    */
   public AttributeSource(AttributeSource input) {
-    if (input == null) {
-      throw new IllegalArgumentException("input AttributeSource must not be null");
-    }
+    Objects.requireNonNull(input, "input AttributeSource must not be null");
     this.attributes = input.attributes;
     this.attributeImpls = input.attributeImpls;
     this.currentState = input.currentState;
@@ -104,7 +95,7 @@ public class AttributeSource {
     this.attributes = new LinkedHashMap<>();
     this.attributeImpls = new LinkedHashMap<>();
     this.currentState = new State[1];
-    this.factory = factory;
+    this.factory = Objects.requireNonNull(factory, "AttributeFactory must not be null");
   }
   
   /**
@@ -181,12 +172,12 @@ public class AttributeSource {
   }
   
   /** <b>Expert:</b> Adds a custom AttributeImpl instance with one or more Attribute interfaces.
-   * <p><font color="red"><b>Please note:</b> It is not guaranteed, that <code>att</code> is added to
+   * <p><b>NOTE:</b> It is not guaranteed, that <code>att</code> is added to
    * the <code>AttributeSource</code>, because the provided attributes may already exist.
    * You should always retrieve the wanted attributes using {@link #getAttribute} after adding
    * with this method and cast to your class.
    * The recommended way to use custom implementations is using an {@link AttributeFactory}.
-   * </font></p>
+   * </p>
    */
   public final void addAttributeImpl(final AttributeImpl att) {
     final Class<? extends AttributeImpl> clazz = att.getClass();
@@ -279,7 +270,15 @@ public class AttributeSource {
       state.attribute.clear();
     }
   }
-  
+
+  /**
+   * Removes all attributes and their implementations from this AttributeSource.
+   */
+  public final void removeAllAttributes() {
+    attributes.clear();
+    attributeImpls.clear();
+  }
+
   /**
    * Captures the state of all Attributes. The return value can be passed to
    * {@link #restoreState} to restore the state of this or another AttributeSource.

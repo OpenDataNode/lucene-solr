@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update.processor;
 
 import java.io.IOException;
@@ -38,7 +37,7 @@ import org.apache.solr.update.AddUpdateCommand;
  * in the <code>price</code> and/or <code>type</code> fields, it will be given 
  * default values of <code>0.0</code> and/or <code>unknown</code> 
  * (respectively).
- * <p>
+ * <br>
  *
  * <pre class="prettyprint">
  * &lt;processor class="solr.DefaultValueUpdateProcessorFactory"&gt;

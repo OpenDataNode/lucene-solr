@@ -1,5 +1,3 @@
-package org.apache.solr.spelling.suggest;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.spelling.suggest;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.spelling.suggest;
 
 import org.apache.lucene.util.CharsRef;
 
@@ -30,9 +29,21 @@ public class SuggesterOptions {
   
   /** Number of suggestions requested */
   int count;
-  
-  public SuggesterOptions(CharsRef token, int count) {
+
+  /** A Solr or Lucene query for filtering suggestions*/
+  String contextFilterQuery;
+
+  /** Are all terms required?*/
+  boolean allTermsRequired;
+
+  /** Highlight term in results?*/
+  boolean highlight;
+
+  public SuggesterOptions(CharsRef token, int count, String contextFilterQuery, boolean allTermsRequired, boolean highlight) {
     this.token = token;
     this.count = count;
+    this.contextFilterQuery = contextFilterQuery;
+    this.allTermsRequired = allTermsRequired;
+    this.highlight = highlight;
   }
 }

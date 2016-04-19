@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler.admin;
 
 import org.apache.solr.cloud.ZkSolrResourceLoader;
@@ -43,6 +42,7 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.lang.invoke.MethodHandles;
 import java.net.URISyntaxException;
 import java.util.Date;
 import java.util.HashSet;
@@ -57,7 +57,7 @@ import java.util.Set;
  * If you want to selectively restrict access some configuration files, you can list
  * these files in the {@link #HIDDEN} invariants.  For example to hide 
  * synonyms.txt and anotherfile.txt, you would register:
- * <p>
+ * <br>
  * <pre>
  * &lt;requestHandler name="/admin/file" class="org.apache.solr.handler.admin.ShowFileRequestHandler" &gt;
  *   &lt;lst name="defaults"&gt;
@@ -83,7 +83,7 @@ import java.util.Set;
  * set it directly using: {@link #USE_CONTENT_TYPE}.  For example, to get a plain text
  * version of schema.xml, try:
  * <pre>
- *   http://localhost:8983/solr/admin/file?file=schema.xml&contentType=text/plain
+ *   http://localhost:8983/solr/admin/file?file=schema.xml&amp;contentType=text/plain
  * </pre>
  *
  *
@@ -96,8 +96,7 @@ public class ShowFileRequestHandler extends RequestHandlerBase
 
   protected Set<String> hiddenFiles;
 
-  protected static final Logger log = LoggerFactory
-      .getLogger(ShowFileRequestHandler.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
 
   public ShowFileRequestHandler()
@@ -275,19 +274,6 @@ public class ShowFileRequestHandler extends RequestHandlerBase
       }
       return true;
     }
-
-    // Make sure that if the schema is managed, we don't allow editing. Don't really want to put
-    // this in the init since we're not entirely sure when the managed schema will get initialized relative to this
-    // handler.
-    SolrCore core = req.getCore();
-    IndexSchema schema = core.getLatestSchema();
-    if (schema instanceof ManagedIndexSchema) {
-      String managed = schema.getResourceName();
-
-      if (fname.equalsIgnoreCase(managed)) {
-        return true;
-      }
-    }
     return false;
   }
 
@@ -304,7 +290,7 @@ public class ShowFileRequestHandler extends RequestHandlerBase
 
     final ZkSolrResourceLoader loader = (ZkSolrResourceLoader) core
         .getResourceLoader();
-    String confPath = loader.getCollectionZkPath();
+    String confPath = loader.getConfigSetZkPath();
 
     String fname = req.getParams().get("file", null);
     if (fname == null) {
@@ -379,10 +365,5 @@ public class ShowFileRequestHandler extends RequestHandlerBase
   @Override
   public String getDescription() {
     return "Admin Config File -- view or update config files directly";
-  }
-
-  @Override
-  public String getSource() {
-    return null;
   }
 }

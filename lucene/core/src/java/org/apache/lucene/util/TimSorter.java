@@ -1,5 +1,3 @@
-package org.apache.lucene.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
+
 
 import java.util.Arrays;
 
@@ -26,7 +26,7 @@ import java.util.Arrays;
  * <p>This implementation is especially good at sorting partially-sorted
  * arrays and sorts small arrays with binary sort.
  * <p><b>NOTE</b>:There are a few differences with the original implementation:<ul>
- * <li><a name="maxTempSlots"/>The extra amount of memory to perform merges is
+ * <li><a name="maxTempSlots"></a>The extra amount of memory to perform merges is
  * configurable. This allows small merges to be very fast while large merges
  * will be performed in-place (slightly slower). You can make sure that the
  * fast merge routine will always be used by having <code>maxTempSlots</code>
@@ -40,7 +40,7 @@ public abstract class TimSorter extends Sorter {
 
   static final int MINRUN = 32;
   static final int THRESHOLD = 64;
-  static final int STACKSIZE = 40; // depends on MINRUN
+  static final int STACKSIZE = 49; // depends on MINRUN
   static final int MIN_GALLOP = 7;
 
   final int maxTempSlots;

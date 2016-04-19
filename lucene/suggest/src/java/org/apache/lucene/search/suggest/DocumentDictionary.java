@@ -1,5 +1,3 @@
-package org.apache.lucene.search.suggest;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,13 +14,14 @@ package org.apache.lucene.search.suggest;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.suggest;
+
 import java.io.IOException;
-import java.util.Comparator;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
 import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.MultiDocValues;
@@ -32,6 +31,8 @@ import org.apache.lucene.search.spell.Dictionary;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 
+
+
 /**
  * <p>
  * Dictionary with terms, weights, payload (optional) and contexts (optional)
@@ -40,17 +41,14 @@ import org.apache.lucene.util.BytesRef;
  * <b>NOTE:</b> 
  *  <ul>
  *    <li>
- *      The term and (optionally) payload fields have to be
- *      stored
+ *      The term field has to be stored; if it is missing, the document is skipped.
+ *    </li>
+ *    <li>
+ *      The payload and contexts field are optional and are not required to be stored.
  *    </li>
  *    <li>
  *      The weight field can be stored or can be a {@link NumericDocValues}.
  *      If the weight field is not defined, the value of the weight is <code>0</code>
- *    </li>
- *    <li>
- *      if any of the term or (optionally) payload fields supplied
- *      do not have a value for a document, then the document is 
- *      skipped by the dictionary
  *    </li>
  *  </ul>
  */
@@ -89,7 +87,7 @@ public class DocumentDictionary implements Dictionary {
    * Creates a new dictionary with the contents of the fields named <code>field</code>
    * for the terms, <code>weightField</code> for the weights that will be used for the 
    * the corresponding terms, <code>payloadField</code> for the corresponding payloads
-   * for the entry and <code>contextsFeild</code> for associated contexts.
+   * for the entry and <code>contextsField</code> for associated contexts.
    */
   public DocumentDictionary(IndexReader reader, String field, String weightField, String payloadField, String contextsField) {
     this.reader = reader;
@@ -113,12 +111,13 @@ public class DocumentDictionary implements Dictionary {
     private final boolean hasContexts;
     private final Bits liveDocs;
     private int currentDocId = -1;
-    private long currentWeight;
-    private BytesRef currentPayload;
+    private long currentWeight = 0;
+    private BytesRef currentPayload = null;
     private Set<BytesRef> currentContexts;
     private final NumericDocValues weightValues;
+    IndexableField[] currentDocFields = new IndexableField[0];
+    int nextFieldsPosition = 0;
 
-    
     /**
      * Creates an iterator over term, weight and payload fields from the lucene
      * index. setting <code>withPayload</code> to false, implies an iterator
@@ -139,13 +138,25 @@ public class DocumentDictionary implements Dictionary {
     }
 
     @Override
-    public Comparator<BytesRef> getComparator() {
-      return null;
-    }
-
-    @Override
     public BytesRef next() throws IOException {
-      while (currentDocId < docCount) {
+      while (true) {
+        if (nextFieldsPosition < currentDocFields.length) {
+          // Still values left from the document
+          IndexableField fieldValue = currentDocFields[nextFieldsPosition++];
+          if (fieldValue.binaryValue() != null) {
+            return fieldValue.binaryValue();
+          } else if (fieldValue.stringValue() != null) {
+            return new BytesRef(fieldValue.stringValue());
+          } else {
+            continue;
+          }
+        }
+
+        if (currentDocId == docCount) {
+          // Iterated over all the documents.
+          break;
+        }
+
         currentDocId++;
         if (liveDocs != null && !liveDocs.get(currentDocId)) { 
           continue;
@@ -154,33 +165,53 @@ public class DocumentDictionary implements Dictionary {
         Document doc = reader.document(currentDocId, relevantFields);
 
         BytesRef tempPayload = null;
-        BytesRef tempTerm = null;
-        Set<BytesRef> tempContexts = new HashSet<>();
-
         if (hasPayloads) {
           IndexableField payload = doc.getField(payloadField);
-          if (payload == null || (payload.binaryValue() == null && payload.stringValue() == null)) {
-            continue;
-          }
-          tempPayload = (payload.binaryValue() != null) ? payload.binaryValue() : new BytesRef(payload.stringValue());
-        }
-
-        if (hasContexts) {
-          final IndexableField[] contextFields = doc.getFields(contextsField);
-          for (IndexableField contextField : contextFields) {
-            if (contextField.binaryValue() == null && contextField.stringValue() == null) {
-              continue;
-            } else {
-              tempContexts.add((contextField.binaryValue() != null) ? contextField.binaryValue() : new BytesRef(contextField.stringValue()));
+          if (payload != null) {
+            if (payload.binaryValue() != null) {
+              tempPayload =  payload.binaryValue();
+            } else if (payload.stringValue() != null) {
+              tempPayload = new BytesRef(payload.stringValue());
             }
           }
+          // in case that the iterator has payloads configured, use empty values
+          // instead of null for payload
+          if (tempPayload == null) {
+            tempPayload = new BytesRef();
+          }
         }
 
-        IndexableField fieldVal = doc.getField(field);
-        if (fieldVal == null || (fieldVal.binaryValue() == null && fieldVal.stringValue() == null)) {
+        Set<BytesRef> tempContexts;
+        if (hasContexts) {
+          tempContexts = new HashSet<>();
+          final IndexableField[] contextFields = doc.getFields(contextsField);
+          for (IndexableField contextField : contextFields) {
+            if (contextField.binaryValue() != null) {
+              tempContexts.add(contextField.binaryValue());
+            } else if (contextField.stringValue() != null) {
+              tempContexts.add(new BytesRef(contextField.stringValue()));
+            } else {
+              continue;
+            }
+          }
+        } else {
+          tempContexts = Collections.emptySet();
+        }
+
+        currentDocFields = doc.getFields(field);
+        nextFieldsPosition = 0;
+        if (currentDocFields.length == 0) { // no values in this document
           continue;
         }
-        tempTerm = (fieldVal.stringValue() != null) ? new BytesRef(fieldVal.stringValue()) : fieldVal.binaryValue();
+        IndexableField fieldValue = currentDocFields[nextFieldsPosition++];
+        BytesRef tempTerm;
+        if (fieldValue.binaryValue() != null) {
+          tempTerm = fieldValue.binaryValue();
+        } else if (fieldValue.stringValue() != null) {
+          tempTerm = new BytesRef(fieldValue.stringValue());
+        } else {
+          continue;
+        }
 
         currentPayload = tempPayload;
         currentContexts = tempContexts;
@@ -188,6 +219,7 @@ public class DocumentDictionary implements Dictionary {
 
         return tempTerm;
       }
+
       return null;
     }
 
@@ -203,8 +235,8 @@ public class DocumentDictionary implements Dictionary {
     
     /** 
      * Returns the value of the <code>weightField</code> for the current document.
-     * Retrieves the value for the <code>weightField</code> if its stored (using <code>doc</code>)
-     * or if its indexed as {@link NumericDocValues} (using <code>docId</code>) for the document.
+     * Retrieves the value for the <code>weightField</code> if it's stored (using <code>doc</code>)
+     * or if it's indexed as {@link NumericDocValues} (using <code>docId</code>) for the document.
      * If no value is found, then the weight is 0.
      */
     protected long getWeight(Document doc, int docId) {

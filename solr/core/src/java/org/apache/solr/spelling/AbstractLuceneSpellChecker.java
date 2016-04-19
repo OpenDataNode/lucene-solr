@@ -1,6 +1,3 @@
-package org.apache.solr.spelling;
-
-import org.apache.lucene.search.spell.StringDistance;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -17,7 +14,9 @@ import org.apache.lucene.search.spell.StringDistance;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.spelling;
 
+import org.apache.lucene.search.spell.StringDistance;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
@@ -29,8 +28,6 @@ import org.apache.lucene.search.spell.SuggestMode;
 import org.apache.lucene.search.spell.SuggestWord;
 import org.apache.lucene.search.spell.SuggestWordFrequencyComparator;
 import org.apache.lucene.search.spell.SuggestWordQueue;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import org.apache.lucene.analysis.Token;
 import org.apache.lucene.analysis.core.WhitespaceAnalyzer;
@@ -62,7 +59,6 @@ import org.apache.solr.search.SolrIndexSearcher;
  * @since solr 1.3
  */
 public abstract class AbstractLuceneSpellChecker extends SolrSpellChecker {
-  public static final Logger log = LoggerFactory.getLogger(AbstractLuceneSpellChecker.class);
   
   public static final String SPELLCHECKER_ARG_NAME = "spellchecker";
   public static final String LOCATION = "sourceLocation";
@@ -228,7 +224,7 @@ public abstract class AbstractLuceneSpellChecker extends SolrSpellChecker {
    */
   protected void initIndex() throws IOException {
     if (indexDir != null) {
-      index = FSDirectory.open(new File(indexDir));
+      index = FSDirectory.open(new File(indexDir).toPath());
     } else {
       index = new RAMDirectory();
     }

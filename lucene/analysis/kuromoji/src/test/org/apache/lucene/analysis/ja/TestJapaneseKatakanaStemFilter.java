@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.ja;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.ja;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.ja;
+
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
@@ -27,20 +27,31 @@ import org.apache.lucene.analysis.miscellaneous.SetKeywordMarkerFilter;
 import org.apache.lucene.analysis.util.CharArraySet;
 
 import java.io.IOException;
-import java.io.Reader;
 
 /**
  * Tests for {@link JapaneseKatakanaStemFilter}
  */
 public class TestJapaneseKatakanaStemFilter extends BaseTokenStreamTestCase {
-  private Analyzer analyzer = new Analyzer() {
-    @Override
-    protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      // Use a MockTokenizer here since this filter doesn't really depend on Kuromoji
-      Tokenizer source = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
-      return new TokenStreamComponents(source, new JapaneseKatakanaStemFilter(source));
-    }
-  };
+  private Analyzer analyzer;
+  
+  @Override
+  public void setUp() throws Exception {
+    super.setUp();
+    analyzer = new Analyzer() {
+      @Override
+      protected TokenStreamComponents createComponents(String fieldName) {
+        // Use a MockTokenizer here since this filter doesn't really depend on Kuromoji
+        Tokenizer source = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+        return new TokenStreamComponents(source, new JapaneseKatakanaStemFilter(source));
+      }
+    };
+  }
+  
+  @Override
+  public void tearDown() throws Exception {
+    analyzer.close();
+    super.tearDown();
+  }
   
   /**
    * Test a few common katakana spelling variations.
@@ -55,7 +66,6 @@ public class TestJapaneseKatakanaStemFilter extends BaseTokenStreamTestCase {
    *   <li>center</li>
    * </ul>
    * Note that we remove a long sound in the case of "coffee" that is required.
-   * </p>
    */
   public void testStemVariants() throws IOException {
     assertAnalyzesTo(analyzer, "コピー コーヒー タクシー パーティー パーティ センター",
@@ -68,13 +78,14 @@ public class TestJapaneseKatakanaStemFilter extends BaseTokenStreamTestCase {
     final CharArraySet exclusionSet = new CharArraySet(asSet("コーヒー"), false);
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer source = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer source = new MockTokenizer(MockTokenizer.WHITESPACE, false);
         TokenStream sink = new SetKeywordMarkerFilter(source, exclusionSet);
         return new TokenStreamComponents(source, new JapaneseKatakanaStemFilter(sink));
       }
     };
     checkOneTerm(a, "コーヒー", "コーヒー");
+    a.close();
   }
 
   public void testUnsupportedHalfWidthVariants() throws IOException {
@@ -89,11 +100,12 @@ public class TestJapaneseKatakanaStemFilter extends BaseTokenStreamTestCase {
   public void testEmptyTerm() throws IOException {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new KeywordTokenizer(reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new KeywordTokenizer();
         return new TokenStreamComponents(tokenizer, new JapaneseKatakanaStemFilter(tokenizer));
       }
     };
     checkOneTerm(a, "", "");
+    a.close();
   }
 }

@@ -1,4 +1,3 @@
-package org.apache.solr.handler.dataimport;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,6 +14,7 @@ package org.apache.solr.handler.dataimport;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.dataimport;
 import java.util.Map;
 import java.util.Set;
 
@@ -36,7 +36,7 @@ public interface DIHWriter {
 
   /**
    * <p>
-   *  Release resources used by this writer.  After calling close, reads & updates will throw exceptions.
+   *  Release resources used by this writer.  After calling close, reads &amp; updates will throw exceptions.
    * </p>
    */
   public void close();

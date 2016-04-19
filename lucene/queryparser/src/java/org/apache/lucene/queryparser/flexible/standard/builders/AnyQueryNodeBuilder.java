@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.builders;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard.builders;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.builders;
 
 import java.util.List;
 
@@ -44,7 +43,7 @@ public class AnyQueryNodeBuilder implements StandardQueryBuilder {
   public BooleanQuery build(QueryNode queryNode) throws QueryNodeException {
     AnyQueryNode andNode = (AnyQueryNode) queryNode;
 
-    BooleanQuery bQuery = new BooleanQuery();
+    BooleanQuery.Builder bQuery = new BooleanQuery.Builder();
     List<QueryNode> children = andNode.getChildren();
 
     if (children != null) {
@@ -75,7 +74,7 @@ public class AnyQueryNodeBuilder implements StandardQueryBuilder {
 
     bQuery.setMinimumNumberShouldMatch(andNode.getMinimumMatchingElements());
 
-    return bQuery;
+    return bQuery.build();
 
   }
 

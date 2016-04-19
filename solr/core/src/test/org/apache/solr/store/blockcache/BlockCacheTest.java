@@ -1,5 +1,3 @@
-package org.apache.solr.store.blockcache;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,12 @@ package org.apache.solr.store.blockcache;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.store.blockcache;
 
 import java.util.Arrays;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.apache.hadoop.conf.Configuration;
 import org.apache.lucene.util.LuceneTestCase;
 import org.junit.Test;
 
@@ -34,7 +32,7 @@ public class BlockCacheTest extends LuceneTestCase {
     int slabSize = blockSize * 4096;
     long totalMemory = 2 * slabSize;
     
-    BlockCache blockCache = new BlockCache(new Metrics(new Configuration()), true,totalMemory,slabSize,blockSize);
+    BlockCache blockCache = new BlockCache(new Metrics(), true, totalMemory, slabSize, blockSize);
     byte[] buffer = new byte[1024];
     Random random = random();
     byte[] newData = new byte[blockSize];
@@ -87,8 +85,7 @@ public class BlockCacheTest extends LuceneTestCase {
     int slabSize = blockSize * 1024;
     long totalMemory = 2 * slabSize;
 
-    BlockCache blockCache = new BlockCache(new Metrics(new Configuration()),
-        true, totalMemory, slabSize);
+    BlockCache blockCache = new BlockCache(new Metrics(), true, totalMemory, slabSize);
     BlockCacheKey blockCacheKey = new BlockCacheKey();
     blockCacheKey.setBlock(0);
     blockCacheKey.setFile(0);

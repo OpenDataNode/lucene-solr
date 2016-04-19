@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.response;
 
 import java.io.IOException;
@@ -32,6 +31,8 @@ import org.apache.solr.common.util.XML;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.search.ReturnFields;
 import org.apache.solr.search.SolrReturnFields;
+
+import static org.apache.solr.common.params.CommonParams.NAME;
 
 
 /**
@@ -102,9 +103,9 @@ public class XMLWriter extends TextResponseWriter {
     writer.write(XML_START2_NOSCHEMA);
 
     // dump response values
-    NamedList<?> lst = rsp.getValues();
     Boolean omitHeader = req.getParams().getBool(CommonParams.OMIT_HEADER);
-    if(omitHeader != null && omitHeader) lst.remove("responseHeader");
+    if(omitHeader != null && omitHeader) rsp.removeResponseHeader();
+    final NamedList<?> lst = rsp.getValues();
     int sz = lst.size();
     int start=0;
 
@@ -144,7 +145,7 @@ public class XMLWriter extends TextResponseWriter {
     writer.write('<');
     writer.write(tag);
     if (name!=null) {
-      writeAttr("name", name);
+      writeAttr(NAME, name);
       if (closeTag) {
         writer.write("/>");
       } else {
@@ -167,7 +168,7 @@ public class XMLWriter extends TextResponseWriter {
     if (doIndent) indent();
 
     writer.write("<result");
-    writeAttr("name",name);
+    writeAttr(NAME, name);
     writeAttr("numFound",Long.toString(numFound));
     writeAttr("start",Long.toString(start));
     if(maxScore!=null) {
@@ -189,10 +190,10 @@ public class XMLWriter extends TextResponseWriter {
     incLevel();
 
     for (String fname : doc.getFieldNames()) {
-      if (!returnFields.wantsField(fname)) {
+      if (returnFields!= null && !returnFields.wantsField(fname)) {
         continue;
       }
-      
+
       Object val = doc.getFieldValue(fname);
       if( "_explain_".equals( fname ) ) {
         System.out.println( val );

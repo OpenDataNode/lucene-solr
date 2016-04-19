@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.th;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.analysis.th;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.th;
 
 import java.io.Reader;
 import java.io.StringReader;
@@ -36,7 +35,7 @@ public class TestThaiWordFilterFactory extends BaseTokenStreamFactoryTestCase {
   public void testWordBreak() throws Exception {
     assumeTrue("JRE does not support Thai dictionary-based BreakIterator", ThaiWordFilter.DBBI_AVAILABLE);
     Reader reader = new StringReader("การที่ได้ต้องแสดงว่างานดี");
-    TokenStream stream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream stream = whitespaceMockTokenizer(reader);
     stream = tokenFilterFactory("ThaiWord").create(stream);
     assertTokenStreamContents(stream, new String[] {"การ", "ที่", "ได้",
         "ต้อง", "แสดง", "ว่า", "งาน", "ดี"});

@@ -1,5 +1,3 @@
-package org.apache.solr.analysis;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.analysis;
 
 import org.apache.solr.SolrTestCaseJ4;
 import org.junit.BeforeClass;
@@ -39,7 +38,7 @@ public class TestCharFilters extends SolrTestCaseJ4 {
   
   /**
    * Test query analysis: at querytime MockCharFilter will
-   * double the 'a', so ab -> aab, and aba -> aabaa
+   * double the 'a', so ab -&gt; aab, and aba -&gt; aabaa
    * 
    * We run the test twice to make sure reuse is working
    */
@@ -58,7 +57,7 @@ public class TestCharFilters extends SolrTestCaseJ4 {
   
   /**
    * Test index analysis: at indextime MockCharFilter will
-   * double the 'a', so ab -> aab, and aba -> aabaa
+   * double the 'a', so ab -&gt; aab, and aba -&gt; aabaa
    * 
    * We run the test twice to make sure reuse is working
    */

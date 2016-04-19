@@ -1,5 +1,3 @@
-package org.apache.solr.core;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,11 @@ package org.apache.solr.core;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.core;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -32,15 +32,17 @@ import java.util.Set;
 import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IOContext.Context;
+import org.apache.lucene.store.LockFactory;
 import org.apache.lucene.store.NRTCachingDirectory;
 import org.apache.lucene.store.NativeFSLockFactory;
 import org.apache.lucene.store.NoLockFactory;
-import org.apache.lucene.store.RateLimitedDirectoryWrapper;
 import org.apache.lucene.store.SimpleFSLockFactory;
 import org.apache.lucene.store.SingleInstanceLockFactory;
+import org.apache.lucene.util.IOUtils;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.util.NamedList;
+import org.apache.solr.common.util.ObjectReleaseTracker;
 import org.apache.solr.store.blockcache.BlockDirectory;
 import org.apache.solr.store.hdfs.HdfsDirectory;
 import org.apache.solr.store.hdfs.HdfsLockFactory;
@@ -50,7 +52,7 @@ import org.slf4j.LoggerFactory;
 /**
  * A {@link DirectoryFactory} impl base class for caching Directory instances
  * per path. Most DirectoryFactory implementations will want to extend this
- * class and simply implement {@link DirectoryFactory#create(String, DirContext)}.
+ * class and simply implement {@link DirectoryFactory#create(String, LockFactory, DirContext)}.
  * 
  * This is an expert class and these API's are subject to change.
  * 
@@ -93,8 +95,7 @@ public abstract class CachingDirectoryFactory extends DirectoryFactory {
     }
   }
   
-  private static Logger log = LoggerFactory
-      .getLogger(CachingDirectoryFactory.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   protected Map<String,CacheValue> byPathCache = new HashMap<>();
   
@@ -304,6 +305,7 @@ public abstract class CachingDirectoryFactory extends DirectoryFactory {
     try {
       log.info("Closing directory: " + val.path);
       val.directory.close();
+      assert ObjectReleaseTracker.release(val.directory);
     } catch (Exception e) {
       SolrException.log(log, "Error closing directory", e);
     }
@@ -315,9 +317,6 @@ public abstract class CachingDirectoryFactory extends DirectoryFactory {
     
     return otherCacheValue.path.startsWith(cacheValue.path + "/") && two > one;
   }
-
-  @Override
-  protected abstract Directory create(String path, DirContext dirContext) throws IOException;
   
   @Override
   public boolean exists(String path) throws IOException {
@@ -347,18 +346,21 @@ public abstract class CachingDirectoryFactory extends DirectoryFactory {
         directory = cacheValue.directory;
       }
       
-      if (directory == null) { 
-        directory = create(fullPath, dirContext);
-        
-        directory = rateLimit(directory);
-        
-        CacheValue newCacheValue = new CacheValue(fullPath, directory);
-        
-        injectLockFactory(directory, fullPath, rawLockType);
-        
-        byDirectoryCache.put(directory, newCacheValue);
-        byPathCache.put(fullPath, newCacheValue);
-        log.info("return new directory for " + fullPath);
+      if (directory == null) {
+        directory = create(fullPath, createLockFactory(rawLockType), dirContext);
+        assert ObjectReleaseTracker.track(directory);
+        boolean success = false;
+        try {
+          CacheValue newCacheValue = new CacheValue(fullPath, directory);
+          byDirectoryCache.put(directory, newCacheValue);
+          byPathCache.put(fullPath, newCacheValue);
+          log.info("return new directory for " + fullPath);
+          success = true;
+        } finally {
+          if (!success) {
+            IOUtils.closeWhileHandlingException(directory);
+          }
+        }
       } else {
         cacheValue.refCnt++;
         log.debug("Reusing cached directory: {}", cacheValue);
@@ -368,25 +370,6 @@ public abstract class CachingDirectoryFactory extends DirectoryFactory {
     }
   }
 
-  private Directory rateLimit(Directory directory) {
-    if (maxWriteMBPerSecDefault != null || maxWriteMBPerSecFlush != null || maxWriteMBPerSecMerge != null || maxWriteMBPerSecRead != null) {
-      directory = new RateLimitedDirectoryWrapper(directory);
-      if (maxWriteMBPerSecDefault != null) {
-        ((RateLimitedDirectoryWrapper)directory).setMaxWriteMBPerSec(maxWriteMBPerSecDefault, Context.DEFAULT);
-      }
-      if (maxWriteMBPerSecFlush != null) {
-        ((RateLimitedDirectoryWrapper)directory).setMaxWriteMBPerSec(maxWriteMBPerSecFlush, Context.FLUSH);
-      }
-      if (maxWriteMBPerSecMerge != null) {
-        ((RateLimitedDirectoryWrapper)directory).setMaxWriteMBPerSec(maxWriteMBPerSecMerge, Context.MERGE);
-      }
-      if (maxWriteMBPerSecRead != null) {
-        ((RateLimitedDirectoryWrapper)directory).setMaxWriteMBPerSec(maxWriteMBPerSecRead, Context.READ);
-      }
-    }
-    return directory;
-  }
-  
   /*
    * (non-Javadoc)
    * 
@@ -486,52 +469,6 @@ public abstract class CachingDirectoryFactory extends DirectoryFactory {
     }
   }
   
-  private static Directory injectLockFactory(Directory dir, String lockPath,
-      String rawLockType) throws IOException {
-    if (null == rawLockType) {
-      // we default to "simple" for backwards compatibility
-      log.warn("No lockType configured for " + dir + " assuming 'simple'");
-      rawLockType = "simple";
-    }
-    final String lockType = rawLockType.toLowerCase(Locale.ROOT).trim();
-    
-    if ("simple".equals(lockType)) {
-      // multiple SimpleFSLockFactory instances should be OK
-      dir.setLockFactory(new SimpleFSLockFactory(lockPath));
-    } else if ("native".equals(lockType)) {
-      dir.setLockFactory(new NativeFSLockFactory(lockPath));
-    } else if ("single".equals(lockType)) {
-      if (!(dir.getLockFactory() instanceof SingleInstanceLockFactory)) dir
-          .setLockFactory(new SingleInstanceLockFactory());
-    } else if ("hdfs".equals(lockType)) {
-      Directory del = dir;
-      
-      if (dir instanceof NRTCachingDirectory) {
-        del = ((NRTCachingDirectory) del).getDelegate();
-      }
-      
-      if (del instanceof BlockDirectory) {
-        del = ((BlockDirectory) del).getDirectory();
-      }
-      
-      if (!(del instanceof HdfsDirectory)) {
-        throw new SolrException(ErrorCode.FORBIDDEN, "Directory: "
-            + del.getClass().getName()
-            + ", but hdfs lock factory can only be used with HdfsDirectory");
-      }
-
-      dir.setLockFactory(new HdfsLockFactory(((HdfsDirectory)del).getHdfsDirPath(), ((HdfsDirectory)del).getConfiguration()));
-    } else if ("none".equals(lockType)) {
-      // Recipe for disaster
-      log.error("CONFIGURATION WARNING: locks are disabled on " + dir);
-      dir.setLockFactory(NoLockFactory.getNoLockFactory());
-    } else {
-      throw new SolrException(SolrException.ErrorCode.SERVER_ERROR,
-          "Unrecognized lockType: " + rawLockType);
-    }
-    return dir;
-  }
-  
   protected synchronized void removeDirectory(CacheValue cacheValue) throws IOException {
      // this page intentionally left blank
   }
@@ -564,5 +501,16 @@ public abstract class CachingDirectoryFactory extends DirectoryFactory {
       }
     }
     return livePaths;
+  }
+
+  @Override
+  protected boolean deleteOldIndexDirectory(String oldDirPath) throws IOException {
+    Set<String> livePaths = getLivePaths();
+    if (livePaths.contains(oldDirPath)) {
+      log.warn("Cannot delete directory {} as it is still being referenced in the cache!", oldDirPath);
+      return false;
+    }
+
+    return super.deleteOldIndexDirectory(oldDirPath);
   }
 }

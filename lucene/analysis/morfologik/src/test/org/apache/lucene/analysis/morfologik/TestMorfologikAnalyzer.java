@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.morfologik;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,10 @@ package org.apache.lucene.analysis.morfologik;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.morfologik;
+
 
 import java.io.IOException;
-import java.io.Reader;
 import java.util.TreeSet;
 
 import org.apache.lucene.analysis.Analyzer;
@@ -30,8 +29,6 @@ import org.apache.lucene.analysis.standard.StandardFilter;
 import org.apache.lucene.analysis.standard.StandardTokenizer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.util.CharArraySet;
-import org.apache.lucene.util.IOUtils;
-import org.apache.lucene.util.Version;
 
 /**
  * TODO: The tests below rely on the order of returned lemmas, which is probably not good. 
@@ -49,6 +46,7 @@ public class TestMorfologikAnalyzer extends BaseTokenStreamTestCase {
     assertAnalyzesTo(a, "liście", new String[] { "liście", "liść", "list", "lista" });
     assertAnalyzesTo(a, "danych", new String[] { "dany", "dana", "dane", "dać" });
     assertAnalyzesTo(a, "ęóąśłżźćń", new String[] { "ęóąśłżźćń" });
+    a.close();
   }
 
   /** Test stemming of multiple tokens and proper term metrics. */
@@ -69,12 +67,13 @@ public class TestMorfologikAnalyzer extends BaseTokenStreamTestCase {
         new int[] { 0, 0, 3  },
         new int[] { 1, 1, 13 },
         new int[] { 1, 0, 1  });
+    a.close();
   }
 
   @SuppressWarnings("unused")
   private void dumpTokens(String input) throws IOException {
-    TokenStream ts = getTestAnalyzer().tokenStream("dummy", input);
-    try {
+    try (Analyzer a = getTestAnalyzer();
+        TokenStream ts = a.tokenStream("dummy", input)) {
       ts.reset();
 
       MorphosyntacticTagsAttribute attribute = ts.getAttribute(MorphosyntacticTagsAttribute.class);
@@ -83,35 +82,28 @@ public class TestMorfologikAnalyzer extends BaseTokenStreamTestCase {
         System.out.println(charTerm.toString() + " => " + attribute.getTags());
       }
       ts.end();
-    } finally {
-      IOUtils.closeWhileHandlingException(ts);
     }
   }
 
   /** Test reuse of MorfologikFilter with leftover stems. */
   public final void testLeftoverStems() throws IOException {
     Analyzer a = getTestAnalyzer();
-    TokenStream ts_1 = a.tokenStream("dummy", "liście");
-    try {
+    try (TokenStream ts_1 = a.tokenStream("dummy", "liście")) {
       CharTermAttribute termAtt_1 = ts_1.getAttribute(CharTermAttribute.class);
       ts_1.reset();
       ts_1.incrementToken();
       assertEquals("first stream", "liście", termAtt_1.toString());
       ts_1.end();
-    } finally {
-      IOUtils.closeWhileHandlingException(ts_1);
     }
 
-    TokenStream ts_2 = a.tokenStream("dummy", "danych");
-    try {
+    try (TokenStream ts_2 = a.tokenStream("dummy", "danych")) {
       CharTermAttribute termAtt_2 = ts_2.getAttribute(CharTermAttribute.class);
       ts_2.reset();
       ts_2.incrementToken();
       assertEquals("second stream", "dany", termAtt_2.toString());
       ts_2.end();
-    } finally {
-      IOUtils.closeWhileHandlingException(ts_2);
     }
+    a.close();
   }
 
   /** Test stemming of mixed-case tokens. */
@@ -128,6 +120,7 @@ public class TestMorfologikAnalyzer extends BaseTokenStreamTestCase {
     assertAnalyzesTo(a, "aarona",   new String[] { "aarona" });
 
     assertAnalyzesTo(a, "Liście",   new String[] { "liście", "liść", "list", "lista" });
+    a.close();
   }
 
   private void assertPOSToken(TokenStream ts, String term, String... tags) throws IOException {
@@ -152,8 +145,8 @@ public class TestMorfologikAnalyzer extends BaseTokenStreamTestCase {
 
   /** Test morphosyntactic annotations. */
   public final void testPOSAttribute() throws IOException {
-    TokenStream ts = getTestAnalyzer().tokenStream("dummy", "liście");
-    try {
+    try (Analyzer a = getTestAnalyzer();
+         TokenStream ts = a.tokenStream("dummy", "liście")) {
       ts.reset();
       assertPOSToken(ts, "liście",  
         "subst:sg:acc:n2",
@@ -173,8 +166,6 @@ public class TestMorfologikAnalyzer extends BaseTokenStreamTestCase {
         "subst:sg:dat:f",
         "subst:sg:loc:f");
       ts.end();
-    } finally {
-      IOUtils.closeWhileHandlingException(ts);
     }
   }
 
@@ -182,11 +173,11 @@ public class TestMorfologikAnalyzer extends BaseTokenStreamTestCase {
   public final void testKeywordAttrTokens() throws IOException {
     Analyzer a = new MorfologikAnalyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String field, Reader reader) {
+      protected TokenStreamComponents createComponents(String field) {
         final CharArraySet keywords = new CharArraySet(1, false);
         keywords.add("liście");
 
-        final Tokenizer src = new StandardTokenizer(reader);
+        final Tokenizer src = new StandardTokenizer();
         TokenStream result = new StandardFilter(src);
         result = new SetKeywordMarkerFilter(result, keywords);
         result = new MorfologikFilter(result); 
@@ -202,10 +193,13 @@ public class TestMorfologikAnalyzer extends BaseTokenStreamTestCase {
       new int[] { 0, 7, 7, 7, 7 },
       new int[] { 6, 13, 13, 13, 13 },
       new int[] { 1, 1, 0, 0, 0 });
+    a.close();
   }
 
   /** blast some random strings through the analyzer */
   public void testRandom() throws Exception {
-    checkRandomData(random(), getTestAnalyzer(), 1000 * RANDOM_MULTIPLIER); 
+    Analyzer a = getTestAnalyzer();
+    checkRandomData(random(), a, 1000 * RANDOM_MULTIPLIER);
+    a.close();
   }
 }

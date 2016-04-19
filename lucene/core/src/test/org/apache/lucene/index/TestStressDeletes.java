@@ -1,11 +1,10 @@
-package org.apache.lucene.index;
-
-/**
- * Copyright 2004 The Apache Software Foundation
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
@@ -15,6 +14,7 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -42,12 +42,13 @@ public class TestStressDeletes extends LuceneTestCase {
     }
 
     Directory dir = newDirectory();
-    IndexWriterConfig iwc = new IndexWriterConfig(TEST_VERSION_CURRENT, new MockAnalyzer(random()));
+    IndexWriterConfig iwc = new IndexWriterConfig(new MockAnalyzer(random()));
     final IndexWriter w = new IndexWriter(dir, iwc);
     final int iters = atLeast(2000);
     final Map<Integer,Boolean> exists = new ConcurrentHashMap<>();
     Thread[] threads = new Thread[TestUtil.nextInt(random(), 2, 6)];
     final CountDownLatch startingGun = new CountDownLatch(1);
+    final int deleteMode = random().nextInt(3);
     for(int i=0;i<threads.length;i++) {
       threads[i] = new Thread() {
           @Override
@@ -64,7 +65,20 @@ public class TestStressDeletes extends LuceneTestCase {
                     w.addDocument(doc);
                     exists.put(id, true);
                   } else {
-                    w.deleteDocuments(new Term("id", ""+id));
+                    if (deleteMode == 0) {
+                      // Always delete by term
+                      w.deleteDocuments(new Term("id", ""+id));
+                    } else if (deleteMode == 1) {
+                      // Always delete by query
+                      w.deleteDocuments(new TermQuery(new Term("id", ""+id)));
+                    } else {
+                      // Mixed
+                      if (random().nextBoolean()) {
+                        w.deleteDocuments(new Term("id", ""+id));
+                      } else {
+                        w.deleteDocuments(new TermQuery(new Term("id", ""+id)));
+                      }
+                    }
                     exists.put(id, false);
                   }
                 }

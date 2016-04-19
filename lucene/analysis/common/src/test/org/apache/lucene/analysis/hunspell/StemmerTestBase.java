@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.hunspell;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.hunspell;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.hunspell;
+
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -27,10 +27,16 @@ import java.util.List;
 import org.apache.lucene.util.CharsRef;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LuceneTestCase;
+import org.junit.AfterClass;
 
 /** base class for hunspell stemmer tests */
-abstract class StemmerTestBase extends LuceneTestCase {
+public abstract class StemmerTestBase extends LuceneTestCase {
   private static Stemmer stemmer;
+  
+  @AfterClass
+  public static void afterClass() {
+    stemmer = null;
+  }
   
   static void init(String affix, String dictionary) throws IOException, ParseException {
     init(false, affix, dictionary);

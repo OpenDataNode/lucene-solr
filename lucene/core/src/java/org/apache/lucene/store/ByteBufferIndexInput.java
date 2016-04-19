@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
+
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -54,7 +54,7 @@ abstract class ByteBufferIndexInput extends IndexInput implements RandomAccessIn
     if (buffers.length == 1) {
       return new SingleBufferImpl(resourceDescription, buffers[0], length, chunkSizePower, cleaner, clones);
     } else {
-      return new DefaultImpl(resourceDescription, buffers, length, chunkSizePower, cleaner, clones);
+      return new MultiBufferImpl(resourceDescription, buffers, 0, length, chunkSizePower, cleaner, clones);
     }
   }
   
@@ -170,9 +170,7 @@ abstract class ByteBufferIndexInput extends IndexInput implements RandomAccessIn
         this.curBufIndex = bi;
         this.curBuf = b;
       }
-    } catch (ArrayIndexOutOfBoundsException aioobe) {
-      throw new EOFException("seek past EOF: " + this);
-    } catch (IllegalArgumentException iae) {
+    } catch (ArrayIndexOutOfBoundsException | IllegalArgumentException e) {
       throw new EOFException("seek past EOF: " + this);
     } catch (NullPointerException npe) {
       throw new AlreadyClosedException("Already closed: " + this);
@@ -198,9 +196,7 @@ abstract class ByteBufferIndexInput extends IndexInput implements RandomAccessIn
       b.position((int) (pos & chunkSizeMask));
       this.curBufIndex = bi;
       this.curBuf = b;
-    } catch (ArrayIndexOutOfBoundsException aioobe) {
-      throw new EOFException("seek past EOF: " + this);
-    } catch (IllegalArgumentException iae) {
+    } catch (ArrayIndexOutOfBoundsException | IllegalArgumentException aioobe) {
       throw new EOFException("seek past EOF: " + this);
     } catch (NullPointerException npe) {
       throw new AlreadyClosedException("Already closed: " + this);
@@ -213,7 +209,7 @@ abstract class ByteBufferIndexInput extends IndexInput implements RandomAccessIn
     try {
       return buffers[bi].getShort((int) (pos & chunkSizeMask));
     } catch (IndexOutOfBoundsException ioobe) {
-      // either its a boundary, or read past EOF, fall back:
+      // either it's a boundary, or read past EOF, fall back:
       setPos(pos, bi);
       return readShort();
     } catch (NullPointerException npe) {
@@ -227,7 +223,7 @@ abstract class ByteBufferIndexInput extends IndexInput implements RandomAccessIn
     try {
       return buffers[bi].getInt((int) (pos & chunkSizeMask));
     } catch (IndexOutOfBoundsException ioobe) {
-      // either its a boundary, or read past EOF, fall back:
+      // either it's a boundary, or read past EOF, fall back:
       setPos(pos, bi);
       return readInt();
     } catch (NullPointerException npe) {
@@ -241,7 +237,7 @@ abstract class ByteBufferIndexInput extends IndexInput implements RandomAccessIn
     try {
       return buffers[bi].getLong((int) (pos & chunkSizeMask));
     } catch (IndexOutOfBoundsException ioobe) {
-      // either its a boundary, or read past EOF, fall back:
+      // either it's a boundary, or read past EOF, fall back:
       setPos(pos, bi);
       return readLong();
     } catch (NullPointerException npe) {
@@ -285,10 +281,9 @@ abstract class ByteBufferIndexInput extends IndexInput implements RandomAccessIn
     }
 
     final ByteBuffer newBuffers[] = buildSlice(buffers, offset, length);
-    final String newResourceDescription = (sliceDescription == null) ? toString() : (toString() + " [slice=" + sliceDescription + "]");
     final int ofs = (int) (offset & chunkSizeMask);
     
-    final ByteBufferIndexInput clone = newCloneInstance(newResourceDescription, newBuffers, ofs, length);
+    final ByteBufferIndexInput clone = newCloneInstance(getFullSliceDescription(sliceDescription), newBuffers, ofs, length);
     clone.isClone = true;
 
     // register the new clone in our clone list to clean it up on closing:
@@ -306,9 +301,7 @@ abstract class ByteBufferIndexInput extends IndexInput implements RandomAccessIn
       newBuffers[0].position(offset);
       return new SingleBufferImpl(newResourceDescription, newBuffers[0].slice(), length, chunkSizePower, this.cleaner, this.clones);
     } else {
-      return (offset == 0) ?
-        new DefaultImpl(newResourceDescription, newBuffers, length, chunkSizePower, cleaner, clones) :
-        new WithOffsetImpl(newResourceDescription, newBuffers, offset, length, chunkSizePower, cleaner, clones);
+      return new MultiBufferImpl(newResourceDescription, newBuffers, offset, length, chunkSizePower, cleaner, clones);
     }
   }
   
@@ -390,21 +383,6 @@ abstract class ByteBufferIndexInput extends IndexInput implements RandomAccessIn
    */
   static interface BufferCleaner {
     void freeBuffer(ByteBufferIndexInput parent, ByteBuffer b) throws IOException;
-  }
-  
-  /** Default implementation of ByteBufferIndexInput, supporting multiple buffers, but no offset. */
-  static final class DefaultImpl extends ByteBufferIndexInput {
-
-    DefaultImpl(String resourceDescription, ByteBuffer[] buffers, long length, int chunkSizePower, 
-        BufferCleaner cleaner, WeakIdentityMap<ByteBufferIndexInput,Boolean> clones) {
-      super(resourceDescription, buffers, length, chunkSizePower, cleaner, clones);
-      try {
-        seek(0L);
-      } catch (IOException ioe) {
-        throw new AssertionError(ioe);
-      }
-    }
-    
   }
   
   /** Optimization of ByteBufferIndexInput for when there is only one buffer */
@@ -506,10 +484,10 @@ abstract class ByteBufferIndexInput extends IndexInput implements RandomAccessIn
   }
   
   /** This class adds offset support to ByteBufferIndexInput, which is needed for slices. */
-  static final class WithOffsetImpl extends ByteBufferIndexInput {
+  static final class MultiBufferImpl extends ByteBufferIndexInput {
     private final int offset;
     
-    WithOffsetImpl(String resourceDescription, ByteBuffer[] buffers, int offset, long length, int chunkSizePower,
+    MultiBufferImpl(String resourceDescription, ByteBuffer[] buffers, int offset, long length, int chunkSizePower,
         BufferCleaner cleaner, WeakIdentityMap<ByteBufferIndexInput,Boolean> clones) {
       super(resourceDescription, buffers, length, chunkSizePower, cleaner, clones);
       this.offset = offset;
@@ -522,10 +500,7 @@ abstract class ByteBufferIndexInput extends IndexInput implements RandomAccessIn
     
     @Override
     public void seek(long pos) throws IOException {
-      // necessary in case offset != 0 and pos < 0, but pos >= -offset
-      if (pos < 0L) {
-        throw new IllegalArgumentException("Seeking to negative position: " + this);
-      }
+      assert pos >= 0L;
       super.seek(pos + offset);
     }
     

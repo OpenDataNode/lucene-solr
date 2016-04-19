@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.bg;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,10 @@ package org.apache.lucene.analysis.bg;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.bg;
+
 
 import java.io.IOException;
-import java.io.Reader;
 import java.io.StringReader;
 
 import org.apache.lucene.analysis.Analyzer;
@@ -98,6 +97,8 @@ public class TestBulgarianStemmer extends BaseTokenStreamTestCase {
     assertAnalyzesTo(a, "братя", new String[] {"брат"});
     assertAnalyzesTo(a, "братята", new String[] {"брат"});
     assertAnalyzesTo(a, "брате", new String[] {"брат"});
+    
+    a.close();
   }
   
   /**
@@ -110,6 +111,8 @@ public class TestBulgarianStemmer extends BaseTokenStreamTestCase {
     assertAnalyzesTo(a, "вестта", new String[] {"вест"});
     assertAnalyzesTo(a, "вести", new String[] {"вест"});
     assertAnalyzesTo(a, "вестите", new String[] {"вест"});
+    
+    a.close();
   }
   
   /**
@@ -139,6 +142,8 @@ public class TestBulgarianStemmer extends BaseTokenStreamTestCase {
     assertAnalyzesTo(a, "изключенията", new String[] {"изключени"});
     /* note the below form in this example does not conflate with the rest */
     assertAnalyzesTo(a, "изключения", new String[] {"изключн"});
+    
+    a.close();
   }
   
   /**
@@ -155,6 +160,7 @@ public class TestBulgarianStemmer extends BaseTokenStreamTestCase {
     assertAnalyzesTo(a, "красивото", new String[] {"красив"});
     assertAnalyzesTo(a, "красиви", new String[] {"красив"});
     assertAnalyzesTo(a, "красивите", new String[] {"красив"});
+    a.close();
   }
   
   /**
@@ -213,12 +219,15 @@ public class TestBulgarianStemmer extends BaseTokenStreamTestCase {
     /* note the below forms conflate with each other, but not the rest */
     assertAnalyzesTo(a, "строя", new String[] {"стр"});
     assertAnalyzesTo(a, "строят", new String[] {"стр"});
+    
+    a.close();
   }
 
   public void testWithKeywordAttribute() throws IOException {
     CharArraySet set = new CharArraySet(1, true);
     set.add("строеве");
-    MockTokenizer tokenStream = new MockTokenizer(new StringReader("строевете строеве"), MockTokenizer.WHITESPACE, false);
+    MockTokenizer tokenStream = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    tokenStream.setReader(new StringReader("строевете строеве"));
 
     BulgarianStemFilter filter = new BulgarianStemFilter(
         new SetKeywordMarkerFilter(tokenStream, set));
@@ -228,11 +237,12 @@ public class TestBulgarianStemmer extends BaseTokenStreamTestCase {
   public void testEmptyTerm() throws IOException {
     Analyzer a = new Analyzer() {
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new KeywordTokenizer(reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new KeywordTokenizer();
         return new TokenStreamComponents(tokenizer, new BulgarianStemFilter(tokenizer));
       }
     };
     checkOneTerm(a, "", "");
+    a.close();
   }
 }

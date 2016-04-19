@@ -1,4 +1,3 @@
-package org.apache.solr.rest;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,8 +14,10 @@ package org.apache.solr.rest;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.rest;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -57,10 +58,9 @@ import org.slf4j.LoggerFactory;
  */
 public class RestManager {
   
-  public static final Logger log = LoggerFactory.getLogger(RestManager.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   public static final String SCHEMA_BASE_PATH = "/schema";
-  public static final String CONFIG_BASE_PATH = "/config";
   public static final String MANAGED_ENDPOINT = "/managed";
   
   // used for validating resourceIds provided during registration
@@ -109,22 +109,21 @@ public class RestManager {
   public static class Registry {
     
     private Map<String,ManagedResourceRegistration> registered = new TreeMap<>();
-
+    
+    // maybe null until there is a restManager
+    private RestManager initializedRestManager = null;
 
     // REST API endpoints that need to be protected against dynamic endpoint creation
     private final Set<String> reservedEndpoints = new HashSet<>();
     private final Pattern reservedEndpointsPattern;
 
     public Registry() {
-      reservedEndpoints.add(CONFIG_BASE_PATH + MANAGED_ENDPOINT);
       reservedEndpoints.add(SCHEMA_BASE_PATH + MANAGED_ENDPOINT);
 
       for (String reservedEndpoint : SolrSchemaRestApi.getReservedEndpoints()) {
         reservedEndpoints.add(reservedEndpoint);
       }
-      for (String reservedEndpoint : SolrConfigRestApi.getReservedEndpoints()) {
-        reservedEndpoints.add(reservedEndpoint);
-      }
+
       reservedEndpointsPattern = getReservedEndpointsPattern();
     }
 
@@ -190,8 +189,8 @@ public class RestManager {
       Matcher resourceIdValidator = resourceIdRegex.matcher(resourceId);
       if (!resourceIdValidator.matches()) {
         String errMsg = String.format(Locale.ROOT,
-            "Invalid resourceId '%s'; must start with %s or %s.",
-            resourceId, CONFIG_BASE_PATH, SCHEMA_BASE_PATH);
+            "Invalid resourceId '%s'; must start with  %s.",
+            resourceId,  SCHEMA_BASE_PATH);
         throw new SolrException(ErrorCode.SERVER_ERROR, errMsg);        
       }
          
@@ -225,6 +224,11 @@ public class RestManager {
             new ManagedResourceRegistration(resourceId, implClass, observer));
         log.info("Registered ManagedResource impl {} for path {}", 
             implClass.getName(), resourceId);
+      }
+      
+      // there may be a RestManager, in which case, we want to add this new ManagedResource immediately
+      if (initializedRestManager != null) {
+        initializedRestManager.addRegisteredResource(registered.get(resourceId));
       }
     }    
   }  
@@ -427,7 +431,12 @@ public class RestManager {
         throw new ResourceException(Status.CLIENT_ERROR_BAD_REQUEST, errMsg, ioExc);
       }
       return parsedJson;
-    }        
+    }
+
+    @Override
+    protected void addDeprecatedWarning() {
+      //this is not deprecated
+    }
   } // end ManagedEndpoint class
   
   /**
@@ -447,6 +456,31 @@ public class RestManager {
     }
 
     /**
+     * Overrides the parent impl to handle FileNotFoundException better
+     */
+    @Override
+    protected synchronized void reloadFromStorage() throws SolrException {
+      String resourceId = getResourceId();
+      Object data = null;
+      try {
+        data = storage.load(resourceId);
+      } catch (FileNotFoundException fnf) {
+        // this is ok - simply means there are no managed components added yet
+      } catch (IOException ioExc) {
+        throw new SolrException(ErrorCode.SERVER_ERROR,
+            "Failed to load stored data for "+resourceId+" due to: "+ioExc, ioExc);
+      }
+
+      Object managedData = processStoredData(data);
+
+      if (managedInitArgs == null)
+        managedInitArgs = new NamedList<>();
+
+      if (managedData != null)
+        onManagedDataLoadedFromStorage(managedInitArgs, managedData);
+    }
+
+    /**
      * Loads and initializes any ManagedResources that have been created but
      * are not associated with any Solr components.
      */
@@ -454,12 +488,9 @@ public class RestManager {
     @Override
     protected void onManagedDataLoadedFromStorage(NamedList<?> managedInitArgs, Object managedData)
         throws SolrException {
-      
+
       if (managedData == null) {
-        // this is OK, just means there are no stored registrations
-        // storing an empty list is safe and avoid future warnings about
-        // the data not existing
-        storeManagedData(new ArrayList<Map<String,String>>(0));
+        // this is ok - just means no managed components have been added yet
         return;
       }
       
@@ -596,7 +627,6 @@ public class RestManager {
     endpoint = new RestManagerManagedResource(this);
     endpoint.loadManagedDataAndNotify(null); // no observers for my endpoint
     // responds to requests to /config/managed and /schema/managed
-    managed.put(CONFIG_BASE_PATH+MANAGED_ENDPOINT, endpoint);
     managed.put(SCHEMA_BASE_PATH+MANAGED_ENDPOINT, endpoint);
             
     // init registered managed resources
@@ -605,6 +635,10 @@ public class RestManager {
       // keep track of this for lookups during request processing
       managed.put(reg.resourceId, createManagedResource(reg));
     }
+    
+    // this is for any new registrations that don't come through the API
+    // such as from adding a new fieldType to a managed schema that uses a ManagedResource
+    registry.initializedRestManager = this;
   }
 
   /**
@@ -617,23 +651,32 @@ public class RestManager {
     ManagedResourceRegistration existingReg = registry.registered.get(resourceId);
     if (existingReg == null) {
       registry.registerManagedResource(resourceId, clazz, null);
-      res = createManagedResource(registry.registered.get(resourceId));
-      managed.put(resourceId, res);
-      log.info("Registered new managed resource {}", resourceId);
-      
-      // attach this new resource to the Restlet router
-      Matcher resourceIdValidator = resourceIdRegex.matcher(resourceId);
-      boolean validated = resourceIdValidator.matches();
-      assert validated : "managed resourceId '" + resourceId
-                       + "' should already be validated by registerManagedResource()";
-      String routerPath = resourceIdValidator.group(1);      
-      String path = resourceIdValidator.group(2);
-      Router router = SCHEMA_BASE_PATH.equals(routerPath) ? schemaRouter : configRouter;
-      if (router != null) {
-        attachManagedResource(res, path, router);
-      }
+      addRegisteredResource(registry.registered.get(resourceId));
     } else {
       res = getManagedResource(resourceId);
+    }
+    return res;
+  }
+  
+  // used internally to create and attach a ManagedResource to the Restlet router
+  // the registry also uses this method directly, which is slightly hacky but necessary
+  // in order to support dynamic adding of new fieldTypes using the managed-schema API
+  private synchronized ManagedResource addRegisteredResource(ManagedResourceRegistration reg) {
+    String resourceId = reg.resourceId;
+    ManagedResource res = createManagedResource(reg);
+    managed.put(resourceId, res);
+    log.info("Registered new managed resource {}", resourceId);
+    
+    // attach this new resource to the Restlet router
+    Matcher resourceIdValidator = resourceIdRegex.matcher(resourceId);
+    boolean validated = resourceIdValidator.matches();
+    assert validated : "managed resourceId '" + resourceId
+                     + "' should already be validated by registerManagedResource()";
+    String routerPath = resourceIdValidator.group(1);      
+    String path = resourceIdValidator.group(2);
+    Router router = SCHEMA_BASE_PATH.equals(routerPath) ? schemaRouter : configRouter;
+    if (router != null) {
+      attachManagedResource(res, path, router);
     }
     return res;
   }
@@ -714,10 +757,7 @@ public class RestManager {
    * @param router - Restlet Router
    */
   public synchronized void attachManagedResources(String routerPath, Router router) {
-    
-    if (CONFIG_BASE_PATH.equals(routerPath)) {
-      this.configRouter = router;
-    } else if (SCHEMA_BASE_PATH.equals(routerPath)) {
+    if (SCHEMA_BASE_PATH.equals(routerPath)) {
       this.schemaRouter = router;
     } else {
       throw new SolrException(ErrorCode.SERVER_ERROR, 
@@ -753,5 +793,5 @@ public class RestManager {
     if (ManagedResource.ChildResourceSupport.class.isAssignableFrom(res.getClass())) {
       router.attach(path+"/{child}", res.getServerResourceClass());
     }    
-  }  
+  }
 }

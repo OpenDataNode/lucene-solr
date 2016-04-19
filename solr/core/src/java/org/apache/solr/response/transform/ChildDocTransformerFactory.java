@@ -17,29 +17,22 @@
 package org.apache.solr.response.transform;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 
+import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.index.IndexableField;
-import org.apache.lucene.document.Document;
-import org.apache.lucene.index.Term;
-import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.QueryWrapperFilter;
 import org.apache.lucene.search.Sort;
-import org.apache.lucene.search.TermQuery;
-import org.apache.lucene.search.WildcardQuery;
-import org.apache.lucene.search.join.FixedBitSetCachingWrapperFilter;
+import org.apache.lucene.search.join.QueryBitSetProducer;
+import org.apache.lucene.search.join.BitSetProducer;
 import org.apache.lucene.search.join.ToChildBlockJoinQuery;
-import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.UnicodeUtil;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.SolrException.ErrorCode;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.request.SolrQueryRequest;
-import org.apache.solr.response.ResponseWriterUtil;
+import org.apache.solr.response.DocsStreamer;
 import org.apache.solr.schema.FieldType;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
@@ -83,10 +76,10 @@ public class ChildDocTransformerFactory extends TransformerFactory {
     String childFilter = params.get( "childFilter" );
     int limit = params.getInt( "limit", 10 );
 
-    Filter parentsFilter = null;
+    BitSetProducer parentsFilter = null;
     try {
       Query parentFilterQuery = QParser.getParser( parentFilter, null, req).getQuery();
-      parentsFilter = new FixedBitSetCachingWrapperFilter(new QueryWrapperFilter(parentFilterQuery));
+      parentsFilter = new QueryBitSetProducer(new QueryWrapperFilter(parentFilterQuery));
     } catch (SyntaxError syntaxError) {
       throw new SolrException( ErrorCode.BAD_REQUEST, "Failed to create correct parent filter query" );
     }
@@ -108,11 +101,11 @@ class ChildDocTransformer extends TransformerWithContext {
   private final String name;
   private final SchemaField idField;
   private final IndexSchema schema;
-  private Filter parentsFilter;
+  private BitSetProducer parentsFilter;
   private Query childFilterQuery;
   private int limit;
 
-  public ChildDocTransformer( String name, final Filter parentsFilter, 
+  public ChildDocTransformer( String name, final BitSetProducer parentsFilter, 
                               final SchemaField idField, IndexSchema schema,
                               final Query childFilterQuery, int limit) {
     this.name = name;
@@ -140,14 +133,14 @@ class ChildDocTransformer extends TransformerWithContext {
 
     try {
       Query parentQuery = idFt.getFieldQuery(null, idField, parentIdExt);
-      Query query = new ToChildBlockJoinQuery(parentQuery, parentsFilter, false);
+      Query query = new ToChildBlockJoinQuery(parentQuery, parentsFilter);
       DocList children = context.searcher.getDocList(query, childFilterQuery, new Sort(), 0, limit);
       if(children.matches() > 0) {
         DocIterator i = children.iterator();
         while(i.hasNext()) {
           Integer childDocNum = i.next();
           Document childDoc = context.searcher.doc(childDocNum);
-          SolrDocument solrChildDoc = ResponseWriterUtil.toSolrDocument(childDoc, schema);
+          SolrDocument solrChildDoc = DocsStreamer.getDoc(childDoc, schema);
 
           // TODO: future enhancement...
           // support an fl local param in the transformer, which is used to build

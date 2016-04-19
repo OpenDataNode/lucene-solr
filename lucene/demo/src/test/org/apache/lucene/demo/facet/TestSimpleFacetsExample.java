@@ -1,5 +1,3 @@
-package org.apache.lucene.demo.facet;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,15 +14,15 @@ package org.apache.lucene.demo.facet;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.demo.facet;
 
-import java.util.List;
 
 import org.apache.lucene.facet.FacetResult;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.LuceneTestCase;
 import org.junit.Test;
 
-@SuppressCodecs("Lucene3x")
+import java.util.List;
+
 public class TestSimpleFacetsExample extends LuceneTestCase {
 
   @Test
@@ -56,4 +54,5 @@ public class TestSimpleFacetsExample extends LuceneTestCase {
     assertEquals("dim=Publish Date path=[] value=5 childCount=3\n  2010 (2)\n  2012 (2)\n  1999 (1)\n", result.get(0).toString());
     assertEquals("dim=Author path=[] value=2 childCount=2\n  Bob (1)\n  Lisa (1)\n", result.get(1).toString());
   }
+
 }

@@ -1,5 +1,3 @@
-package org.apache.solr.spelling.suggest.fst;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,19 @@ package org.apache.solr.spelling.suggest.fst;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.spelling.suggest.fst;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.search.suggest.Lookup;
 import org.apache.lucene.search.suggest.analyzing.AnalyzingInfixSuggester;
 import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.util.BytesRef;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.schema.FieldType;
@@ -54,6 +57,15 @@ public class AnalyzingInfixLookupFactory extends LookupFactory {
   protected static final String MIN_PREFIX_CHARS = "minPrefixChars";
   
   /** 
+   * Boolean clause matching option for multiple terms 
+   * Default is true - all terms required. 
+   */
+  protected static final String ALL_TERMS_REQUIRED = "allTermsRequired";
+  
+  /** Highlight suggest terms  - default is true. */
+  protected static final String HIGHLIGHT = "highlight";
+    
+  /** 
    * Default path where the index for the suggester is stored/loaded from
    * */
   private static final String DEFAULT_INDEX_PATH = "analyzingInfixSuggesterIndexDir";
@@ -62,6 +74,11 @@ public class AnalyzingInfixLookupFactory extends LookupFactory {
    * File name for the automaton.
    */
   private static final String FILENAME = "iwfsta.bin";
+
+  /**
+   * Clone of CONTEXTS_FIELD_NAME in AnalyzingInfixSuggester
+   */
+  public static final String CONTEXTS_FIELD_NAME = "contexts";
   
   
   @Override
@@ -90,13 +107,39 @@ public class AnalyzingInfixLookupFactory extends LookupFactory {
     int minPrefixChars = params.get(MIN_PREFIX_CHARS) != null
     ? Integer.parseInt(params.get(MIN_PREFIX_CHARS).toString())
     : AnalyzingInfixSuggester.DEFAULT_MIN_PREFIX_CHARS;
+    
+    boolean allTermsRequired = params.get(ALL_TERMS_REQUIRED) != null
+    ? Boolean.getBoolean(params.get(ALL_TERMS_REQUIRED).toString())
+    : AnalyzingInfixSuggester.DEFAULT_ALL_TERMS_REQUIRED;
+    
+    boolean highlight = params.get(HIGHLIGHT) != null
+    ? Boolean.getBoolean(params.get(HIGHLIGHT).toString())
+    : AnalyzingInfixSuggester.DEFAULT_HIGHLIGHT;
 
     try {
-      return new AnalyzingInfixSuggester(core.getSolrConfig().luceneMatchVersion, 
-                                         FSDirectory.open(new File(indexPath)), indexAnalyzer,
-                                         queryAnalyzer, minPrefixChars);
+      return new AnalyzingInfixSuggester(FSDirectory.open(new File(indexPath).toPath()), indexAnalyzer,
+                                         queryAnalyzer, minPrefixChars, true, 
+                                         allTermsRequired, highlight) {
+        @Override
+        public List<LookupResult> lookup(CharSequence key, Set<BytesRef> contexts, int num, boolean allTermsRequired, boolean doHighlight) throws IOException {
+          List<LookupResult> res = super.lookup(key, contexts, num, allTermsRequired, doHighlight);
+          if (doHighlight) {
+            List<LookupResult> res2 = new ArrayList<>();
+            for(LookupResult hit : res) {
+              res2.add(new LookupResult(hit.highlightKey.toString(),
+                                        hit.highlightKey,
+                                        hit.value,
+                                        hit.payload,
+                                        hit.contexts));
+            }
+            res = res2;
+          }
+
+          return res;
+        }
+        };
     } catch (IOException e) {
-      throw new RuntimeException();
+      throw new RuntimeException(e);
     }
   }
 

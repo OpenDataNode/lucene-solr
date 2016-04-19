@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.compound;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.compound;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.compound;
+
 
 import java.io.IOException;
 import java.io.Reader;
@@ -32,11 +32,11 @@ import org.apache.lucene.analysis.charfilter.MappingCharFilter;
 import org.apache.lucene.analysis.charfilter.NormalizeCharMap;
 import org.apache.lucene.analysis.compound.hyphenation.HyphenationTree;
 import org.apache.lucene.analysis.core.KeywordTokenizer;
-import org.apache.lucene.analysis.core.WhitespaceTokenizer;
 import org.apache.lucene.analysis.util.CharArraySet;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.util.Attribute;
 import org.apache.lucene.util.AttributeImpl;
+import org.apache.lucene.util.AttributeReflector;
 import org.xml.sax.InputSource;
 
 public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
@@ -53,7 +53,7 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
         .getHyphenationTree(is);
 
     HyphenationCompoundWordTokenFilter tf = new HyphenationCompoundWordTokenFilter(
-        new MockTokenizer(new StringReader("min veninde som er lidt af en læsehest"), MockTokenizer.WHITESPACE, false), 
+        whitespaceMockTokenizer("min veninde som er lidt af en læsehest"),
         hyphenator,
         dict, CompoundWordTokenFilterBase.DEFAULT_MIN_WORD_SIZE,
         CompoundWordTokenFilterBase.DEFAULT_MIN_SUBWORD_SIZE,
@@ -73,7 +73,7 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
 
     // the word basket will not be added due to the longest match option
     HyphenationCompoundWordTokenFilter tf = new HyphenationCompoundWordTokenFilter(
-        new MockTokenizer(new StringReader("basketballkurv"), MockTokenizer.WHITESPACE, false), 
+        whitespaceMockTokenizer("basketballkurv"),
         hyphenator, dict,
         CompoundWordTokenFilterBase.DEFAULT_MIN_WORD_SIZE,
         CompoundWordTokenFilterBase.DEFAULT_MIN_SUBWORD_SIZE, 40, true);
@@ -95,7 +95,7 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
     
     HyphenationCompoundWordTokenFilter tf = new HyphenationCompoundWordTokenFilter(
 
-        new MockTokenizer(new StringReader("basketballkurv"), MockTokenizer.WHITESPACE, false),
+        whitespaceMockTokenizer("basketballkurv"),
         hyphenator,
         CompoundWordTokenFilterBase.DEFAULT_MIN_WORD_SIZE,
         2, 4);
@@ -107,7 +107,7 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
     
     tf = new HyphenationCompoundWordTokenFilter(
 
-        new MockTokenizer(new StringReader("basketballkurv"), MockTokenizer.WHITESPACE, false),
+        whitespaceMockTokenizer("basketballkurv"),
         hyphenator,
         CompoundWordTokenFilterBase.DEFAULT_MIN_WORD_SIZE,
         4, 6);
@@ -119,7 +119,7 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
     
     tf = new HyphenationCompoundWordTokenFilter(
 
-        new MockTokenizer(new StringReader("basketballkurv"), MockTokenizer.WHITESPACE, false),
+        whitespaceMockTokenizer("basketballkurv"),
         hyphenator,
         CompoundWordTokenFilterBase.DEFAULT_MIN_WORD_SIZE,
         4, 10);
@@ -138,10 +138,8 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
         "Sko", "Vind", "Rute", "Torkare", "Blad");
 
     DictionaryCompoundWordTokenFilter tf = new DictionaryCompoundWordTokenFilter(
-        new MockTokenizer(
-            new StringReader(
+        whitespaceMockTokenizer(
                 "Bildörr Bilmotor Biltak Slagborr Hammarborr Pelarborr Glasögonfodral Basfiolsfodral Basfiolsfodralmakaregesäll Skomakare Vindrutetorkare Vindrutetorkarblad abba"),
-            MockTokenizer.WHITESPACE, false),
         dict);
 
     assertTokenStreamContents(tf, new String[] { "Bildörr", "Bil", "dörr", "Bilmotor",
@@ -168,7 +166,7 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
         "Sko", "Vind", "Rute", "Torkare", "Blad", "Fiolsfodral");
 
     DictionaryCompoundWordTokenFilter tf = new DictionaryCompoundWordTokenFilter(
-        new MockTokenizer(new StringReader("Basfiolsfodralmakaregesäll"), MockTokenizer.WHITESPACE, false),
+        whitespaceMockTokenizer("Basfiolsfodralmakaregesäll"),
         dict, CompoundWordTokenFilterBase.DEFAULT_MIN_WORD_SIZE,
         CompoundWordTokenFilterBase.DEFAULT_MIN_SUBWORD_SIZE,
         CompoundWordTokenFilterBase.DEFAULT_MAX_SUBWORD_SIZE, true);
@@ -182,12 +180,10 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
   public void testTokenEndingWithWordComponentOfMinimumLength() throws Exception {
     CharArraySet dict = makeDictionary("ab", "cd", "ef");
 
-    Tokenizer tokenizer = new MockTokenizer(new StringReader("abcdef"), MockTokenizer.WHITESPACE, false);
+    Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    tokenizer.setReader(new StringReader("abcdef"));
     DictionaryCompoundWordTokenFilter tf = new DictionaryCompoundWordTokenFilter(
-      new WhitespaceTokenizer(
-        new StringReader(
-          "abcdef")
-        ),
+      tokenizer,
       dict,
       CompoundWordTokenFilterBase.DEFAULT_MIN_WORD_SIZE,
       CompoundWordTokenFilterBase.DEFAULT_MIN_SUBWORD_SIZE,
@@ -204,12 +200,10 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
   public void testWordComponentWithLessThanMinimumLength() throws Exception {
     CharArraySet dict = makeDictionary("abc", "d", "efg");
 
-    Tokenizer tokenizer = new MockTokenizer(new StringReader("abcdefg"), MockTokenizer.WHITESPACE, false);
+    Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    tokenizer.setReader(new StringReader("abcdefg"));
     DictionaryCompoundWordTokenFilter tf = new DictionaryCompoundWordTokenFilter(
-      new WhitespaceTokenizer(
-        new StringReader(
-          "abcdefg")
-        ),
+      tokenizer,
       dict,
       CompoundWordTokenFilterBase.DEFAULT_MIN_WORD_SIZE,
       CompoundWordTokenFilterBase.DEFAULT_MIN_SUBWORD_SIZE,
@@ -228,7 +222,7 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
     CharArraySet dict = makeDictionary("Rind", "Fleisch", "Draht", "Schere", "Gesetz",
         "Aufgabe", "Überwachung");
 
-    MockTokenizer wsTokenizer = new MockTokenizer(new StringReader("Rindfleischüberwachungsgesetz"), MockTokenizer.WHITESPACE, false);
+    MockTokenizer wsTokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
     wsTokenizer.setEnableChecks(false); // we will reset in a strange place
     wsTokenizer.setReader(new StringReader("Rindfleischüberwachungsgesetz"));
     DictionaryCompoundWordTokenFilter tf = new DictionaryCompoundWordTokenFilter(
@@ -253,7 +247,8 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
 
   public void testRetainMockAttribute() throws Exception {
     CharArraySet dict = makeDictionary("abc", "d", "efg");
-    Tokenizer tokenizer = new MockTokenizer(new StringReader("abcdefg"), MockTokenizer.WHITESPACE, false);
+    Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
+    tokenizer.setReader(new StringReader("abcdefg"));
     TokenStream stream = new MockRetainAttributeFilter(tokenizer);
     stream = new DictionaryCompoundWordTokenFilter(
         stream, dict,
@@ -275,22 +270,31 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
 
   public static final class MockRetainAttributeImpl extends AttributeImpl implements MockRetainAttribute {
     private boolean retain = false;
+    
     @Override
     public void clear() {
       retain = false;
     }
+    
     @Override
     public boolean getRetain() {
       return retain;
     }
+    
     @Override
     public void setRetain(boolean retain) {
       this.retain = retain;
     }
+    
     @Override
     public void copyTo(AttributeImpl target) {
       MockRetainAttribute t = (MockRetainAttribute) target;
       t.setRetain(retain);
+    }
+
+    @Override
+    public void reflectWith(AttributeReflector reflector) {
+      reflector.reflect(MockRetainAttribute.class, "retain", retain);
     }
   }
 
@@ -326,8 +330,8 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
     Analyzer analyzer = new Analyzer() {
 
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
         TokenFilter filter = new DictionaryCompoundWordTokenFilter(tokenizer, dict);
         return new TokenStreamComponents(tokenizer, filter);
       }
@@ -342,6 +346,7 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
         new String[] { "bankueberfall", "fall" },
         new int[] { 0,  0 },
         new int[] { 12, 12 });
+    analyzer.close();
   }
   
   /** blast some random strings through the analyzer */
@@ -350,25 +355,27 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
     Analyzer a = new Analyzer() {
 
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
         return new TokenStreamComponents(tokenizer, new DictionaryCompoundWordTokenFilter(tokenizer, dict));
       }
     };
     checkRandomData(random(), a, 1000*RANDOM_MULTIPLIER);
+    a.close();
     
     InputSource is = new InputSource(getClass().getResource("da_UTF8.xml").toExternalForm());
     final HyphenationTree hyphenator = HyphenationCompoundWordTokenFilter.getHyphenationTree(is);
     Analyzer b = new Analyzer() {
 
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new MockTokenizer(MockTokenizer.WHITESPACE, false);
         TokenFilter filter = new HyphenationCompoundWordTokenFilter(tokenizer, hyphenator);
         return new TokenStreamComponents(tokenizer, filter);
       }
     };
     checkRandomData(random(), b, 1000*RANDOM_MULTIPLIER);
+    b.close();
   }
   
   public void testEmptyTerm() throws Exception {
@@ -376,24 +383,26 @@ public class TestCompoundWordTokenFilter extends BaseTokenStreamTestCase {
     Analyzer a = new Analyzer() {
 
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new KeywordTokenizer(reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new KeywordTokenizer();
         return new TokenStreamComponents(tokenizer, new DictionaryCompoundWordTokenFilter(tokenizer, dict));
       }
     };
     checkOneTerm(a, "", "");
+    a.close();
     
     InputSource is = new InputSource(getClass().getResource("da_UTF8.xml").toExternalForm());
     final HyphenationTree hyphenator = HyphenationCompoundWordTokenFilter.getHyphenationTree(is);
     Analyzer b = new Analyzer() {
 
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new KeywordTokenizer(reader);
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new KeywordTokenizer();
         TokenFilter filter = new HyphenationCompoundWordTokenFilter(tokenizer, hyphenator);
         return new TokenStreamComponents(tokenizer, filter);
       }
     };
     checkOneTerm(b, "", "");
+    b.close();
   }
 }

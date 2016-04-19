@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,16 +14,16 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReaderContext;
-import org.apache.lucene.util.TestUtil;
+import org.apache.lucene.index.LeafReaderContext;
 
 /**
  * Helper class that adds some extra checks to ensure correct
@@ -55,12 +53,12 @@ public class AssertingIndexSearcher extends IndexSearcher {
   
   /** Ensures, that the returned {@code Weight} is not normalized again, which may produce wrong scores. */
   @Override
-  public Weight createNormalizedWeight(Query query) throws IOException {
-    final Weight w = super.createNormalizedWeight(query);
-    return new AssertingWeight(random, w) {
+  public Weight createNormalizedWeight(Query query, boolean needsScores) throws IOException {
+    final Weight w = super.createNormalizedWeight(query, needsScores);
+    return new AssertingWeight(random, w, needsScores) {
 
       @Override
-      public void normalize(float norm, float topLevelBoost) {
+      public void normalize(float norm, float boost) {
         throw new IllegalStateException("Weight already normalized.");
       }
 
@@ -73,6 +71,12 @@ public class AssertingIndexSearcher extends IndexSearcher {
   }
 
   @Override
+  public Weight createWeight(Query query, boolean needsScores) throws IOException {
+    // this adds assertions to the inner weights/scorers too
+    return new AssertingWeight(random, super.createWeight(query, needsScores), needsScores);
+  }
+
+  @Override
   public Query rewrite(Query original) throws IOException {
     // TODO: use the more sophisticated QueryUtils.check sometimes!
     QueryUtils.check(original);
@@ -82,16 +86,9 @@ public class AssertingIndexSearcher extends IndexSearcher {
   }
 
   @Override
-  protected Query wrapFilter(Query query, Filter filter) {
-    if (random.nextBoolean())
-      return super.wrapFilter(query, filter);
-    return (filter == null) ? query : new FilteredQuery(query, filter, TestUtil.randomFilterStrategy(random));
-  }
-
-  @Override
-  protected void search(List<AtomicReaderContext> leaves, Weight weight, Collector collector) throws IOException {
-    // TODO: shouldn't we AssertingCollector.wrap(collector) here?
-    super.search(leaves, AssertingWeight.wrap(random, weight), collector);
+  protected void search(List<LeafReaderContext> leaves, Weight weight, Collector collector) throws IOException {
+    assert weight instanceof AssertingWeight;
+    super.search(leaves, weight, AssertingCollector.wrap(random, collector));
   }
 
   @Override

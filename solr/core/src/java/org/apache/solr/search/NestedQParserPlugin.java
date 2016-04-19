@@ -23,7 +23,7 @@ import org.apache.solr.common.util.NamedList;
 import org.apache.solr.request.SolrQueryRequest;
 
 /**
- * Create a nested query, with the ability of that query to redefine it's type via
+ * Create a nested query, with the ability of that query to redefine its type via
  * local parameters.  This is useful in specifying defaults in configuration and
  * letting clients indirectly reference them.
  * <br>Example: <code>{!query defType=func v=$q1}</code>
@@ -33,10 +33,6 @@ import org.apache.solr.request.SolrQueryRequest;
  */
 public class NestedQParserPlugin extends QParserPlugin {
   public static final String NAME = "query";
-
-  @Override
-  public void init(NamedList args) {
-  }
 
   @Override
   public QParser createParser(String qstr, SolrParams localParams, SolrParams params, SolrQueryRequest req) {

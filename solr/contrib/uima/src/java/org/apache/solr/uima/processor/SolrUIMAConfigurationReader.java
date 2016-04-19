@@ -1,5 +1,3 @@
-package org.apache.solr.uima.processor;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.uima.processor;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.uima.processor;
 
 import java.util.HashMap;
 import java.util.List;
@@ -32,7 +31,7 @@ import org.apache.solr.uima.processor.SolrUIMAConfiguration.MapField;
  */
 public class SolrUIMAConfigurationReader {
 
-  private NamedList<Object> args;
+  private final NamedList<Object> args;
 
   public SolrUIMAConfigurationReader(NamedList<Object> args) {
     this.args = args;

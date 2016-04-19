@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -73,7 +73,7 @@ CharacterEntities = ( "AElig" | "Aacute" | "Acirc" | "Agrave" | "Alpha"
     upperCaseVariantsAccepted.put("amp", "AMP");
   }
   private static final CharArrayMap<Character> entityValues
-      = new CharArrayMap<>(Version.LUCENE_CURRENT, 253, false);
+      = new CharArrayMap<>(253, false);
   static {
     String[] entities = {
       "AElig", "\u00C6", "Aacute", "\u00C1", "Acirc", "\u00C2",

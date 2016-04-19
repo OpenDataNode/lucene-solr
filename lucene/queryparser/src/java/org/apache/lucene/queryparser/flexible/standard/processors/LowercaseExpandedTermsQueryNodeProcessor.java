@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.processors;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard.processors;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.processors;
 
 import java.util.List;
 import java.util.Locale;
@@ -39,7 +38,7 @@ import org.apache.lucene.queryparser.flexible.standard.nodes.WildcardQueryNode;
  * {@link QueryConfigHandler}. If it is and the expanded terms should be
  * lower-cased, it looks for every {@link WildcardQueryNode},
  * {@link FuzzyQueryNode} and children of a {@link RangeQueryNode} and lower-case its
- * term. <br/>
+ * term.
  * 
  * @see ConfigurationKeys#LOWERCASE_EXPANDED_TERMS
  */

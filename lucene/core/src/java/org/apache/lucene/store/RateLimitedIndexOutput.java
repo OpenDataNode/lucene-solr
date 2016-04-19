@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
+
 
 import java.io.IOException;
 
@@ -24,7 +24,8 @@ import java.io.IOException;
  * 
  * @lucene.internal
  */
-final class RateLimitedIndexOutput extends IndexOutput {
+
+public final class RateLimitedIndexOutput extends IndexOutput {
   
   private final IndexOutput delegate;
   private final RateLimiter rateLimiter;
@@ -36,7 +37,8 @@ final class RateLimitedIndexOutput extends IndexOutput {
    * which does volatile read. */
   private long currentMinPauseCheckBytes;
 
-  RateLimitedIndexOutput(final RateLimiter rateLimiter, final IndexOutput delegate) {
+  public RateLimitedIndexOutput(final RateLimiter rateLimiter, final IndexOutput delegate) {
+    super("RateLimitedIndexOutput(" + delegate + ")");
     this.delegate = delegate;
     this.rateLimiter = rateLimiter;
     this.currentMinPauseCheckBytes = rateLimiter.getMinPauseCheckBytes();
@@ -71,16 +73,11 @@ final class RateLimitedIndexOutput extends IndexOutput {
     delegate.writeBytes(b, offset, length);
   }
   
-  private void checkRate() {
+  private void checkRate() throws IOException {
     if (bytesSinceLastPause > currentMinPauseCheckBytes) {
       rateLimiter.pause(bytesSinceLastPause);
       bytesSinceLastPause = 0;
       currentMinPauseCheckBytes = rateLimiter.getMinPauseCheckBytes();
     }    
-  }
-
-  @Override
-  public void flush() throws IOException {
-    delegate.flush();
   }
 }

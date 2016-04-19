@@ -1,5 +1,3 @@
-package org.apache.solr.update.processor;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.update.processor;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.update.processor;
 
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.util.NamedList;
@@ -40,6 +39,7 @@ import javax.script.ScriptException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
+import java.lang.invoke.MethodHandles;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.LinkedHashSet;
@@ -90,7 +90,6 @@ import org.slf4j.LoggerFactory;
  *  <li>logger - A {@link Logger} that can be used for logging purposes in the script</li>
  *  <li>params - The "params" init argument in the factory configuration (if any)</li>
  * </ul>
- * </p>
  * <p>
  * Internally this update processor uses JDK 6 scripting engine support, 
  * and any {@link Invocable} implementations of <code>ScriptEngine</code> 
@@ -153,7 +152,7 @@ import org.slf4j.LoggerFactory;
  */
 public class StatelessScriptUpdateProcessorFactory extends UpdateRequestProcessorFactory implements SolrCoreAware {
 
-  public static Logger log = LoggerFactory.getLogger(StatelessScriptUpdateProcessorFactory.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private final static String SCRIPT_ARG = "script";
   private final static String PARAMS_ARG = "params";
@@ -429,13 +428,7 @@ public class StatelessScriptUpdateProcessorFactory extends UpdateRequestProcesso
             }
           }
 
-        } catch (ScriptException e) {
-          throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, 
-                                  "Unable to invoke function " + name + 
-                                  " in script: " + 
-                                  engine.getScriptFile().getFileName() + 
-                                  ": " + e.getMessage(), e);
-        } catch (NoSuchMethodException e) {
+        } catch (ScriptException | NoSuchMethodException e) {
           throw new SolrException(SolrException.ErrorCode.SERVER_ERROR, 
                                   "Unable to invoke function " + name + 
                                   " in script: " + 

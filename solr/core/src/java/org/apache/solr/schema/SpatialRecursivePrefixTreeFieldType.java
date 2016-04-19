@@ -1,5 +1,3 @@
-package org.apache.solr.schema;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,12 @@ package org.apache.solr.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import org.apache.lucene.spatial.prefix.RecursivePrefixTreeStrategy;
+package org.apache.solr.schema;
 
 import java.util.Map;
+
+import org.apache.lucene.spatial.prefix.RecursivePrefixTreeStrategy;
+import org.apache.lucene.spatial.prefix.tree.PackedQuadPrefixTree;
 
 /**
  * @see RecursivePrefixTreeStrategy
@@ -45,6 +45,11 @@ public class SpatialRecursivePrefixTreeFieldType extends AbstractSpatialPrefixTr
     RecursivePrefixTreeStrategy strategy = new RecursivePrefixTreeStrategy(grid, fieldName);
     if (prefixGridScanLevel != null)
       strategy.setPrefixGridScanLevel(prefixGridScanLevel);
+    if (grid instanceof PackedQuadPrefixTree) {
+      // This grid has a (usually) better prune leafy branch implementation
+      ((PackedQuadPrefixTree) grid).setPruneLeafyBranches(true);
+      strategy.setPruneLeafyBranches(false);
+    }
     return strategy;
   }
 }

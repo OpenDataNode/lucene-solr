@@ -1,5 +1,3 @@
-package org.apache.lucene.benchmark.byTask.feeds;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,13 +14,16 @@ package org.apache.lucene.benchmark.byTask.feeds;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.benchmark.byTask.feeds;
+
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.Constructor;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Properties;
 
@@ -170,7 +171,7 @@ public class LineDocSource extends ContentSource {
     }
   }
   
-  private File file;
+  private Path file;
   private BufferedReader reader;
   private int readCount;
 
@@ -249,7 +250,7 @@ public class LineDocSource extends ContentSource {
       try {
         final Class<? extends LineParser> clazz = 
           Class.forName(docDataLineReaderClassName).asSubclass(LineParser.class);
-        Constructor<? extends LineParser> cnstr = clazz.getConstructor(new Class[]{String[].class});
+        Constructor<? extends LineParser> cnstr = clazz.getConstructor(String[].class);
         return cnstr.newInstance((Object)header);
       } catch (Exception e) {
         throw new RuntimeException("Failed to instantiate "+docDataLineReaderClassName, e);
@@ -276,7 +277,7 @@ public class LineDocSource extends ContentSource {
     if (fileName == null) {
       throw new IllegalArgumentException("docs.file must be set");
     }
-    file = new File(fileName).getAbsoluteFile();
+    file = Paths.get(fileName).toAbsolutePath();
     if (encoding == null) {
       encoding = IOUtils.UTF_8;
     }

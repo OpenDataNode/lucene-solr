@@ -14,8 +14,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler;
+
+import javax.xml.stream.XMLInputFactory;
+import javax.xml.stream.XMLStreamConstants;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.invoke.MethodHandles;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.Set;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.lucene.analysis.Analyzer;
@@ -35,22 +45,16 @@ import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.schema.FieldType;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.SchemaField;
-import org.apache.solr.util.EmptyEntityResolver;
+import org.apache.solr.common.EmptyEntityResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.xml.stream.XMLInputFactory;
-import javax.xml.stream.XMLStreamConstants;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.*;
+import static org.apache.solr.common.params.CommonParams.NAME;
 
 /**
  * An analysis handler that provides a breakdown of the analysis process of provided documents. This handler expects a
  * (single) content stream of the following format:
- * <p/>
+ * <br>
  * <pre><code>
  *  &lt;docs&gt;
  *      &lt;doc&gt;
@@ -63,12 +67,10 @@ import java.util.*;
  *      ...
  *  &lt;/docs&gt;
  * </code></pre>
- * <p/>
+ * <br>
  * <em><b>Note: Each document must contain a field which serves as the unique key. This key is used in the returned
  * response to associate an analysis breakdown to the analyzed document.</b></em>
- * <p/>
- * <p/>
- * <p/>
+ * <p>
  * Like the {@link org.apache.solr.handler.FieldAnalysisRequestHandler}, this handler also supports query analysis by
  * sending either an "analysis.query" or "q" request parameter that holds the query text to be analyzed. It also
  * supports the "analysis.showmatch" parameter which when set to {@code true}, all field tokens that match the query
@@ -79,7 +81,7 @@ import java.util.*;
  */
 public class DocumentAnalysisRequestHandler extends AnalysisRequestHandlerBase {
 
-  public static final Logger log = LoggerFactory.getLogger(DocumentAnalysisRequestHandler.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   private static final XMLErrorLogger xmllog = new XMLErrorLogger(log);
 
   private static final float DEFAULT_BOOST = 1.0f;
@@ -103,7 +105,7 @@ public class DocumentAnalysisRequestHandler extends AnalysisRequestHandlerBase {
       inputFactory.setProperty("reuse-instance", Boolean.FALSE);
     } catch (IllegalArgumentException ex) {
       // Other implementations will likely throw this exception since "reuse-instance"
-      // isimplementation specific.
+      // is implementation specific.
       log.debug("Unable to set the 'reuse-instance' property for the input factory: " + inputFactory);
     }
   }
@@ -120,11 +122,6 @@ public class DocumentAnalysisRequestHandler extends AnalysisRequestHandlerBase {
   @Override
   public String getDescription() {
     return "Provides a breakdown of the analysis process of provided documents";
-  }
-
-  @Override
-  public String getSource() {
-    return null;
   }
 
 
@@ -318,7 +315,7 @@ public class DocumentAnalysisRequestHandler extends AnalysisRequestHandlerBase {
 
           for (int i = 0; i < reader.getAttributeCount(); i++) {
             String attrName = reader.getAttributeLocalName(i);
-            if ("name".equals(attrName)) {
+            if (NAME.equals(attrName)) {
               fieldName = reader.getAttributeValue(i);
             }
           }

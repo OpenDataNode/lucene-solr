@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,11 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.IOException;
+
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.TokenStream;
@@ -25,16 +26,13 @@ import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.IOUtils;
-import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.FixedBitSet;
-import org.apache.lucene.util.TestUtil;
+import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
+import org.apache.lucene.util.LuceneTestCase;
 import org.apache.lucene.util.TestUtil;
 
 @SuppressCodecs({ "SimpleText", "Memory", "Direct" })
@@ -51,14 +49,13 @@ public class TestLongPostings extends LuceneTestCase {
       }
       try (TokenStream ts = a.tokenStream("foo", s)) {
         final TermToBytesRefAttribute termAtt = ts.getAttribute(TermToBytesRefAttribute.class);
-        final BytesRef termBytes = termAtt.getBytesRef();
         ts.reset();
 
         int count = 0;
         boolean changed = false;
 
         while(ts.incrementToken()) {
-          termAtt.fillBytesRef();
+          final BytesRef termBytes = termAtt.getBytesRef();
           if (count == 0 && !termBytes.utf8ToString().equals(s)) {
             // The value was changed during analysis.  Keep iterating so the
             // tokenStream is exhausted.
@@ -77,7 +74,7 @@ public class TestLongPostings extends LuceneTestCase {
   }
 
   public void testLongPostings() throws Exception {
-    // Don't use TestUtil.getTempDir so that we own the
+    // Don't use _TestUtil.getTempDir so that we own the
     // randomness (ie same seed will point to same dir):
     Directory dir = newFSDirectory(createTempDir("longpostings" + "." + random().nextLong()));
 
@@ -169,7 +166,7 @@ public class TestLongPostings extends LuceneTestCase {
         System.out.println("\nTEST: iter=" + iter + " doS1=" + doS1);
       }
         
-      final DocsAndPositionsEnum postings = MultiFields.getTermPositionsEnum(r, null, "field", new BytesRef(term));
+      final PostingsEnum postings = MultiFields.getTermPositionsEnum(r, "field", new BytesRef(term));
 
       int docID = -1;
       while(docID < DocIdSetIterator.NO_MORE_DOCS) {
@@ -200,6 +197,9 @@ public class TestLongPostings extends LuceneTestCase {
           }
 
           if (random().nextInt(6) == 3) {
+            if (VERBOSE) {
+              System.out.println("    check positions");
+            }
             final int freq = postings.freq();
             assertTrue(freq >=1 && freq <= 4);
             for(int pos=0;pos<freq;pos++) {
@@ -266,12 +266,12 @@ public class TestLongPostings extends LuceneTestCase {
   
   // a weaker form of testLongPostings, that doesnt check positions
   public void testLongPostingsNoPositions() throws Exception {
-    doTestLongPostingsNoPositions(IndexOptions.DOCS_ONLY);
+    doTestLongPostingsNoPositions(IndexOptions.DOCS);
     doTestLongPostingsNoPositions(IndexOptions.DOCS_AND_FREQS);
   }
   
   public void doTestLongPostingsNoPositions(IndexOptions options) throws Exception {
-    // Don't use TestUtil.getTempDir so that we own the
+    // Don't use _TestUtil.getTempDir so that we own the
     // randomness (ie same seed will point to same dir):
     Directory dir = newFSDirectory(createTempDir("longpostings" + "." + random().nextLong()));
 
@@ -369,14 +369,14 @@ public class TestLongPostings extends LuceneTestCase {
         System.out.println("\nTEST: iter=" + iter + " doS1=" + doS1 + " term=" + term);
       }
         
-      final DocsEnum docs;
-      final DocsEnum postings;
+      final PostingsEnum docs;
+      final PostingsEnum postings;
 
-      if (options == IndexOptions.DOCS_ONLY) {
-        docs = TestUtil.docs(random(), r, "field", new BytesRef(term), null, null, DocsEnum.FLAG_NONE);
+      if (options == IndexOptions.DOCS) {
+        docs = TestUtil.docs(random(), r, "field", new BytesRef(term), null, PostingsEnum.NONE);
         postings = null;
       } else {
-        docs = postings = TestUtil.docs(random(), r, "field", new BytesRef(term), null, null, DocsEnum.FLAG_FREQS);
+        docs = postings = TestUtil.docs(random(), r, "field", new BytesRef(term), null, PostingsEnum.FREQS);
         assert postings != null;
       }
       assert docs != null;

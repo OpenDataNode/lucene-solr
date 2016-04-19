@@ -1,4 +1,3 @@
-package org.apache.solr.handler;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.solr.handler;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.handler;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.params.UpdateParams;
@@ -26,16 +25,12 @@ import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.update.processor.UpdateRequestProcessor;
 import org.apache.solr.update.processor.UpdateRequestProcessorChain;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 
 /**
  * Shares common code between various handlers that manipulate 
  * {@link org.apache.solr.common.util.ContentStream} objects.
  */
 public abstract class ContentStreamHandlerBase extends RequestHandlerBase {
-  public static Logger log = LoggerFactory.getLogger(ContentStreamHandlerBase.class);
 
   @Override
   public void init(NamedList args) {
@@ -55,7 +50,7 @@ public abstract class ContentStreamHandlerBase extends RequestHandlerBase {
   public void handleRequestBody(SolrQueryRequest req, SolrQueryResponse rsp) throws Exception {
     SolrParams params = req.getParams();
     UpdateRequestProcessorChain processorChain =
-            req.getCore().getUpdateProcessingChain(params.get(UpdateParams.UPDATE_CHAIN));
+        req.getCore().getUpdateProcessorChain(params);
 
     UpdateRequestProcessor processor = processorChain.createProcessor(req, rsp);
 

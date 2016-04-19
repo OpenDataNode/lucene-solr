@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.handler;
 
 import org.apache.solr.handler.component.*;
@@ -29,7 +28,6 @@ import java.net.URL;
  * in the solrconfig as defaults, and may be overriden as request parameters.
  * (TODO: complete documentation of request parameters here, rather than only
  * on the wiki).
- * </p>
  *
  * <ul>
  * <li> highlight - Set to any value not .equal() to "false" to enable highlight

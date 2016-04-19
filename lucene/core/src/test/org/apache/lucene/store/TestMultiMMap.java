@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,9 +14,11 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
 
-import java.io.File;
+
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Random;
 
 import org.apache.lucene.analysis.MockAnalyzer;
@@ -33,15 +33,14 @@ import org.apache.lucene.util.TestUtil;
  * Tests MMapDirectory's MultiMMapIndexInput
  * <p>
  * Because Java's ByteBuffer uses an int to address the
- * values, it's necessary to access a file >
+ * values, it's necessary to access a file &gt;
  * Integer.MAX_VALUE in size using multiple byte buffers.
  */
 public class TestMultiMMap extends BaseDirectoryTestCase {
-  File workDir;
 
   @Override
-  protected Directory getDirectory(File path) throws IOException {
-    return new MMapDirectory(path, null, 1<<TestUtil.nextInt(random(), 10, 28));
+  protected Directory getDirectory(Path path) throws IOException {
+    return new MMapDirectory(path, 1<<TestUtil.nextInt(random(), 10, 28));
   }
   
   @Override
@@ -179,7 +178,7 @@ public class TestMultiMMap extends BaseDirectoryTestCase {
 
   public void testSeekZero() throws Exception {
     for (int i = 0; i < 31; i++) {
-      MMapDirectory mmapDir = new MMapDirectory(createTempDir("testSeekZero"), null, 1<<i);
+      MMapDirectory mmapDir = new MMapDirectory(createTempDir("testSeekZero"), 1<<i);
       IndexOutput io = mmapDir.createOutput("zeroBytes", newIOContext(random()));
       io.close();
       IndexInput ii = mmapDir.openInput("zeroBytes", newIOContext(random()));
@@ -191,7 +190,7 @@ public class TestMultiMMap extends BaseDirectoryTestCase {
   
   public void testSeekSliceZero() throws Exception {
     for (int i = 0; i < 31; i++) {
-      MMapDirectory mmapDir = new MMapDirectory(createTempDir("testSeekSliceZero"), null, 1<<i);
+      MMapDirectory mmapDir = new MMapDirectory(createTempDir("testSeekSliceZero"), 1<<i);
       IndexOutput io = mmapDir.createOutput("zeroBytes", newIOContext(random()));
       io.close();
       IndexInput slicer = mmapDir.openInput("zeroBytes", newIOContext(random()));
@@ -205,7 +204,7 @@ public class TestMultiMMap extends BaseDirectoryTestCase {
   
   public void testSeekEnd() throws Exception {
     for (int i = 0; i < 17; i++) {
-      MMapDirectory mmapDir = new MMapDirectory(createTempDir("testSeekEnd"), null, 1<<i);
+      MMapDirectory mmapDir = new MMapDirectory(createTempDir("testSeekEnd"), 1<<i);
       IndexOutput io = mmapDir.createOutput("bytes", newIOContext(random()));
       byte bytes[] = new byte[1<<i];
       random().nextBytes(bytes);
@@ -223,7 +222,7 @@ public class TestMultiMMap extends BaseDirectoryTestCase {
   
   public void testSeekSliceEnd() throws Exception {
     for (int i = 0; i < 17; i++) {
-      MMapDirectory mmapDir = new MMapDirectory(createTempDir("testSeekSliceEnd"), null, 1<<i);
+      MMapDirectory mmapDir = new MMapDirectory(createTempDir("testSeekSliceEnd"), 1<<i);
       IndexOutput io = mmapDir.createOutput("bytes", newIOContext(random()));
       byte bytes[] = new byte[1<<i];
       random().nextBytes(bytes);
@@ -242,8 +241,9 @@ public class TestMultiMMap extends BaseDirectoryTestCase {
   }
   
   public void testSeeking() throws Exception {
-    for (int i = 0; i < 10; i++) {
-      MMapDirectory mmapDir = new MMapDirectory(createTempDir("testSeeking"), null, 1<<i);
+    int numIters = TEST_NIGHTLY ? 10 : 1;
+    for (int i = 0; i < numIters; i++) {
+      MMapDirectory mmapDir = new MMapDirectory(createTempDir("testSeeking"), 1<<i);
       IndexOutput io = mmapDir.createOutput("bytes", newIOContext(random()));
       byte bytes[] = new byte[1<<(i+1)]; // make sure we switch buffers
       random().nextBytes(bytes);
@@ -269,8 +269,9 @@ public class TestMultiMMap extends BaseDirectoryTestCase {
   // note instead of seeking to offset and reading length, this opens slices at the 
   // the various offset+length and just does readBytes.
   public void testSlicedSeeking() throws Exception {
-    for (int i = 0; i < 10; i++) {
-      MMapDirectory mmapDir = new MMapDirectory(createTempDir("testSlicedSeeking"), null, 1<<i);
+    int numIters = TEST_NIGHTLY ? 10 : 1;
+    for (int i = 0; i < numIters; i++) {
+      MMapDirectory mmapDir = new MMapDirectory(createTempDir("testSlicedSeeking"), 1<<i);
       IndexOutput io = mmapDir.createOutput("bytes", newIOContext(random()));
       byte bytes[] = new byte[1<<(i+1)]; // make sure we switch buffers
       random().nextBytes(bytes);
@@ -294,7 +295,7 @@ public class TestMultiMMap extends BaseDirectoryTestCase {
 
   public void testSliceOfSlice() throws Exception {
     for (int i = 0; i < 10; i++) {
-      MMapDirectory mmapDir = new MMapDirectory(createTempDir("testSliceOfSlice"), null, 1<<i);
+      MMapDirectory mmapDir = new MMapDirectory(createTempDir("testSliceOfSlice"), 1<<i);
       IndexOutput io = mmapDir.createOutput("bytes", newIOContext(random()));
       byte bytes[] = new byte[1<<(i+1)]; // make sure we switch buffers
       random().nextBytes(bytes);
@@ -329,14 +330,15 @@ public class TestMultiMMap extends BaseDirectoryTestCase {
   }
   
   public void testRandomChunkSizes() throws Exception {
-    int num = atLeast(10);
-    for (int i = 0; i < num; i++)
+    int num = TEST_NIGHTLY ? atLeast(10) : 3;
+    for (int i = 0; i < num; i++) {
       assertChunking(random(), TestUtil.nextInt(random(), 20, 100));
+    }
   }
   
   private void assertChunking(Random random, int chunkSize) throws Exception {
-    File path = createTempDir("mmap" + chunkSize);
-    MMapDirectory mmapDir = new MMapDirectory(path, null, chunkSize);
+    Path path = createTempDir("mmap" + chunkSize);
+    MMapDirectory mmapDir = new MMapDirectory(path, chunkSize);
     // we will map a lot, try to turn on the unmap hack
     if (MMapDirectory.UNMAP_SUPPORTED)
       mmapDir.setUseUnmap(true);
@@ -363,14 +365,13 @@ public class TestMultiMMap extends BaseDirectoryTestCase {
       assertEquals("" + docID, reader.document(docID).get("docid"));
     }
     reader.close();
-    writer.close();
     dir.close();
   }
   
   public void testImplementations() throws Exception {
     for (int i = 2; i < 12; i++) {
       final int chunkSize = 1<<i;
-      MMapDirectory mmapDir = new MMapDirectory(createTempDir("testImplementations"), null, chunkSize);
+      MMapDirectory mmapDir = new MMapDirectory(createTempDir("testImplementations"), chunkSize);
       IndexOutput io = mmapDir.createOutput("bytes", newIOContext(random()));
       int size = random().nextInt(chunkSize * 2) + 3; // add some buffer of 3 for slice tests
       byte bytes[] = new byte[size];
@@ -385,7 +386,7 @@ public class TestMultiMMap extends BaseDirectoryTestCase {
       ii.seek(0L);
       
       // check impl (we must check size < chunksize: currently, if size==chunkSize, we get 2 buffers, the second one empty:
-      assertTrue((size < chunkSize) ? (ii instanceof ByteBufferIndexInput.SingleBufferImpl) : (ii instanceof ByteBufferIndexInput.DefaultImpl));
+      assertTrue((size < chunkSize) ? (ii instanceof ByteBufferIndexInput.SingleBufferImpl) : (ii instanceof ByteBufferIndexInput.MultiBufferImpl));
       
       // clone tests:
       assertSame(ii.getClass(), ii.clone().getClass());
@@ -393,7 +394,7 @@ public class TestMultiMMap extends BaseDirectoryTestCase {
       // slice test (offset 0)
       int sliceSize = random().nextInt(size);
       IndexInput slice = ii.slice("slice", 0, sliceSize);
-      assertTrue((sliceSize < chunkSize) ? (slice instanceof ByteBufferIndexInput.SingleBufferImpl) : (slice instanceof ByteBufferIndexInput.DefaultImpl));
+      assertTrue((sliceSize < chunkSize) ? (slice instanceof ByteBufferIndexInput.SingleBufferImpl) : (slice instanceof ByteBufferIndexInput.MultiBufferImpl));
 
       // slice test (offset > 0 )
       int offset = random().nextInt(size - 1) + 1;
@@ -402,10 +403,8 @@ public class TestMultiMMap extends BaseDirectoryTestCase {
       //System.out.println(offset + "/" + sliceSize + " chunkSize=" + chunkSize + " " + slice.getClass());
       if (offset % chunkSize + sliceSize < chunkSize) {
         assertTrue(slice instanceof ByteBufferIndexInput.SingleBufferImpl);
-      } else if (offset % chunkSize == 0) {
-        assertTrue(slice instanceof ByteBufferIndexInput.DefaultImpl);
       } else {
-        assertTrue(slice instanceof ByteBufferIndexInput.WithOffsetImpl);
+        assertTrue(slice instanceof ByteBufferIndexInput.MultiBufferImpl);
       }
 
       ii.close();

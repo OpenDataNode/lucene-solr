@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.icu.segmentation;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,12 @@ package org.apache.lucene.analysis.icu.segmentation;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.icu.segmentation;
+
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
@@ -43,8 +42,7 @@ import com.ibm.icu.text.RuleBasedBreakIterator;
  * Words are broken across script boundaries, then segmented according to
  * the BreakIterator and typing provided by the {@link DefaultICUTokenizerConfig}.
  *
- * <p/>
- *
+ * <p>
  * To use the default set of per-script rules:
  *
  * <pre class="prettyprint" >
@@ -54,13 +52,13 @@ import com.ibm.icu.text.RuleBasedBreakIterator;
  *   &lt;/analyzer&gt;
  * &lt;/fieldType&gt;</pre>
  *
- * <p/>
- *
+ * <p>
  * You can customize this tokenizer's behavior by specifying per-script rule files,
  * which are compiled by the ICU RuleBasedBreakIterator.  See the
  * <a href="http://userguide.icu-project.org/boundaryanalysis#TOC-RBBI-Rules"
  * >ICU RuleBasedBreakIterator syntax reference</a>.
  *
+ * <p>
  * To add per-script rules, add a "rulefiles" argument, which should contain a
  * comma-separated list of <tt>code:rulefile</tt> pairs in the following format:
  * <a href="http://unicode.org/iso15924/iso15924-codes.html"
@@ -145,8 +143,8 @@ public class ICUTokenizerFactory extends TokenizerFactory implements ResourceLoa
   }
 
   @Override
-  public ICUTokenizer create(AttributeFactory factory, Reader input) {
+  public ICUTokenizer create(AttributeFactory factory) {
     assert config != null : "inform must be called first!";
-    return new ICUTokenizer(factory, input, config);
+    return new ICUTokenizer(factory, config);
   }
 }

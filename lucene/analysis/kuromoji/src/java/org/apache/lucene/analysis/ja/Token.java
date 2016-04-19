@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.ja;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.ja;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.ja;
+
 
 import org.apache.lucene.analysis.ja.JapaneseTokenizer.Type;
 import org.apache.lucene.analysis.ja.dict.Dictionary;
@@ -158,7 +158,7 @@ public class Token {
 
   /**
    * Set the position length (in tokens) of this token.  For normal
-   * tokens this is 1; for compound tokens it's > 1.
+   * tokens this is 1; for compound tokens it's &gt; 1.
    */
   public void setPositionLength(int positionLength) {
     this.positionLength = positionLength;
@@ -166,7 +166,7 @@ public class Token {
   
   /**
    * Get the length (in tokens) of this token.  For normal
-   * tokens this is 1; for compound tokens it's > 1.
+   * tokens this is 1; for compound tokens it's &gt; 1.
    * @return position length of token
    */
   public int getPositionLength() {

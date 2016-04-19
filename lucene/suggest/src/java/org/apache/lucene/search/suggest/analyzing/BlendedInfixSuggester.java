@@ -1,5 +1,3 @@
-package org.apache.lucene.search.suggest.analyzing;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,13 @@ package org.apache.lucene.search.suggest.analyzing;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.suggest.analyzing;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -28,11 +28,13 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.BinaryDocValues;
-import org.apache.lucene.index.DocsAndPositionsEnum;
-import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.PostingsEnum;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.MultiDocValues;
 import org.apache.lucene.index.Terms;
 import org.apache.lucene.index.TermsEnum;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.FieldDoc;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.TopFieldDocs;
@@ -60,6 +62,8 @@ public class BlendedInfixSuggester extends AnalyzingInfixSuggester {
    */
   protected static double LINEAR_COEF = 0.10;
 
+  private Double exponent = 2.0;
+
   /**
    * Default factor
    */
@@ -86,6 +90,8 @@ public class BlendedInfixSuggester extends AnalyzingInfixSuggester {
     POSITION_LINEAR,
     /** weight/(1+position) */
     POSITION_RECIPROCAL,
+    /** weight/pow(1+position, exponent) */
+    POSITION_EXPONENTIAL_RECIPROCAL
     // TODO:
     //SCORE
   }
@@ -94,6 +100,14 @@ public class BlendedInfixSuggester extends AnalyzingInfixSuggester {
    * Create a new instance, loading from a previously built
    * directory, if it exists.
    */
+  public BlendedInfixSuggester(Directory dir, Analyzer analyzer) throws IOException {
+    this(analyzer.getVersion(), dir, analyzer);
+  }
+
+  /**
+   * @deprecated Use {@link #BlendedInfixSuggester(Directory, Analyzer)}
+   */
+  @Deprecated
   public BlendedInfixSuggester(Version matchVersion, Directory dir, Analyzer analyzer) throws IOException {
     super(matchVersion, dir, analyzer);
     this.blenderType = BlenderType.POSITION_LINEAR;
@@ -106,31 +120,78 @@ public class BlendedInfixSuggester extends AnalyzingInfixSuggester {
    *
    * @param blenderType Type of blending strategy, see BlenderType for more precisions
    * @param numFactor   Factor to multiply the number of searched elements before ponderate
+   * @param commitOnBuild Call commit after the index has finished building. This would persist the
+   *                      suggester index to disk and future instances of this suggester can use this pre-built dictionary.
    * @throws IOException If there are problems opening the underlying Lucene index.
    */
+  public BlendedInfixSuggester(Directory dir, Analyzer indexAnalyzer, Analyzer queryAnalyzer,
+                               int minPrefixChars, BlenderType blenderType, int numFactor, boolean commitOnBuild) throws IOException {
+    this(indexAnalyzer.getVersion(), dir, indexAnalyzer, queryAnalyzer, minPrefixChars, blenderType, numFactor, commitOnBuild);
+  }
+
+  /**
+   * @deprecated Use {@link #BlendedInfixSuggester(Directory, Analyzer, Analyzer, int, BlendedInfixSuggester.BlenderType, int, boolean)}
+   */
+  @Deprecated
   public BlendedInfixSuggester(Version matchVersion, Directory dir, Analyzer indexAnalyzer, Analyzer queryAnalyzer,
-                               int minPrefixChars, BlenderType blenderType, int numFactor) throws IOException {
-    super(matchVersion, dir, indexAnalyzer, queryAnalyzer, minPrefixChars);
+                               int minPrefixChars, BlenderType blenderType, int numFactor, boolean commitOnBuild) throws IOException {
+    super(matchVersion, dir, indexAnalyzer, queryAnalyzer, minPrefixChars, commitOnBuild);
     this.blenderType = blenderType;
     this.numFactor = numFactor;
   }
 
+  /**
+   * Create a new instance, loading from a previously built
+   * directory, if it exists.
+   *
+   * @param blenderType Type of blending strategy, see BlenderType for more precisions
+   * @param numFactor   Factor to multiply the number of searched elements before ponderate
+   * @param exponent exponent used only when blenderType is  BlenderType.POSITION_EXPONENTIAL_RECIPROCAL
+   * @param commitOnBuild Call commit after the index has finished building. This would persist the
+   *                      suggester index to disk and future instances of this suggester can use this pre-built dictionary.
+   * @param allTermsRequired All terms in the suggest query must be matched.
+   * @param highlight Highlight suggest query in suggestions.
+   * @throws IOException If there are problems opening the underlying Lucene index.
+   */
+  public BlendedInfixSuggester(Directory dir, Analyzer indexAnalyzer, Analyzer queryAnalyzer,
+                               int minPrefixChars, BlenderType blenderType, int numFactor, Double exponent,
+                               boolean commitOnBuild, boolean allTermsRequired, boolean highlight) throws IOException {
+    super(dir, indexAnalyzer, queryAnalyzer, minPrefixChars, commitOnBuild, allTermsRequired, highlight);
+    this.blenderType = blenderType;
+    this.numFactor = numFactor;
+    if(exponent != null) {
+      this.exponent = exponent;
+    }
+  }
+
   @Override
   public List<Lookup.LookupResult> lookup(CharSequence key, Set<BytesRef> contexts, boolean onlyMorePopular, int num) throws IOException {
-    // here we multiply the number of searched element by the defined factor
-    return super.lookup(key, contexts, onlyMorePopular, num * numFactor);
+    // Don't * numFactor here since we do it down below, once, in the call chain:
+    return super.lookup(key, contexts, onlyMorePopular, num);
   }
 
   @Override
   public List<Lookup.LookupResult> lookup(CharSequence key, Set<BytesRef> contexts, int num, boolean allTermsRequired, boolean doHighlight) throws IOException {
-    // here we multiply the number of searched element by the defined factor
-    return super.lookup(key, contexts, num * numFactor, allTermsRequired, doHighlight);
+    // Don't * numFactor here since we do it down below, once, in the call chain:
+    return super.lookup(key, contexts, num, allTermsRequired, doHighlight);
   }
 
   @Override
+  public List<Lookup.LookupResult> lookup(CharSequence key, Map<BytesRef, BooleanClause.Occur> contextInfo, int num, boolean allTermsRequired, boolean doHighlight) throws IOException {
+    // Don't * numFactor here since we do it down below, once, in the call chain:
+    return super.lookup(key, contextInfo, num, allTermsRequired, doHighlight);
+  }
+
+  @Override
+  public List<Lookup.LookupResult> lookup(CharSequence key, BooleanQuery contextQuery, int num, boolean allTermsRequired, boolean doHighlight) throws IOException {
+    /** We need to do num * numFactor here only because it is the last call in the lookup chain*/
+    return super.lookup(key, contextQuery, num * numFactor, allTermsRequired, doHighlight);
+  }
+  
+  @Override
   protected FieldType getTextFieldType() {
     FieldType ft = new FieldType(TextField.TYPE_NOT_STORED);
-    ft.setIndexOptions(FieldInfo.IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
+    ft.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS);
     ft.setStoreTermVectors(true);
     ft.setStoreTermVectorPositions(true);
     ft.setOmitNorms(true);
@@ -180,8 +241,7 @@ public class BlendedInfixSuggester extends AnalyzingInfixSuggester {
 
       LookupResult result;
       if (doHighlight) {
-        Object highlightKey = highlight(text, matchedTokens, prefixToken);
-        result = new LookupResult(highlightKey.toString(), highlightKey, score, payload);
+        result = new LookupResult(text, highlight(text, matchedTokens, prefixToken), score, payload);
       } else {
         result = new LookupResult(text, score, payload);
       }
@@ -224,7 +284,7 @@ public class BlendedInfixSuggester extends AnalyzingInfixSuggester {
   private double createCoefficient(IndexSearcher searcher, int doc, Set<String> matchedTokens, String prefixToken) throws IOException {
 
     Terms tv = searcher.getIndexReader().getTermVector(doc, TEXT_FIELD_NAME);
-    TermsEnum it = tv.iterator(TermsEnum.EMPTY);
+    TermsEnum it = tv.iterator();
 
     Integer position = Integer.MAX_VALUE;
     BytesRef term;
@@ -233,9 +293,9 @@ public class BlendedInfixSuggester extends AnalyzingInfixSuggester {
 
       String docTerm = term.utf8ToString();
 
-      if (matchedTokens.contains(docTerm) || docTerm.startsWith(prefixToken)) {
-
-        DocsAndPositionsEnum docPosEnum = it.docsAndPositions(null, null, DocsAndPositionsEnum.FLAG_OFFSETS);
+      if (matchedTokens.contains(docTerm) || (prefixToken != null && docTerm.startsWith(prefixToken))) {
+ 
+        PostingsEnum docPosEnum = it.postings(null, PostingsEnum.OFFSETS);
         docPosEnum.nextDoc();
 
         // use the first occurrence of the term
@@ -268,6 +328,10 @@ public class BlendedInfixSuggester extends AnalyzingInfixSuggester {
         coefficient = 1. / (position + 1);
         break;
 
+      case POSITION_EXPONENTIAL_RECIPROCAL:
+        coefficient = 1. / Math.pow((position + 1.0), exponent);
+        break;
+
       default:
         coefficient = 1;
     }
@@ -289,9 +353,19 @@ public class BlendedInfixSuggester extends AnalyzingInfixSuggester {
       }
 
       // otherwise on alphabetic order
-      return CHARSEQUENCE_COMPARATOR.compare(o1.key, o2.key);
+      int keyCompare = CHARSEQUENCE_COMPARATOR.compare(o1.key, o2.key);
+
+      if (keyCompare != 0) {
+        return keyCompare;
+      }
+
+      // if same weight and title, use the payload if there is one
+      if (o1.payload != null) {
+        return o1.payload.compareTo(o2.payload);
+      }
+
+      return 0;
     }
   }
-
 }
 

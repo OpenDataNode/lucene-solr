@@ -14,14 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.core;
+
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.handler.component.ShardHandlerFactory;
-
-import java.io.File;
 
 /**
  * Tests specifying a custom ShardHandlerFactory
@@ -29,7 +29,8 @@ import java.io.File;
 public class TestShardHandlerFactory extends SolrTestCaseJ4 {
 
   public void testXML() throws Exception {
-    CoreContainer cc = CoreContainer.createAndLoad(TEST_HOME(), new File(TEST_HOME(), "solr-shardhandler.xml"));
+    Path home = Paths.get(TEST_HOME());
+    CoreContainer cc = CoreContainer.createAndLoad(home, home.resolve("solr-shardhandler.xml"));
     ShardHandlerFactory factory = cc.getShardHandlerFactory();
     assertTrue(factory instanceof MockShardHandlerFactory);
     NamedList args = ((MockShardHandlerFactory)factory).args;
@@ -38,13 +39,4 @@ public class TestShardHandlerFactory extends SolrTestCaseJ4 {
     cc.shutdown();
   }
 
-  public void testOldXML() throws Exception {
-    CoreContainer cc = CoreContainer.createAndLoad(TEST_HOME(), new File(TEST_HOME(), "solr-shardhandler-old.xml"));
-    ShardHandlerFactory factory = cc.getShardHandlerFactory();
-    assertTrue(factory instanceof MockShardHandlerFactory);
-    NamedList args = ((MockShardHandlerFactory)factory).args;
-    assertEquals("myMagicRequiredValue", args.get("myMagicRequiredParameter"));
-    factory.close();
-    cc.shutdown();
-  }
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
+
 
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
@@ -45,7 +45,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * on the values and not-GCed keys. Lucene's implementation also supports {@code null}
  * keys, but those are never weak!
  * 
- * <p><a name="reapInfo" />The map supports two modes of operation:
+ * <p><a name="reapInfo"></a>The map supports two modes of operation:
  * <ul>
  *  <li>{@code reapOnRead = true}: This behaves identical to a {@link java.util.WeakHashMap}
  *  where it also cleans up the reference queue on every read operation ({@link #get(Object)},

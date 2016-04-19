@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.core.nodes;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.core.nodes;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.core.nodes;
 
 import java.util.ArrayList;
 import java.util.Hashtable;
@@ -246,20 +245,24 @@ public abstract class QueryNodeImpl implements QueryNode, Cloneable {
   public Map<String, Object> getTagMap() {
     return (Map<String, Object>) this.tags.clone();
   }
-  
+
+  @Override
+  public void removeChildren(QueryNode childNode){
+    Iterator<QueryNode> it = this.clauses.iterator();
+    while(it.hasNext()){
+      if(it.next() == childNode){
+        it.remove();
+      }
+    }
+    childNode.removeFromParent();
+  }
+
   @Override
   public void removeFromParent() {
     if (this.parent != null) {
-      List<QueryNode> parentChildren = this.parent.getChildren();
-      Iterator<QueryNode> it = parentChildren.iterator();
-      
-      while (it.hasNext()) {
-        if (it.next() == this) {
-          it.remove();
-        }
-      }
-      
+      QueryNode parent = this.parent;
       this.parent = null;
+      parent.removeChildren(this);
     }
   }
 

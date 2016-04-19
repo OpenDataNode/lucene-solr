@@ -1,5 +1,3 @@
-package org.apache.solr.handler.dataimport;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,7 @@ package org.apache.solr.handler.dataimport;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import static org.apache.solr.handler.dataimport.DataImportHandlerException.SEVERE;
+package org.apache.solr.handler.dataimport;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -26,7 +23,9 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
+import java.lang.invoke.MethodHandles;
 import java.nio.charset.StandardCharsets;
+import java.security.AccessControlException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -37,8 +36,11 @@ import java.util.Properties;
 
 import org.apache.lucene.util.IOUtils;
 import org.apache.solr.core.SolrCore;
+import org.apache.solr.core.SolrResourceLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.apache.solr.handler.dataimport.DataImportHandlerException.SEVERE;
 /**
  * <p>
  *  Writes properties using {@link Properties#store} .
@@ -47,8 +49,7 @@ import org.slf4j.LoggerFactory;
  * </p> 
  */
 public class SimplePropertiesWriter extends DIHProperties {
-  private static final Logger log = LoggerFactory
-      .getLogger(SimplePropertiesWriter.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   static final String LAST_INDEX_KEY = "last_index_time";
   
@@ -113,22 +114,34 @@ public class SimplePropertiesWriter extends DIHProperties {
       configDir = params.get(DIRECTORY);
     } else {
       SolrCore core = dataImporter.getCore();
-      configDir = (core == null ? "." : core.getResourceLoader().getConfigDir());
+      if (core == null) {
+        configDir = SolrResourceLoader.locateSolrHome().toString();
+      } else {
+        configDir = core.getResourceLoader().getConfigDir();
+      }
     }
   }
   
   private File getPersistFile() {
-    String filePath = configDir;
-    if (configDir != null && !configDir.endsWith(File.separator)) filePath += File.separator;
-    filePath += filename;
-    return new File(filePath);
+    final File filePath;
+    if (new File(filename).isAbsolute() || configDir == null) {
+      filePath = new File(filename);
+    } else {
+      filePath = new File(new File(configDir), filename);
+    }
+    return filePath;
   }
+
   @Override
   public boolean isWritable() {
     File persistFile = getPersistFile();
-    return persistFile.exists() ? persistFile.canWrite() : persistFile
-        .getParentFile().canWrite();
-    
+    try {
+      return persistFile.exists() 
+          ? persistFile.canWrite() 
+          : persistFile.getParentFile().canWrite();
+    } catch (AccessControlException e) {
+      return false;
+    }
   }
   
   @Override
@@ -188,12 +201,7 @@ public class SimplePropertiesWriter extends DIHProperties {
     Properties newProps = mapToProperties(propObjs);
     try {
       existingProps.putAll(newProps);
-      String filePath = configDir;
-      if (configDir != null && !configDir.endsWith(File.separator)) {
-        filePath += File.separator;
-      }
-      filePath += filename;
-      propOutput = new OutputStreamWriter(new FileOutputStream(filePath), StandardCharsets.UTF_8);
+      propOutput = new OutputStreamWriter(new FileOutputStream(getPersistFile()), StandardCharsets.UTF_8);
       existingProps.store(propOutput, null);
       log.info("Wrote last indexed time to " + filename);
     } catch (Exception e) {

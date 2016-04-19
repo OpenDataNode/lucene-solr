@@ -1,5 +1,3 @@
-package org.apache.lucene;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene;
+
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,7 +24,6 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 
 import org.apache.lucene.util.LuceneTestCase;
-
 import org.apache.lucene.store.*;
 import org.apache.lucene.document.*;
 import org.apache.lucene.analysis.*;
@@ -35,9 +34,8 @@ import org.apache.lucene.search.*;
 public class TestSearch extends LuceneTestCase {
 
   public void testNegativeQueryBoost() throws Exception {
-    Query q = new TermQuery(new Term("foo", "bar"));
-    q.setBoost(-42f);
-    assertEquals(-42f, q.getBoost(), 0.0f);
+    BoostQuery q = new BoostQuery(new TermQuery(new Term("foo", "bar")), -42f);
+    assertEquals(-42f, q.getBoost(), 0f);
 
     Directory directory = newDirectory();
     try {
@@ -57,10 +55,10 @@ public class TestSearch extends LuceneTestCase {
       try {
         IndexSearcher searcher = newSearcher(reader);
         
-        ScoreDoc[] hits = searcher.search(q, null, 1000).scoreDocs;
+        ScoreDoc[] hits = searcher.search(q, 1000).scoreDocs;
         assertEquals(1, hits.length);
-        assertTrue("score is not negative: " + hits[0].score,
-                   hits[0].score < 0);
+        assertTrue("score is positive: " + hits[0].score,
+                   hits[0].score <= 0);
 
         Explanation explain = searcher.explain(q, hits[0].doc);
         assertEquals("score doesn't match explanation",
@@ -127,7 +125,8 @@ public class TestSearch extends LuceneTestCase {
       for (int j = 0; j < docs.length; j++) {
         Document d = new Document();
         d.add(newTextField("contents", docs[j], Field.Store.YES));
-        d.add(newStringField("id", ""+j, Field.Store.NO));
+        d.add(new IntField("id", j, Field.Store.NO));
+        d.add(new NumericDocValuesField("id", j));
         writer.addDocument(d);
       }
       writer.close();
@@ -146,7 +145,7 @@ public class TestSearch extends LuceneTestCase {
           System.out.println("TEST: query=" + query);
         }
 
-        hits = searcher.search(query, null, 1000, sort).scoreDocs;
+        hits = searcher.search(query, 1000, sort).scoreDocs;
 
         out.println(hits.length + " total results");
         for (int i = 0 ; i < hits.length && i < 10; i++) {
@@ -161,36 +160,26 @@ public class TestSearch extends LuceneTestCase {
   private List<Query> buildQueries() {
     List<Query> queries = new ArrayList<>();
 
-    BooleanQuery booleanAB = new BooleanQuery();
+    BooleanQuery.Builder booleanAB = new BooleanQuery.Builder();
     booleanAB.add(new TermQuery(new Term("contents", "a")), BooleanClause.Occur.SHOULD);
     booleanAB.add(new TermQuery(new Term("contents", "b")), BooleanClause.Occur.SHOULD);
-    queries.add(booleanAB);
+    queries.add(booleanAB.build());
 
-    PhraseQuery phraseAB = new PhraseQuery();
-    phraseAB.add(new Term("contents", "a"));
-    phraseAB.add(new Term("contents", "b"));
+    PhraseQuery phraseAB = new PhraseQuery("contents", "a", "b");
     queries.add(phraseAB);
 
-    PhraseQuery phraseABC = new PhraseQuery();
-    phraseABC.add(new Term("contents", "a"));
-    phraseABC.add(new Term("contents", "b"));
-    phraseABC.add(new Term("contents", "c"));
+    PhraseQuery phraseABC = new PhraseQuery("contents", "a", "b", "c");
     queries.add(phraseABC);
 
-    BooleanQuery booleanAC = new BooleanQuery();
+    BooleanQuery.Builder booleanAC = new BooleanQuery.Builder();
     booleanAC.add(new TermQuery(new Term("contents", "a")), BooleanClause.Occur.SHOULD);
     booleanAC.add(new TermQuery(new Term("contents", "c")), BooleanClause.Occur.SHOULD);
-    queries.add(booleanAC);
+    queries.add(booleanAC.build());
 
-    PhraseQuery phraseAC = new PhraseQuery();
-    phraseAC.add(new Term("contents", "a"));
-    phraseAC.add(new Term("contents", "c"));
+    PhraseQuery phraseAC = new PhraseQuery("contents", "a", "c");
     queries.add(phraseAC);
 
-    PhraseQuery phraseACE = new PhraseQuery();
-    phraseACE.add(new Term("contents", "a"));
-    phraseACE.add(new Term("contents", "c"));
-    phraseACE.add(new Term("contents", "e"));
+    PhraseQuery phraseACE = new PhraseQuery("contents", "a", "c", "e");
     queries.add(phraseACE);
 
     return queries;

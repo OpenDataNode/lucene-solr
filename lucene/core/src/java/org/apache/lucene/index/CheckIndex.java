@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,31 +14,41 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
 
-import java.io.File;
+
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.NumberFormat;
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.Arrays;
+import java.util.Deque;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.DocValuesProducer;
+import org.apache.lucene.codecs.NormsProducer;
 import org.apache.lucene.codecs.PostingsFormat;
-import org.apache.lucene.codecs.blocktree.FieldReader;
-import org.apache.lucene.codecs.blocktree.Stats;
-import org.apache.lucene.codecs.lucene3x.Lucene3xSegmentInfoFormat;
 import org.apache.lucene.document.Document;
+import org.apache.lucene.codecs.StoredFieldsReader;
+import org.apache.lucene.codecs.TermVectorsReader;
+import org.apache.lucene.document.DocumentStoredFieldVisitor;
 import org.apache.lucene.index.CheckIndex.Status.DocValuesStatus;
-import org.apache.lucene.index.FieldInfo.IndexOptions;
 import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.store.AlreadyClosedException;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
+import org.apache.lucene.store.Lock;
+import org.apache.lucene.util.Accountables;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.BytesRefBuilder;
@@ -48,8 +56,11 @@ import org.apache.lucene.util.CommandLineUtil;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LongBitSet;
+import org.apache.lucene.util.StringHelper;
+import org.apache.lucene.util.SuppressForbidden;
 import org.apache.lucene.util.Version;
-
+import org.apache.lucene.util.automaton.Automata;
+import org.apache.lucene.util.automaton.CompiledAutomaton;
 
 /**
  * Basic tool and API to check the health of an index and
@@ -60,12 +71,14 @@ import org.apache.lucene.util.Version;
  * index it can take quite a long time to run.
  *
  * @lucene.experimental Please make a complete backup of your
- * index before using this to fix your index!
+ * index before using this to exorcise corrupted documents from your index!
  */
-public class CheckIndex {
+public final class CheckIndex implements Closeable {
 
   private PrintStream infoStream;
   private Directory dir;
+  private Lock writeLock;
+  private volatile boolean closed;
 
   /**
    * Returned from {@link #checkIndex()} detailing the health and status of the index.
@@ -111,7 +124,7 @@ public class CheckIndex {
 
     /** 
      * SegmentInfos instance containing only segments that
-     * had no problems (this is used with the {@link CheckIndex#fixIndex} 
+     * had no problems (this is used with the {@link CheckIndex#exorciseIndex} 
      * method to repair the index. 
      */
     SegmentInfos newSegments;
@@ -153,7 +166,7 @@ public class CheckIndex {
       public Codec codec;
 
       /** Document count (does not take deletions into account). */
-      public int docCount;
+      public int maxDoc;
 
       /** True if segment is compound file format. */
       public boolean compound;
@@ -165,39 +178,26 @@ public class CheckIndex {
        *  segment. */
       public double sizeMB;
 
-      /** Doc store offset, if this segment shares the doc
-       *  store files (stored fields and term vectors) with
-       *  other segments.  This is -1 if it does not share. */
-      public int docStoreOffset = -1;
-    
-      /** String of the shared doc store segment, or null if
-       *  this segment does not share the doc store files. */
-      public String docStoreSegment;
-
-      /** True if the shared doc store files are compound file
-       *  format. */
-      public boolean docStoreCompoundFile;
-
       /** True if this segment has pending deletions. */
       public boolean hasDeletions;
 
       /** Current deletions generation. */
       public long deletionsGen;
-    
-      /** Number of deleted documents. */
-      public int numDeleted;
 
-      /** True if we were able to open an AtomicReader on this
+      /** True if we were able to open a CodecReader on this
        *  segment. */
       public boolean openReaderPassed;
-
-      /** Number of fields in this segment. */
-      int numFields;
 
       /** Map that includes certain
        *  debugging details that IndexWriter records into
        *  each segment it creates */
       public Map<String,String> diagnostics;
+      
+      /** Status for testing of livedocs */
+      public LiveDocStatus liveDocStatus;
+      
+      /** Status for testing of field infos */
+      public FieldInfoStatus fieldInfoStatus;
 
       /** Status for testing of field norms (null if field norms could not be tested). */
       public FieldNormStatus fieldNormStatus;
@@ -213,6 +213,37 @@ public class CheckIndex {
       
       /** Status for testing of DocValues (null if DocValues could not be tested). */
       public DocValuesStatus docValuesStatus;
+      
+      /** Version the segment was written with */
+      public Version version;
+    }
+    
+    /**
+     * Status from testing livedocs
+     */
+    public static final class LiveDocStatus {
+      private LiveDocStatus() {
+      }
+      
+      /** Number of deleted documents. */
+      public int numDeleted;
+      
+      /** Exception thrown during term index test (null on success) */
+      public Throwable error = null;
+    }
+    
+    /**
+     * Status from testing field infos.
+     */
+    public static final class FieldInfoStatus {
+      private FieldInfoStatus() {
+      }
+
+      /** Number of fields successfully tested */
+      public long totFields = 0L;
+
+      /** Exception thrown during term index test (null on success) */
+      public Throwable error = null;
     }
 
     /**
@@ -256,7 +287,7 @@ public class CheckIndex {
        *  tree terms dictionary (this is only set if the
        *  {@link PostingsFormat} for this segment uses block
        *  tree. */
-      public Map<String,Stats> blockTreeStats = null;
+      public Map<String,Object> blockTreeStats = null;
     }
 
     /**
@@ -327,9 +358,33 @@ public class CheckIndex {
   }
 
   /** Create a new CheckIndex on the directory. */
-  public CheckIndex(Directory dir) {
+  public CheckIndex(Directory dir) throws IOException {
+    this(dir, dir.obtainLock(IndexWriter.WRITE_LOCK_NAME));
+  }
+  
+  /** 
+   * Expert: create a directory with the specified lock.
+   * This should really not be used except for unit tests!!!!
+   * It exists only to support special tests (such as TestIndexWriterExceptions*),
+   * that would otherwise be more complicated to debug if they had to close the writer
+   * for each check.
+   */
+  public CheckIndex(Directory dir, Lock writeLock) throws IOException {
     this.dir = dir;
-    infoStream = null;
+    this.writeLock = writeLock;
+    this.infoStream = null;
+  }
+  
+  private void ensureOpen() {
+    if (closed) {
+      throw new AlreadyClosedException("this instance is closed");
+    }
+  }
+
+  @Override
+  public void close() throws IOException {
+    closed = true;
+    IOUtils.close(writeLock);
   }
 
   private boolean crossCheckTermVectors;
@@ -361,6 +416,20 @@ public class CheckIndex {
   }
 
   private boolean verbose;
+  
+  /** See {@link #getChecksumsOnly}. */
+  public boolean getChecksumsOnly() {
+    return checksumsOnly;
+  }
+  
+  /** 
+   * If true, only validate physical integrity for all files. 
+   * Note that the returned nested status objects (e.g. storedFieldStatus) will be null.  */
+  public void setChecksumsOnly(boolean v) {
+    checksumsOnly = v;
+  }
+  
+  private boolean checksumsOnly;
 
   /** Set infoStream where messages should go.  If null, no
    *  messages are printed.  If verbose is true then more
@@ -400,18 +469,23 @@ public class CheckIndex {
    *
    *  <p>As this method checks every byte in the specified
    *  segments, on a large index it can take quite a long
-   *  time to run.
-   *
-   *  <p><b>WARNING</b>: make sure
-   *  you only call this when the index is not opened by any
-   *  writer. */
+   *  time to run. */
   public Status checkIndex(List<String> onlySegments) throws IOException {
+    ensureOpen();
+    long startNS = System.nanoTime();
     NumberFormat nf = NumberFormat.getInstance(Locale.ROOT);
-    SegmentInfos sis = new SegmentInfos();
+    SegmentInfos sis = null;
     Status result = new Status();
     result.dir = dir;
+    String[] files = dir.listAll();
+    String lastSegmentsFile = SegmentInfos.getLastCommitSegmentsFileName(files);
+    if (lastSegmentsFile == null) {
+      throw new IndexNotFoundException("no segments* file found in " + dir + ": files: " + Arrays.toString(files));
+    }
     try {
-      sis.read(dir);
+      // Do not use SegmentInfos.read(Directory) since the spooky
+      // retrying it does is not necessary here (we hold the write lock):
+      sis = SegmentInfos.readCommit(dir, lastSegmentsFile);
     } catch (Throwable t) {
       if (failFast) {
         IOUtils.reThrow(t);
@@ -458,9 +532,8 @@ public class CheckIndex {
       result.cantOpenSegments = true;
       return result;
     }
-    int format = 0;
     try {
-      format = input.readInt();
+      /*int format =*/ input.readInt();
     } catch (Throwable t) {
       if (failFast) {
         IOUtils.reThrow(t);
@@ -476,7 +549,6 @@ public class CheckIndex {
     }
 
     String sFormat = "";
-    boolean skip = false;
 
     result.segmentsFileName = segmentsFileName;
     result.numSegments = numSegments;
@@ -500,7 +572,7 @@ public class CheckIndex {
     }
 
     msg(infoStream, "Segments file=" + segmentsFileName + " numSegments=" + numSegments
-        + " " + versionString + " format=" + sFormat + userDataString);
+        + " " + versionString + " id=" + StringHelper.idToString(sis.getId()) + " format=" + sFormat + userDataString);
 
     if (onlySegments != null) {
       result.partial = true;
@@ -514,11 +586,6 @@ public class CheckIndex {
       msg(infoStream, ":");
     }
 
-    if (skip) {
-      msg(infoStream, "\nERROR: this index appears to be created by a newer version of Lucene than this tool was compiled on; please re-compile this tool on the matching version of Lucene; exiting");
-      result.toolOutOfDate = true;
-      return result;
-    }
 
 
     result.newSegments = sis.clone();
@@ -536,21 +603,22 @@ public class CheckIndex {
       }
       Status.SegmentInfoStatus segInfoStat = new Status.SegmentInfoStatus();
       result.segmentInfos.add(segInfoStat);
-      msg(infoStream, "  " + (1+i) + " of " + numSegments + ": name=" + info.info.name + " docCount=" + info.info.getDocCount());
+      msg(infoStream, "  " + (1+i) + " of " + numSegments + ": name=" + info.info.name + " maxDoc=" + info.info.maxDoc());
       segInfoStat.name = info.info.name;
-      segInfoStat.docCount = info.info.getDocCount();
+      segInfoStat.maxDoc = info.info.maxDoc();      
+      segInfoStat.version = info.info.getVersion();
       
-      final Version version = info.info.getVersion();
-      if (info.info.getDocCount() <= 0 && version != null && version.onOrAfter(Version.LUCENE_4_5_0)) {
-        throw new RuntimeException("illegal number of documents: maxDoc=" + info.info.getDocCount());
+      if (info.info.maxDoc() <= 0 && segInfoStat.version.onOrAfter(Version.LUCENE_4_5_0)) {
+        throw new RuntimeException("illegal number of documents: maxDoc=" + info.info.maxDoc());
       }
 
-      int toLoseDocCount = info.info.getDocCount();
+      int toLoseDocCount = info.info.maxDoc();
 
-      AtomicReader reader = null;
+      SegmentReader reader = null;
 
       try {
-        msg(infoStream, "    version=" + (version == null ? "3.0" : version));
+        msg(infoStream, "    version=" + segInfoStat.version);
+        msg(infoStream, "    id=" + StringHelper.idToString(info.info.getId()));
         final Codec codec = info.info.getCodec();
         msg(infoStream, "    codec=" + codec);
         segInfoStat.codec = codec;
@@ -559,10 +627,7 @@ public class CheckIndex {
         msg(infoStream, "    numFiles=" + info.files().size());
         segInfoStat.numFiles = info.files().size();
         segInfoStat.sizeMB = info.sizeInBytes()/(1024.*1024.);
-        if (info.info.getAttribute(Lucene3xSegmentInfoFormat.DS_OFFSET_KEY) == null) {
-          // don't print size in bytes if its a 3.0 segment with shared docstores
-          msg(infoStream, "    size (MB)=" + nf.format(segInfoStat.sizeMB));
-        }
+        msg(infoStream, "    size (MB)=" + nf.format(segInfoStat.sizeMB));
         Map<String,String> diagnostics = info.info.getDiagnostics();
         segInfoStat.diagnostics = diagnostics;
         if (diagnostics.size() > 0) {
@@ -572,111 +637,96 @@ public class CheckIndex {
         if (!info.hasDeletions()) {
           msg(infoStream, "    no deletions");
           segInfoStat.hasDeletions = false;
-        }
-        else{
+        } else {
           msg(infoStream, "    has deletions [delGen=" + info.getDelGen() + "]");
           segInfoStat.hasDeletions = true;
           segInfoStat.deletionsGen = info.getDelGen();
         }
+        
+        long startOpenReaderNS = System.nanoTime();
         if (infoStream != null)
           infoStream.print("    test: open reader.........");
-        reader = new SegmentReader(info, DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR, IOContext.DEFAULT);
-        msg(infoStream, "OK");
+        reader = new SegmentReader(info, IOContext.DEFAULT);
+        msg(infoStream, String.format(Locale.ROOT, "OK [took %.3f sec]", nsToSec(System.nanoTime()-startOpenReaderNS)));
 
         segInfoStat.openReaderPassed = true;
         
+        long startIntegrityNS = System.nanoTime();
         if (infoStream != null)
           infoStream.print("    test: check integrity.....");
         reader.checkIntegrity();
-        msg(infoStream, "OK");
+        msg(infoStream, String.format(Locale.ROOT, "OK [took %.3f sec]", nsToSec(System.nanoTime()-startIntegrityNS)));
 
-        if (infoStream != null)
-          infoStream.print("    test: check live docs.....");
+        if (reader.maxDoc() != info.info.maxDoc()) {
+          throw new RuntimeException("SegmentReader.maxDoc() " + reader.maxDoc() + " != SegmentInfo.maxDoc " + info.info.maxDoc());
+        }
+        
         final int numDocs = reader.numDocs();
         toLoseDocCount = numDocs;
+        
         if (reader.hasDeletions()) {
-          if (reader.numDocs() != info.info.getDocCount() - info.getDelCount()) {
-            throw new RuntimeException("delete count mismatch: info=" + (info.info.getDocCount() - info.getDelCount()) + " vs reader=" + reader.numDocs());
+          if (reader.numDocs() != info.info.maxDoc() - info.getDelCount()) {
+            throw new RuntimeException("delete count mismatch: info=" + (info.info.maxDoc() - info.getDelCount()) + " vs reader=" + reader.numDocs());
           }
-          if ((info.info.getDocCount()-reader.numDocs()) > reader.maxDoc()) {
-            throw new RuntimeException("too many deleted docs: maxDoc()=" + reader.maxDoc() + " vs del count=" + (info.info.getDocCount()-reader.numDocs()));
+          if ((info.info.maxDoc() - reader.numDocs()) > reader.maxDoc()) {
+            throw new RuntimeException("too many deleted docs: maxDoc()=" + reader.maxDoc() + " vs del count=" + (info.info.maxDoc() - reader.numDocs()));
           }
-          if (info.info.getDocCount() - numDocs != info.getDelCount()) {
-            throw new RuntimeException("delete count mismatch: info=" + info.getDelCount() + " vs reader=" + (info.info.getDocCount() - numDocs));
+          if (info.info.maxDoc() - reader.numDocs() != info.getDelCount()) {
+            throw new RuntimeException("delete count mismatch: info=" + info.getDelCount() + " vs reader=" + (info.info.maxDoc() - reader.numDocs()));
           }
-          Bits liveDocs = reader.getLiveDocs();
-          if (liveDocs == null) {
-            throw new RuntimeException("segment should have deletions, but liveDocs is null");
-          } else {
-            int numLive = 0;
-            for (int j = 0; j < liveDocs.length(); j++) {
-              if (liveDocs.get(j)) {
-                numLive++;
-              }
-            }
-            if (numLive != numDocs) {
-              throw new RuntimeException("liveDocs count mismatch: info=" + numDocs + ", vs bits=" + numLive);
-            }
-          }
-          
-          segInfoStat.numDeleted = info.info.getDocCount() - numDocs;
-          msg(infoStream, "OK [" + (segInfoStat.numDeleted) + " deleted docs]");
         } else {
           if (info.getDelCount() != 0) {
-            throw new RuntimeException("delete count mismatch: info=" + info.getDelCount() + " vs reader=" + (info.info.getDocCount() - numDocs));
+            throw new RuntimeException("delete count mismatch: info=" + info.getDelCount() + " vs reader=" + (info.info.maxDoc() - reader.numDocs()));
           }
-          Bits liveDocs = reader.getLiveDocs();
-          if (liveDocs != null) {
-            // its ok for it to be non-null here, as long as none are set right?
-            for (int j = 0; j < liveDocs.length(); j++) {
-              if (!liveDocs.get(j)) {
-                throw new RuntimeException("liveDocs mismatch: info says no deletions but doc " + j + " is deleted.");
-              }
-            }
-          }
-          msg(infoStream, "OK");
         }
-        if (reader.maxDoc() != info.info.getDocCount()) {
-          throw new RuntimeException("SegmentReader.maxDoc() " + reader.maxDoc() + " != SegmentInfos.docCount " + info.info.getDocCount());
-        }
-
-        // Test getFieldInfos()
-        if (infoStream != null) {
-          infoStream.print("    test: fields..............");
-        }         
-        FieldInfos fieldInfos = reader.getFieldInfos();
-        msg(infoStream, "OK [" + fieldInfos.size() + " fields]");
-        segInfoStat.numFields = fieldInfos.size();
         
-        // Test Field Norms
-        segInfoStat.fieldNormStatus = testFieldNorms(reader, infoStream, failFast);
+        if (checksumsOnly == false) {
+          // Test Livedocs
+          segInfoStat.liveDocStatus = testLiveDocs(reader, infoStream, failFast);
 
-        // Test the Term Index
-        segInfoStat.termIndexStatus = testPostings(reader, infoStream, verbose, failFast);
+          // Test Fieldinfos
+          segInfoStat.fieldInfoStatus = testFieldInfos(reader, infoStream, failFast);
+        
+          // Test Field Norms
+          segInfoStat.fieldNormStatus = testFieldNorms(reader, infoStream, failFast);
 
-        // Test Stored Fields
-        segInfoStat.storedFieldStatus = testStoredFields(reader, infoStream, failFast);
+          // Test the Term Index
+          segInfoStat.termIndexStatus = testPostings(reader, infoStream, verbose, failFast);
 
-        // Test Term Vectors
-        segInfoStat.termVectorStatus = testTermVectors(reader, infoStream, verbose, crossCheckTermVectors, failFast);
+          // Test Stored Fields
+          segInfoStat.storedFieldStatus = testStoredFields(reader, infoStream, failFast);
 
-        segInfoStat.docValuesStatus = testDocValues(reader, infoStream, failFast);
+          // Test Term Vectors
+          segInfoStat.termVectorStatus = testTermVectors(reader, infoStream, verbose, crossCheckTermVectors, failFast);
 
-        // Rethrow the first exception we encountered
-        //  This will cause stats for failed segments to be incremented properly
-        if (segInfoStat.fieldNormStatus.error != null) {
-          throw new RuntimeException("Field Norm test failed");
-        } else if (segInfoStat.termIndexStatus.error != null) {
-          throw new RuntimeException("Term Index test failed");
-        } else if (segInfoStat.storedFieldStatus.error != null) {
-          throw new RuntimeException("Stored Field test failed");
-        } else if (segInfoStat.termVectorStatus.error != null) {
-          throw new RuntimeException("Term Vector test failed");
-        }  else if (segInfoStat.docValuesStatus.error != null) {
-          throw new RuntimeException("DocValues test failed");
+          // Test Docvalues
+          segInfoStat.docValuesStatus = testDocValues(reader, infoStream, failFast);
+
+          // Rethrow the first exception we encountered
+          //  This will cause stats for failed segments to be incremented properly
+          if (segInfoStat.liveDocStatus.error != null) {
+            throw new RuntimeException("Live docs test failed");
+          } else if (segInfoStat.fieldInfoStatus.error != null) {
+            throw new RuntimeException("Field Info test failed");
+          } else if (segInfoStat.fieldNormStatus.error != null) {
+            throw new RuntimeException("Field Norm test failed");
+          } else if (segInfoStat.termIndexStatus.error != null) {
+            throw new RuntimeException("Term Index test failed");
+          } else if (segInfoStat.storedFieldStatus.error != null) {
+            throw new RuntimeException("Stored Field test failed");
+          } else if (segInfoStat.termVectorStatus.error != null) {
+            throw new RuntimeException("Term Vector test failed");
+          }  else if (segInfoStat.docValuesStatus.error != null) {
+            throw new RuntimeException("DocValues test failed");
+          }
         }
 
         msg(infoStream, "");
+        
+        if (verbose) {
+          msg(infoStream, "detailed segment RAM usage: ");
+          msg(infoStream, Accountables.toString(reader));
+        }
 
       } catch (Throwable t) {
         if (failFast) {
@@ -684,7 +734,7 @@ public class CheckIndex {
         }
         msg(infoStream, "FAILED");
         String comment;
-        comment = "fixIndex() would remove reference to this segment";
+        comment = "exorciseIndex() would remove reference to this segment";
         msg(infoStream, "    WARNING: " + comment + "; full exception:");
         if (infoStream != null)
           t.printStackTrace(infoStream);
@@ -712,18 +762,126 @@ public class CheckIndex {
       msg(infoStream, "ERROR: Next segment name counter " + sis.counter + " is not greater than max segment name " + result.maxSegmentName);
     }
     
+    // if someone uses the -fast option, check that it wasnt a no-op or weak check.
+    if (getChecksumsOnly()) {
+      boolean old = false; // no ids 
+      boolean ancient = false; // no checksums
+      for (Status.SegmentInfoStatus segment : result.segmentInfos) {
+        old |= !segment.version.onOrAfter(Version.LUCENE_5_0_0);
+        ancient |= !segment.version.onOrAfter(Version.LUCENE_4_8_0);
+      }
+      if (ancient) {
+        msg(infoStream, "WARNING: Some segments are older than 4.8 and have no checksums. Run checkindex without -fast for full verification.");
+      } else if (old) {
+        msg(infoStream, "WARNING: Some segments are older than 5.0 and have no identifiers. Run checkindex without -fast for full verification.");
+      }
+    }
+    
     if (result.clean) {
       msg(infoStream, "No problems were detected with this index.\n");
     }
 
+    msg(infoStream, String.format(Locale.ROOT, "Took %.3f sec total.", nsToSec(System.nanoTime()-startNS)));
+
     return result;
+  }
+  
+  /**
+   * Test live docs.
+   * @lucene.experimental
+   */
+  public static Status.LiveDocStatus testLiveDocs(CodecReader reader, PrintStream infoStream, boolean failFast) throws IOException {
+    long startNS = System.nanoTime();
+    final Status.LiveDocStatus status = new Status.LiveDocStatus();
+    
+    try {
+      if (infoStream != null)
+        infoStream.print("    test: check live docs.....");
+      final int numDocs = reader.numDocs();
+      if (reader.hasDeletions()) {
+        Bits liveDocs = reader.getLiveDocs();
+        if (liveDocs == null) {
+          throw new RuntimeException("segment should have deletions, but liveDocs is null");
+        } else {
+          int numLive = 0;
+          for (int j = 0; j < liveDocs.length(); j++) {
+            if (liveDocs.get(j)) {
+              numLive++;
+            }
+          }
+          if (numLive != numDocs) {
+            throw new RuntimeException("liveDocs count mismatch: info=" + numDocs + ", vs bits=" + numLive);
+          }
+        }
+        
+        status.numDeleted = reader.numDeletedDocs();
+        msg(infoStream, String.format(Locale.ROOT, "OK [%d deleted docs] [took %.3f sec]", status.numDeleted, nsToSec(System.nanoTime()-startNS)));
+      } else {
+        Bits liveDocs = reader.getLiveDocs();
+        if (liveDocs != null) {
+          // it's ok for it to be non-null here, as long as none are set right?
+          for (int j = 0; j < liveDocs.length(); j++) {
+            if (!liveDocs.get(j)) {
+              throw new RuntimeException("liveDocs mismatch: info says no deletions but doc " + j + " is deleted.");
+            }
+          }
+        }
+        msg(infoStream, String.format(Locale.ROOT, "OK [took %.3f sec]", (nsToSec(System.nanoTime()-startNS))));
+      }
+      
+    } catch (Throwable e) {
+      if (failFast) {
+        IOUtils.reThrow(e);
+      }
+      msg(infoStream, "ERROR [" + String.valueOf(e.getMessage()) + "]");
+      status.error = e;
+      if (infoStream != null) {
+        e.printStackTrace(infoStream);
+      }
+    }
+    
+    return status;
+  }
+  
+  /**
+   * Test field infos.
+   * @lucene.experimental
+   */
+  public static Status.FieldInfoStatus testFieldInfos(CodecReader reader, PrintStream infoStream, boolean failFast) throws IOException {
+    long startNS = System.nanoTime();
+    final Status.FieldInfoStatus status = new Status.FieldInfoStatus();
+    
+    try {
+      // Test Field Infos
+      if (infoStream != null) {
+        infoStream.print("    test: field infos.........");
+      }
+      FieldInfos fieldInfos = reader.getFieldInfos();
+      for (FieldInfo f : fieldInfos) {
+        f.checkConsistency();
+      }
+      msg(infoStream, String.format(Locale.ROOT, "OK [%d fields] [took %.3f sec]", fieldInfos.size(), nsToSec(System.nanoTime()-startNS)));
+      status.totFields = fieldInfos.size();
+    } catch (Throwable e) {
+      if (failFast) {
+        IOUtils.reThrow(e);
+      }
+      msg(infoStream, "ERROR [" + String.valueOf(e.getMessage()) + "]");
+      status.error = e;
+      if (infoStream != null) {
+        e.printStackTrace(infoStream);
+      }
+    }
+    
+    return status;
   }
 
   /**
    * Test field norms.
    * @lucene.experimental
    */
-  public static Status.FieldNormStatus testFieldNorms(AtomicReader reader, PrintStream infoStream, boolean failFast) throws IOException {
+  public static Status.FieldNormStatus testFieldNorms(CodecReader reader, PrintStream infoStream, boolean failFast) throws IOException {
+    long startNS = System.nanoTime();
     final Status.FieldNormStatus status = new Status.FieldNormStatus();
 
     try {
@@ -731,20 +889,18 @@ public class CheckIndex {
       if (infoStream != null) {
         infoStream.print("    test: field norms.........");
       }
+      NormsProducer normsReader = reader.getNormsReader();
+      if (normsReader != null) {
+        normsReader = normsReader.getMergeInstance();
+      }
       for (FieldInfo info : reader.getFieldInfos()) {
         if (info.hasNorms()) {
-          assert reader.hasNorms(info.name); // deprecated path
-          checkNorms(info, reader, infoStream);
+          checkNumericDocValues(info.name, reader.maxDoc(), normsReader.getNorms(info), new Bits.MatchAllBits(reader.maxDoc()));
           ++status.totFields;
-        } else {
-          assert !reader.hasNorms(info.name); // deprecated path
-          if (reader.getNormValues(info.name) != null) {
-            throw new RuntimeException("field: " + info.name + " should omit norms but has them!");
-          }
         }
       }
 
-      msg(infoStream, "OK [" + status.totFields + " fields]");
+      msg(infoStream, String.format(Locale.ROOT, "OK [%d fields] [took %.3f sec]", status.totFields, nsToSec(System.nanoTime()-startNS)));
     } catch (Throwable e) {
       if (failFast) {
         IOUtils.reThrow(e);
@@ -759,27 +915,205 @@ public class CheckIndex {
     return status;
   }
 
+  /** Visits all terms in the range minTerm (inclusive) to maxTerm (exclusive), marking all doc IDs encountered into allDocsSeen, and
+   *  returning the total number of terms visited. */
+  private static long getDocsFromTermRange(String field, int maxDoc, TermsEnum termsEnum, FixedBitSet docsSeen, BytesRef minTerm, BytesRef maxTerm, boolean isIntersect) throws IOException {
+    docsSeen.clear(0, docsSeen.length());
+
+    long termCount = 0;
+    PostingsEnum postingsEnum = null;
+    BytesRefBuilder lastTerm = null;
+    while (true) {
+      BytesRef term;
+
+      // Kinda messy: for intersect, we must first next(), but for "normal", we are already on our first term:
+      if (isIntersect || termCount != 0) {
+        term = termsEnum.next();
+      } else {
+        term = termsEnum.term();
+      }
+
+      if (term == null) {
+        if (isIntersect == false) {
+          throw new RuntimeException("didn't see max term field=" + field + " term=" + maxTerm);
+        }
+        //System.out.println("      terms=" + termCount);
+        return termCount;
+      }
+
+      assert term.isValid();
+        
+      if (lastTerm == null) {
+        lastTerm = new BytesRefBuilder();
+        lastTerm.copyBytes(term);
+      } else {
+        if (lastTerm.get().compareTo(term) >= 0) {
+          throw new RuntimeException("terms out of order: lastTerm=" + lastTerm.get() + " term=" + term);
+        }
+        lastTerm.copyBytes(term);
+      }
+
+      //System.out.println("    term=" + term);
+
+      // Caller already ensured terms enum positioned >= minTerm:
+      if (term.compareTo(minTerm) < 0) {
+        throw new RuntimeException("saw term before min term field=" + field + " term=" + minTerm);
+      }
+
+      if (isIntersect == false) {
+        int cmp = term.compareTo(maxTerm);
+        if (cmp == 0) {
+          // Done!
+          //System.out.println("      terms=" + termCount);
+          return termCount;
+        } else if (cmp > 0) {
+          throw new RuntimeException("didn't see end term field=" + field + " term=" + maxTerm);
+        }
+      }
+
+      postingsEnum = termsEnum.postings(postingsEnum, 0);
+
+      int lastDoc = -1;
+      while (true) {
+        int doc = postingsEnum.nextDoc();
+        if (doc == DocIdSetIterator.NO_MORE_DOCS) {
+          break;
+        }
+        if (doc <= lastDoc) {
+          throw new RuntimeException("term " + term + ": doc " + doc + " <= lastDoc " + lastDoc);
+        }
+        if (doc >= maxDoc) {
+          throw new RuntimeException("term " + term + ": doc " + doc + " >= maxDoc " + maxDoc);
+        }
+
+        //System.out.println("      doc=" + doc);
+        docsSeen.set(doc);
+
+        lastDoc = doc;
+      }
+
+      termCount++;
+    }
+  }
+
+  /** Test Terms.intersect on this range, and validates that it returns the same doc ids as using non-intersect TermsEnum.  Returns true if
+   *  any fake terms were seen. */
+  private static boolean checkSingleTermRange(String field, int maxDoc, Terms terms, BytesRef minTerm, BytesRef maxTerm, FixedBitSet normalDocs, FixedBitSet intersectDocs) throws IOException {
+    //System.out.println("    check minTerm=" + minTerm.utf8ToString() + " maxTerm=" + maxTerm.utf8ToString());
+    assert minTerm.compareTo(maxTerm) <= 0;
+
+    TermsEnum termsEnum = terms.iterator();
+    TermsEnum.SeekStatus status = termsEnum.seekCeil(minTerm);
+    if (status != TermsEnum.SeekStatus.FOUND) {
+      throw new RuntimeException("failed to seek to existing term field=" + field + " term=" + minTerm);
+    }
+
+    // Do "dumb" iteration to visit all terms in the range:
+    long normalTermCount = getDocsFromTermRange(field, maxDoc, termsEnum, normalDocs, minTerm, maxTerm, false);
+
+    // Now do the same operation using intersect:
+    long intersectTermCount = getDocsFromTermRange(field, maxDoc, terms.intersect(new CompiledAutomaton(Automata.makeBinaryInterval(minTerm, true, maxTerm, false), true, false, Integer.MAX_VALUE, true), null), intersectDocs, minTerm, maxTerm, true);
+
+    if (intersectTermCount > normalTermCount) {
+      throw new RuntimeException("intersect returned too many terms: field=" + field + " intersectTermCount=" + intersectTermCount + " normalTermCount=" + normalTermCount);
+    }
+
+    if (normalDocs.equals(intersectDocs) == false) {
+      throw new RuntimeException("intersect visited different docs than straight terms enum: " + normalDocs.cardinality() + " for straight enum, vs " + intersectDocs.cardinality() + " for intersect, minTerm=" + minTerm + " maxTerm=" + maxTerm);
+    }
+    //System.out.println("      docs=" + normalTermCount);
+    //System.out.println("    " + intersectTermCount + " vs " + normalTermCount);
+    return intersectTermCount != normalTermCount;
+  }
+
+  /** Make an effort to visit "fake" (e.g. auto-prefix) terms.  We do this by running term range intersections across an initially wide
+   *  interval of terms, at different boundaries, and then gradually decrease the interval.  This is not guaranteed to hit all non-real
+   *  terms (doing that in general is non-trivial), but it should hit many of them, and validate their postings against the postings for the
+   *  real terms. */
+  private static void checkTermRanges(String field, int maxDoc, Terms terms, long numTerms) throws IOException {
+
+    // We'll target this many terms in our interval for the current level:
+    double currentInterval = numTerms;
+
+    FixedBitSet normalDocs = new FixedBitSet(maxDoc);
+    FixedBitSet intersectDocs = new FixedBitSet(maxDoc);
+
+    //System.out.println("CI.checkTermRanges field=" + field + " numTerms=" + numTerms);
+
+    while (currentInterval >= 10.0) {
+      //System.out.println("  cycle interval=" + currentInterval);
+
+      // We iterate this terms enum to locate min/max term for each sliding/overlapping interval we test at the current level:
+      TermsEnum termsEnum = terms.iterator();
+
+      long termCount = 0;
+
+      Deque<BytesRef> termBounds = new LinkedList<>();
+
+      long lastTermAdded = Long.MIN_VALUE;
+
+      BytesRefBuilder lastTerm = null;
+
+      while (true) {
+        BytesRef term = termsEnum.next();
+        if (term == null) {
+          break;
+        }
+        //System.out.println("  top: term=" + term.utf8ToString());
+        if (termCount >= lastTermAdded + currentInterval/4) {
+          termBounds.add(BytesRef.deepCopyOf(term));
+          lastTermAdded = termCount;
+          if (termBounds.size() == 5) {
+            BytesRef minTerm = termBounds.removeFirst();
+            BytesRef maxTerm = termBounds.getLast();
+            checkSingleTermRange(field, maxDoc, terms, minTerm, maxTerm, normalDocs, intersectDocs);
+          }
+        }
+        termCount++;
+
+        if (lastTerm == null) {
+          lastTerm = new BytesRefBuilder();
+          lastTerm.copyBytes(term);
+        } else {
+          if (lastTerm.get().compareTo(term) >= 0) {
+            throw new RuntimeException("terms out of order: lastTerm=" + lastTerm.get() + " term=" + term);
+          }
+          lastTerm.copyBytes(term);
+        }
+      }
+      //System.out.println("    count=" + termCount);
+
+      if (lastTerm != null && termBounds.isEmpty() == false) {
+        BytesRef minTerm = termBounds.removeFirst();
+        BytesRef maxTerm = lastTerm.get();
+        checkSingleTermRange(field, maxDoc, terms, minTerm, maxTerm, normalDocs, intersectDocs);
+      }
+
+      currentInterval *= .75;
+    }
+  }
+
   /**
    * checks Fields api is consistent with itself.
    * searcher is optional, to verify with queries. Can be null.
    */
   private static Status.TermIndexStatus checkFields(Fields fields, Bits liveDocs, int maxDoc, FieldInfos fieldInfos, boolean doPrint, boolean isVectors, PrintStream infoStream, boolean verbose) throws IOException {
     // TODO: we should probably return our own stats thing...?!
+    long startNS;
+    if (doPrint) {
+      startNS = System.nanoTime();
+    } else {
+      startNS = 0;
+    }
     
     final Status.TermIndexStatus status = new Status.TermIndexStatus();
     int computedFieldCount = 0;
-    
-    if (fields == null) {
-      msg(infoStream, "OK [no fields/terms]");
-      return status;
-    }
-    
-    DocsEnum docs = null;
-    DocsEnum docsAndFreqs = null;
-    DocsAndPositionsEnum postings = null;
+
+    PostingsEnum postings = null;
     
     String lastField = null;
     for (String field : fields) {
+
       // MultiFieldsEnum relies upon this order...
       if (lastField != null && field.compareTo(lastField) <= 0) {
         throw new RuntimeException("fields out of order: lastField=" + lastField + " field=" + field);
@@ -792,7 +1126,7 @@ public class CheckIndex {
       if (fieldInfo == null) {
         throw new RuntimeException("fieldsEnum inconsistent with fieldInfos, no fieldInfos for: " + field);
       }
-      if (!fieldInfo.isIndexed()) {
+      if (fieldInfo.getIndexOptions() == IndexOptions.NONE) {
         throw new RuntimeException("fieldsEnum inconsistent with fieldInfos, isIndexed == false for: " + field);
       }
       
@@ -812,27 +1146,33 @@ public class CheckIndex {
       final boolean hasPayloads = terms.hasPayloads();
       final boolean hasOffsets = terms.hasOffsets();
       
-      BytesRef bb = terms.getMin();
-      BytesRef minTerm;
-      if (bb != null) {
-        assert bb.isValid();
-        minTerm = BytesRef.deepCopyOf(bb);
-      } else {
-        minTerm = null;
-      }
-
       BytesRef maxTerm;
-      bb = terms.getMax();
-      if (bb != null) {
-        assert bb.isValid();
-        maxTerm = BytesRef.deepCopyOf(bb);
-        if (minTerm == null) {
-          throw new RuntimeException("field \"" + field + "\" has null minTerm but non-null maxTerm");
-        }
-      } else {
+      BytesRef minTerm;
+      if (isVectors) {
+        // Term vectors impls can be very slow for getMax
         maxTerm = null;
-        if (minTerm != null) {
-          throw new RuntimeException("field \"" + field + "\" has non-null minTerm but null maxTerm");
+        minTerm = null;
+      } else {
+        BytesRef bb = terms.getMin();
+        if (bb != null) {
+          assert bb.isValid();
+          minTerm = BytesRef.deepCopyOf(bb);
+        } else {
+          minTerm = null;
+        }
+
+        bb = terms.getMax();
+        if (bb != null) {
+          assert bb.isValid();
+          maxTerm = BytesRef.deepCopyOf(bb);
+          if (minTerm == null) {
+            throw new RuntimeException("field \"" + field + "\" has null minTerm but non-null maxTerm");
+          }
+        } else {
+          maxTerm = null;
+          if (minTerm != null) {
+            throw new RuntimeException("field \"" + field + "\" has non-null minTerm but null maxTerm");
+          }
         }
       }
 
@@ -866,18 +1206,15 @@ public class CheckIndex {
         }
       }
 
-      final TermsEnum termsEnum = terms.iterator(null);
-      
+      final TermsEnum termsEnum = terms.iterator();
+
       boolean hasOrd = true;
       final long termCountStart = status.delTermCount + status.termCount;
       
       BytesRefBuilder lastTerm = null;
       
-      Comparator<BytesRef> termComp = terms.getComparator();
-      
       long sumTotalTermFreq = 0;
       long sumDocFreq = 0;
-      long upto = 0;
       FixedBitSet visitedDocs = new FixedBitSet(maxDoc);
       while(true) {
         
@@ -885,7 +1222,8 @@ public class CheckIndex {
         if (term == null) {
           break;
         }
-
+        // System.out.println("CI: field=" + field + " check term=" + term + " docFreq=" + termsEnum.docFreq());
+        
         assert term.isValid();
         
         // make sure terms arrive in order according to
@@ -894,24 +1232,26 @@ public class CheckIndex {
           lastTerm = new BytesRefBuilder();
           lastTerm.copyBytes(term);
         } else {
-          if (termComp.compare(lastTerm.get(), term) >= 0) {
-            throw new RuntimeException("terms out of order: lastTerm=" + lastTerm + " term=" + term);
+          if (lastTerm.get().compareTo(term) >= 0) {
+            throw new RuntimeException("terms out of order: lastTerm=" + lastTerm.get() + " term=" + term);
           }
           lastTerm.copyBytes(term);
         }
 
-        if (minTerm == null) {
-          // We checked this above:
-          assert maxTerm == null;
-          throw new RuntimeException("field=\"" + field + "\": invalid term: term=" + term + ", minTerm=" + minTerm);
-        }
+        if (isVectors == false) {
+          if (minTerm == null) {
+            // We checked this above:
+            assert maxTerm == null;
+            throw new RuntimeException("field=\"" + field + "\": invalid term: term=" + term + ", minTerm=" + minTerm);
+          }
         
-        if (term.compareTo(minTerm) < 0) {
-          throw new RuntimeException("field=\"" + field + "\": invalid term: term=" + term + ", minTerm=" + minTerm);
-        }
+          if (term.compareTo(minTerm) < 0) {
+            throw new RuntimeException("field=\"" + field + "\": invalid term: term=" + term + ", minTerm=" + minTerm);
+          }
         
-        if (term.compareTo(maxTerm) > 0) {
-          throw new RuntimeException("field=\"" + field + "\": invalid term: term=" + term + ", maxTerm=" + maxTerm);
+          if (term.compareTo(maxTerm) > 0) {
+            throw new RuntimeException("field=\"" + field + "\": invalid term: term=" + term + ", maxTerm=" + maxTerm);
+          }
         }
         
         final int docFreq = termsEnum.docFreq();
@@ -919,9 +1259,8 @@ public class CheckIndex {
           throw new RuntimeException("docfreq: " + docFreq + " is out of bounds");
         }
         sumDocFreq += docFreq;
-        
-        docs = termsEnum.docs(liveDocs, docs);
-        postings = termsEnum.docsAndPositions(liveDocs, postings);
+
+        postings = termsEnum.postings(postings, PostingsEnum.ALL);
 
         if (hasFreqs == false) {
           if (termsEnum.totalTermFreq() != -1) {
@@ -945,37 +1284,36 @@ public class CheckIndex {
           }
         }
         
-        final DocsEnum docs2;
-        if (postings != null) {
-          docs2 = postings;
-        } else {
-          docs2 = docs;
-        }
-        
         int lastDoc = -1;
         int docCount = 0;
+        boolean hasNonDeletedDocs = false;
         long totalTermFreq = 0;
         while(true) {
-          final int doc = docs2.nextDoc();
+          final int doc = postings.nextDoc();
           if (doc == DocIdSetIterator.NO_MORE_DOCS) {
             break;
           }
-          status.totFreq++;
           visitedDocs.set(doc);
           int freq = -1;
           if (hasFreqs) {
-            freq = docs2.freq();
+            freq = postings.freq();
             if (freq <= 0) {
               throw new RuntimeException("term " + term + ": doc " + doc + ": freq " + freq + " is out of bounds");
             }
-            status.totPos += freq;
             totalTermFreq += freq;
           } else {
             // When a field didn't index freq, it must
             // consistently "lie" and pretend that freq was
             // 1:
-            if (docs2.freq() != 1) {
+            if (postings.freq() != 1) {
               throw new RuntimeException("term " + term + ": doc " + doc + ": freq " + freq + " != 1 when Terms.hasFreqs() is false");
+            }
+          }
+          if (liveDocs == null || liveDocs.get(doc)) {
+            hasNonDeletedDocs = true;
+            status.totFreq++;
+            if (freq >= 0) {
+              status.totPos += freq;
             }
           }
           docCount++;
@@ -997,6 +1335,9 @@ public class CheckIndex {
 
               if (pos < 0) {
                 throw new RuntimeException("term " + term + ": doc " + doc + ": pos " + pos + " is out of bounds");
+              }
+              if (pos > IndexWriter.MAX_POSITION) {
+                throw new RuntimeException("term " + term + ": doc " + doc + ": pos " + pos + " > IndexWriter.MAX_POSITION=" + IndexWriter.MAX_POSITION);
               }
               if (pos < lastPos) {
                 throw new RuntimeException("term " + term + ": doc " + doc + ": pos " + pos + " < lastPos " + lastPos);
@@ -1034,7 +1375,7 @@ public class CheckIndex {
           }
         }
         
-        if (docCount != 0) {
+        if (hasNonDeletedDocs) {
           status.termCount++;
         } else {
           status.delTermCount++;
@@ -1042,28 +1383,6 @@ public class CheckIndex {
         
         final long totalTermFreq2 = termsEnum.totalTermFreq();
         final boolean hasTotalTermFreq = hasFreqs && totalTermFreq2 != -1;
-        
-        // Re-count if there are deleted docs:
-        if (liveDocs != null) {
-          if (hasFreqs) {
-            final DocsEnum docsNoDel = termsEnum.docs(null, docsAndFreqs);
-            docCount = 0;
-            totalTermFreq = 0;
-            while(docsNoDel.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
-              visitedDocs.set(docsNoDel.docID());
-              docCount++;
-              totalTermFreq += docsNoDel.freq();
-            }
-          } else {
-            final DocsEnum docsNoDel = termsEnum.docs(null, docs, DocsEnum.FLAG_NONE);
-            docCount = 0;
-            totalTermFreq = -1;
-            while(docsNoDel.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
-              visitedDocs.set(docsNoDel.docID());
-              docCount++;
-            }
-          }
-        }
         
         if (docCount != docFreq) {
           throw new RuntimeException("term " + term + " docFreq=" + docFreq + " != tot docs w/o deletions " + docCount);
@@ -1082,7 +1401,7 @@ public class CheckIndex {
         if (hasPositions) {
           for(int idx=0;idx<7;idx++) {
             final int skipDocID = (int) (((idx+1)*(long) maxDoc)/8);
-            postings = termsEnum.docsAndPositions(liveDocs, postings);
+            postings = termsEnum.postings(postings, PostingsEnum.ALL);
             final int docID = postings.advance(skipDocID);
             if (docID == DocIdSetIterator.NO_MORE_DOCS) {
               break;
@@ -1137,19 +1456,24 @@ public class CheckIndex {
                 throw new RuntimeException("term " + term + ": advance(docID=" + skipDocID + "), then .next() returned docID=" + nextDocID + " vs prev docID=" + docID);
               }
             }
+
+            if (isVectors) {
+              // Only 1 doc in the postings for term vectors, so we only test 1 advance:
+              break;
+            }
           }
         } else {
           for(int idx=0;idx<7;idx++) {
             final int skipDocID = (int) (((idx+1)*(long) maxDoc)/8);
-            docs = termsEnum.docs(liveDocs, docs, DocsEnum.FLAG_NONE);
-            final int docID = docs.advance(skipDocID);
+            postings = termsEnum.postings(postings, PostingsEnum.NONE);
+            final int docID = postings.advance(skipDocID);
             if (docID == DocIdSetIterator.NO_MORE_DOCS) {
               break;
             } else {
               if (docID < skipDocID) {
                 throw new RuntimeException("term " + term + ": advance(docID=" + skipDocID + ") returned docID=" + docID);
               }
-              final int nextDocID = docs.nextDoc();
+              final int nextDocID = postings.nextDoc();
               if (nextDocID == DocIdSetIterator.NO_MORE_DOCS) {
                 break;
               }
@@ -1157,14 +1481,18 @@ public class CheckIndex {
                 throw new RuntimeException("term " + term + ": advance(docID=" + skipDocID + "), then .next() returned docID=" + nextDocID + " vs prev docID=" + docID);
               }
             }
+            if (isVectors) {
+              // Only 1 doc in the postings for term vectors, so we only test 1 advance:
+              break;
+            }
           }
         }
       }
-
+      
       if (minTerm != null && status.termCount + status.delTermCount == 0) {
         throw new RuntimeException("field=\"" + field + "\": minTerm is non-null yet we saw no terms: " + minTerm);
       }
-      
+
       final Terms fieldTerms = fields.terms(field);
       if (fieldTerms == null) {
         // Unusual: the FieldsEnum returned a field but
@@ -1174,15 +1502,22 @@ public class CheckIndex {
         // docs got deleted and then merged away):
         
       } else {
-        if (fieldTerms instanceof FieldReader) {
-          final Stats stats = ((FieldReader) fieldTerms).computeStats();
-          assert stats != null;
-          if (status.blockTreeStats == null) {
-            status.blockTreeStats = new HashMap<>();
-          }
-          status.blockTreeStats.put(field, stats);
+
+        long fieldTermCount = (status.delTermCount+status.termCount)-termCountStart;
+
+        // LUCENE-5879: this is just too slow for now:
+        if (false && hasFreqs == false) {
+          // For DOCS_ONLY fields we recursively test term ranges:
+          checkTermRanges(field, maxDoc, fieldTerms, fieldTermCount);
         }
-        
+
+        final Object stats = fieldTerms.getStats();
+        assert stats != null;
+        if (status.blockTreeStats == null) {
+          status.blockTreeStats = new HashMap<>();
+        }
+        status.blockTreeStats.put(field, stats);
+
         if (sumTotalTermFreq != 0) {
           final long v = fields.terms(field).getSumTotalTermFreq();
           if (v != -1 && sumTotalTermFreq != v) {
@@ -1197,41 +1532,42 @@ public class CheckIndex {
           }
         }
         
-        if (fieldTerms != null) {
-          final int v = fieldTerms.getDocCount();
-          if (v != -1 && visitedDocs.cardinality() != v) {
-            throw new RuntimeException("docCount for field " + field + "=" + v + " != recomputed docCount=" + visitedDocs.cardinality());
-          }
+        final int v = fieldTerms.getDocCount();
+        if (v != -1 && visitedDocs.cardinality() != v) {
+          throw new RuntimeException("docCount for field " + field + "=" + v + " != recomputed docCount=" + visitedDocs.cardinality());
         }
         
         // Test seek to last term:
         if (lastTerm != null) {
           if (termsEnum.seekCeil(lastTerm.get()) != TermsEnum.SeekStatus.FOUND) { 
-            throw new RuntimeException("seek to last term " + lastTerm + " failed");
+            throw new RuntimeException("seek to last term " + lastTerm.get() + " failed");
+          }
+          if (termsEnum.term().equals(lastTerm.get()) == false) {
+            throw new RuntimeException("seek to last term " + lastTerm.get() + " returned FOUND but seeked to the wrong term " + termsEnum.term());
           }
           
           int expectedDocFreq = termsEnum.docFreq();
-          DocsEnum d = termsEnum.docs(null, null, DocsEnum.FLAG_NONE);
+          PostingsEnum d = termsEnum.postings(null, PostingsEnum.NONE);
           int docFreq = 0;
           while (d.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
             docFreq++;
           }
           if (docFreq != expectedDocFreq) {
-            throw new RuntimeException("docFreq for last term " + lastTerm + "=" + expectedDocFreq + " != recomputed docFreq=" + docFreq);
+            throw new RuntimeException("docFreq for last term " + lastTerm.get() + "=" + expectedDocFreq + " != recomputed docFreq=" + docFreq);
           }
         }
         
         // check unique term count
         long termCount = -1;
         
-        if ((status.delTermCount+status.termCount)-termCountStart > 0) {
+        if (fieldTermCount > 0) {
           termCount = fields.terms(field).size();
           
-          if (termCount != -1 && termCount != status.delTermCount + status.termCount - termCountStart) {
-            throw new RuntimeException("termCount mismatch " + (status.delTermCount + termCount) + " vs " + (status.termCount - termCountStart));
+          if (termCount != -1 && termCount != fieldTermCount) {
+            throw new RuntimeException("termCount mismatch " + termCount + " vs " + fieldTermCount);
           }
         }
-        
+
         // Test seeking by ord
         if (hasOrd && status.termCount-termCountStart > 0) {
           int seekCount = (int) Math.min(10000L, termCount);
@@ -1242,50 +1578,26 @@ public class CheckIndex {
             for(int i=seekCount-1;i>=0;i--) {
               long ord = i*(termCount/seekCount);
               termsEnum.seekExact(ord);
+              long actualOrd = termsEnum.ord();
+              if (actualOrd != ord) {
+                throw new RuntimeException("seek to ord " + ord + " returned ord " + actualOrd);
+              }
               seekTerms[i] = BytesRef.deepCopyOf(termsEnum.term());
             }
             
             // Seek by term
-            long totDocCount = 0;
             for(int i=seekCount-1;i>=0;i--) {
               if (termsEnum.seekCeil(seekTerms[i]) != TermsEnum.SeekStatus.FOUND) {
                 throw new RuntimeException("seek to existing term " + seekTerms[i] + " failed");
               }
+              if (termsEnum.term().equals(seekTerms[i]) == false) {
+                throw new RuntimeException("seek to existing term " + seekTerms[i] + " returned FOUND but seeked to the wrong term " + termsEnum.term());
+              }
               
-              docs = termsEnum.docs(liveDocs, docs, DocsEnum.FLAG_NONE);
-              if (docs == null) {
+              postings = termsEnum.postings(postings, PostingsEnum.NONE);
+              if (postings == null) {
                 throw new RuntimeException("null DocsEnum from to existing term " + seekTerms[i]);
               }
-              
-              while(docs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
-                totDocCount++;
-              }
-            }
-            
-            long totDocCountNoDeletes = 0;
-            long totDocFreq = 0;
-            for(int i=0;i<seekCount;i++) {
-              if (!termsEnum.seekExact(seekTerms[i])) {
-                throw new RuntimeException("seek to existing term " + seekTerms[i] + " failed");
-              }
-              
-              totDocFreq += termsEnum.docFreq();
-              docs = termsEnum.docs(null, docs, DocsEnum.FLAG_NONE);
-              if (docs == null) {
-                throw new RuntimeException("null DocsEnum from to existing term " + seekTerms[i]);
-              }
-              
-              while(docs.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
-                totDocCountNoDeletes++;
-              }
-            }
-            
-            if (totDocCount > totDocCountNoDeletes) {
-              throw new RuntimeException("more postings with deletes=" + totDocCount + " than without=" + totDocCountNoDeletes);
-            }
-            
-            if (totDocCountNoDeletes != totDocFreq) {
-              throw new RuntimeException("docfreqs=" + totDocFreq + " != recomputed docfreqs=" + totDocCountNoDeletes);
             }
           }
         }
@@ -1302,22 +1614,14 @@ public class CheckIndex {
         throw new RuntimeException("fieldCount mismatch " + fieldCount + " vs recomputed field count " + computedFieldCount);
       }
     }
-    
-    // for most implementations, this is boring (just the sum across all fields)
-    // but codecs that don't work per-field like preflex actually implement this,
-    // but don't implement it on Terms, so the check isn't redundant.
-    long uniqueTermCountAllFields = fields.getUniqueTermCount();
-    
-    if (uniqueTermCountAllFields != -1 && status.termCount + status.delTermCount != uniqueTermCountAllFields) {
-      throw new RuntimeException("termCount mismatch " + uniqueTermCountAllFields + " vs " + (status.termCount + status.delTermCount));
-    }
 
     if (doPrint) {
-      msg(infoStream, "OK [" + status.termCount + " terms; " + status.totFreq + " terms/docs pairs; " + status.totPos + " tokens]");
+      msg(infoStream, String.format(Locale.ROOT, "OK [%d terms; %d terms/docs pairs; %d tokens] [took %.3f sec]",
+                                    status.termCount, status.totFreq, status.totPos, nsToSec(System.nanoTime()-startNS)));
     }
     
     if (verbose && status.blockTreeStats != null && infoStream != null && status.termCount > 0) {
-      for(Map.Entry<String,Stats> ent : status.blockTreeStats.entrySet()) {
+      for(Map.Entry<String, Object> ent : status.blockTreeStats.entrySet()) {
         infoStream.println("      field \"" + ent.getKey() + "\":");
         infoStream.println("      " + ent.getValue().toString().replace("\n", "\n      "));
       }
@@ -1330,7 +1634,7 @@ public class CheckIndex {
    * Test the term index.
    * @lucene.experimental
    */
-  public static Status.TermIndexStatus testPostings(AtomicReader reader, PrintStream infoStream) throws IOException {
+  public static Status.TermIndexStatus testPostings(CodecReader reader, PrintStream infoStream) throws IOException {
     return testPostings(reader, infoStream, false, false);
   }
   
@@ -1338,29 +1642,22 @@ public class CheckIndex {
    * Test the term index.
    * @lucene.experimental
    */
-  public static Status.TermIndexStatus testPostings(AtomicReader reader, PrintStream infoStream, boolean verbose, boolean failFast) throws IOException {
+  public static Status.TermIndexStatus testPostings(CodecReader reader, PrintStream infoStream, boolean verbose, boolean failFast) throws IOException {
 
     // TODO: we should go and verify term vectors match, if
     // crossCheckTermVectors is on...
 
     Status.TermIndexStatus status;
     final int maxDoc = reader.maxDoc();
-    final Bits liveDocs = reader.getLiveDocs();
 
     try {
       if (infoStream != null) {
         infoStream.print("    test: terms, freq, prox...");
       }
 
-      final Fields fields = reader.fields();
+      final Fields fields = reader.getPostingsReader().getMergeInstance();
       final FieldInfos fieldInfos = reader.getFieldInfos();
-      status = checkFields(fields, liveDocs, maxDoc, fieldInfos, true, false, infoStream, verbose);
-      if (liveDocs != null) {
-        if (infoStream != null) {
-          infoStream.print("    test (ignoring deletes): terms, freq, prox...");
-        }
-        checkFields(fields, null, maxDoc, fieldInfos, true, false, infoStream, verbose);
-      }
+      status = checkFields(fields, reader.getLiveDocs(), maxDoc, fieldInfos, true, false, infoStream, verbose);
     } catch (Throwable e) {
       if (failFast) {
         IOUtils.reThrow(e);
@@ -1380,7 +1677,8 @@ public class CheckIndex {
    * Test stored fields.
    * @lucene.experimental
    */
-  public static Status.StoredFieldStatus testStoredFields(AtomicReader reader, PrintStream infoStream, boolean failFast) throws IOException {
+  public static Status.StoredFieldStatus testStoredFields(CodecReader reader, PrintStream infoStream, boolean failFast) throws IOException {
+    long startNS = System.nanoTime();
     final Status.StoredFieldStatus status = new Status.StoredFieldStatus();
 
     try {
@@ -1390,10 +1688,13 @@ public class CheckIndex {
 
       // Scan stored fields for all documents
       final Bits liveDocs = reader.getLiveDocs();
+      StoredFieldsReader storedFields = reader.getFieldsReader().getMergeInstance();
       for (int j = 0; j < reader.maxDoc(); ++j) {
         // Intentionally pull even deleted documents to
         // make sure they too are not corrupt:
-        Document doc = reader.document(j);
+        DocumentStoredFieldVisitor visitor = new DocumentStoredFieldVisitor();
+        storedFields.visitDocument(j, visitor);
+        Document doc = visitor.getDocument();
         if (liveDocs == null || liveDocs.get(j)) {
           status.docCount++;
           status.totFields += doc.getFields().size();
@@ -1405,8 +1706,10 @@ public class CheckIndex {
         throw new RuntimeException("docCount=" + status.docCount + " but saw " + status.docCount + " undeleted docs");
       }
 
-      msg(infoStream, "OK [" + status.totFields + " total field count; avg " + 
-          NumberFormat.getInstance(Locale.ROOT).format((((float) status.totFields)/status.docCount)) + " fields per doc]");      
+      msg(infoStream, String.format(Locale.ROOT, "OK [%d total field count; avg %.1f fields per doc] [took %.3f sec]",
+                                    status.totFields,
+                                    (((float) status.totFields)/status.docCount),
+                                    nsToSec(System.nanoTime() - startNS)));
     } catch (Throwable e) {
       if (failFast) {
         IOUtils.reThrow(e);
@@ -1425,35 +1728,35 @@ public class CheckIndex {
    * Test docvalues.
    * @lucene.experimental
    */
-  public static Status.DocValuesStatus testDocValues(AtomicReader reader,
+  public static Status.DocValuesStatus testDocValues(CodecReader reader,
                                                      PrintStream infoStream,
                                                      boolean failFast) throws IOException {
+    long startNS = System.nanoTime();
     final Status.DocValuesStatus status = new Status.DocValuesStatus();
     try {
       if (infoStream != null) {
         infoStream.print("    test: docvalues...........");
       }
+      DocValuesProducer dvReader = reader.getDocValuesReader();
+      if (dvReader != null) {
+        dvReader = dvReader.getMergeInstance();
+      }
       for (FieldInfo fieldInfo : reader.getFieldInfos()) {
-        if (fieldInfo.hasDocValues()) {
+        if (fieldInfo.getDocValuesType() != DocValuesType.NONE) {
           status.totalValueFields++;
-          checkDocValues(fieldInfo, reader, infoStream, status);
-        } else {
-          if (reader.getBinaryDocValues(fieldInfo.name) != null ||
-              reader.getNumericDocValues(fieldInfo.name) != null ||
-              reader.getSortedDocValues(fieldInfo.name) != null || 
-              reader.getSortedSetDocValues(fieldInfo.name) != null || 
-              reader.getDocsWithField(fieldInfo.name) != null) {
-            throw new RuntimeException("field: " + fieldInfo.name + " has docvalues but should omit them!");
-          }
+          checkDocValues(fieldInfo, dvReader, reader.maxDoc(), infoStream, status);
         }
       }
 
-      msg(infoStream, "OK [" + status.totalValueFields + " docvalues fields; "
-                             + status.totalBinaryFields + " BINARY; " 
-                             + status.totalNumericFields + " NUMERIC; "
-                             + status.totalSortedFields + " SORTED; "
-                             + status.totalSortedNumericFields + " SORTED_NUMERIC; "
-                             + status.totalSortedSetFields + " SORTED_SET]");
+      msg(infoStream, String.format(Locale.ROOT,
+                                    "OK [%d docvalues fields; %d BINARY; %d NUMERIC; %d SORTED; %d SORTED_NUMERIC; %d SORTED_SET] [took %.3f sec]",
+                                    status.totalValueFields,
+                                    status.totalBinaryFields,
+                                    status.totalNumericFields,
+                                    status.totalSortedFields,
+                                    status.totalSortedNumericFields,
+                                    status.totalSortedSetFields,
+                                    nsToSec(System.nanoTime()-startNS)));
     } catch (Throwable e) {
       if (failFast) {
         IOUtils.reThrow(e);
@@ -1467,8 +1770,8 @@ public class CheckIndex {
     return status;
   }
   
-  private static void checkBinaryDocValues(String fieldName, AtomicReader reader, BinaryDocValues dv, Bits docsWithField) {
-    for (int i = 0; i < reader.maxDoc(); i++) {
+  private static void checkBinaryDocValues(String fieldName, int maxDoc, BinaryDocValues dv, Bits docsWithField) {
+    for (int i = 0; i < maxDoc; i++) {
       final BytesRef term = dv.get(i);
       assert term.isValid();
       if (docsWithField.get(i) == false && term.length > 0) {
@@ -1477,12 +1780,12 @@ public class CheckIndex {
     }
   }
   
-  private static void checkSortedDocValues(String fieldName, AtomicReader reader, SortedDocValues dv, Bits docsWithField) {
-    checkBinaryDocValues(fieldName, reader, dv, docsWithField);
+  private static void checkSortedDocValues(String fieldName, int maxDoc, SortedDocValues dv, Bits docsWithField) {
+    checkBinaryDocValues(fieldName, maxDoc, dv, docsWithField);
     final int maxOrd = dv.getValueCount()-1;
     FixedBitSet seenOrds = new FixedBitSet(dv.getValueCount());
     int maxOrd2 = -1;
-    for (int i = 0; i < reader.maxDoc(); i++) {
+    for (int i = 0; i < maxDoc; i++) {
       int ord = dv.getOrd(i);
       if (ord == -1) {
         if (docsWithField.get(i)) {
@@ -1517,11 +1820,11 @@ public class CheckIndex {
     }
   }
   
-  private static void checkSortedSetDocValues(String fieldName, AtomicReader reader, SortedSetDocValues dv, Bits docsWithField) {
+  private static void checkSortedSetDocValues(String fieldName, int maxDoc, SortedSetDocValues dv, Bits docsWithField) {
     final long maxOrd = dv.getValueCount()-1;
     LongBitSet seenOrds = new LongBitSet(dv.getValueCount());
     long maxOrd2 = -1;
-    for (int i = 0; i < reader.maxDoc(); i++) {
+    for (int i = 0; i < maxDoc; i++) {
       dv.setDocument(i);
       long lastOrd = -1;
       long ord;
@@ -1587,8 +1890,8 @@ public class CheckIndex {
     }
   }
   
-  private static void checkSortedNumericDocValues(String fieldName, AtomicReader reader, SortedNumericDocValues ndv, Bits docsWithField) {
-    for (int i = 0; i < reader.maxDoc(); i++) {
+  private static void checkSortedNumericDocValues(String fieldName, int maxDoc, SortedNumericDocValues ndv, Bits docsWithField) {
+    for (int i = 0; i < maxDoc; i++) {
       ndv.setDocument(i);
       int count = ndv.count();
       if (docsWithField.get(i)) {
@@ -1611,8 +1914,8 @@ public class CheckIndex {
     }
   }
 
-  private static void checkNumericDocValues(String fieldName, AtomicReader reader, NumericDocValues ndv, Bits docsWithField) {
-    for (int i = 0; i < reader.maxDoc(); i++) {
+  private static void checkNumericDocValues(String fieldName, int maxDoc, NumericDocValues ndv, Bits docsWithField) {
+    for (int i = 0; i < maxDoc; i++) {
       long value = ndv.get(i);
       if (docsWithField.get(i) == false && value != 0) {
         throw new RuntimeException("dv for field: " + fieldName + " is marked missing but has value=" + value + " for doc: " + i);
@@ -1620,76 +1923,36 @@ public class CheckIndex {
     }
   }
   
-  private static void checkDocValues(FieldInfo fi, AtomicReader reader, PrintStream infoStream, DocValuesStatus status) throws Exception {
-    Bits docsWithField = reader.getDocsWithField(fi.name);
+  private static void checkDocValues(FieldInfo fi, DocValuesProducer dvReader, int maxDoc, PrintStream infoStream, DocValuesStatus status) throws Exception {
+    Bits docsWithField = dvReader.getDocsWithField(fi);
     if (docsWithField == null) {
       throw new RuntimeException(fi.name + " docsWithField does not exist");
-    } else if (docsWithField.length() != reader.maxDoc()) {
-      throw new RuntimeException(fi.name + " docsWithField has incorrect length: " + docsWithField.length() + ",expected: " + reader.maxDoc());
+    } else if (docsWithField.length() != maxDoc) {
+      throw new RuntimeException(fi.name + " docsWithField has incorrect length: " + docsWithField.length() + ",expected: " + maxDoc);
     }
     switch(fi.getDocValuesType()) {
       case SORTED:
         status.totalSortedFields++;
-        checkSortedDocValues(fi.name, reader, reader.getSortedDocValues(fi.name), docsWithField);
-        if (reader.getBinaryDocValues(fi.name) != null ||
-            reader.getNumericDocValues(fi.name) != null ||
-            reader.getSortedNumericDocValues(fi.name) != null ||
-            reader.getSortedSetDocValues(fi.name) != null) {
-          throw new RuntimeException(fi.name + " returns multiple docvalues types!");
-        }
+        checkSortedDocValues(fi.name, maxDoc, dvReader.getSorted(fi), docsWithField);
         break;
       case SORTED_NUMERIC:
         status.totalSortedNumericFields++;
-        checkSortedNumericDocValues(fi.name, reader, reader.getSortedNumericDocValues(fi.name), docsWithField);
-        if (reader.getBinaryDocValues(fi.name) != null ||
-            reader.getNumericDocValues(fi.name) != null ||
-            reader.getSortedSetDocValues(fi.name) != null ||
-            reader.getSortedDocValues(fi.name) != null) {
-          throw new RuntimeException(fi.name + " returns multiple docvalues types!");
-        }
+        checkSortedNumericDocValues(fi.name, maxDoc, dvReader.getSortedNumeric(fi), docsWithField);
         break;
       case SORTED_SET:
         status.totalSortedSetFields++;
-        checkSortedSetDocValues(fi.name, reader, reader.getSortedSetDocValues(fi.name), docsWithField);
-        if (reader.getBinaryDocValues(fi.name) != null ||
-            reader.getNumericDocValues(fi.name) != null ||
-            reader.getSortedNumericDocValues(fi.name) != null ||
-            reader.getSortedDocValues(fi.name) != null) {
-          throw new RuntimeException(fi.name + " returns multiple docvalues types!");
-        }
+        checkSortedSetDocValues(fi.name, maxDoc, dvReader.getSortedSet(fi), docsWithField);
         break;
       case BINARY:
         status.totalBinaryFields++;
-        checkBinaryDocValues(fi.name, reader, reader.getBinaryDocValues(fi.name), docsWithField);
-        if (reader.getNumericDocValues(fi.name) != null ||
-            reader.getSortedDocValues(fi.name) != null ||
-            reader.getSortedNumericDocValues(fi.name) != null ||
-            reader.getSortedSetDocValues(fi.name) != null) {
-          throw new RuntimeException(fi.name + " returns multiple docvalues types!");
-        }
+        checkBinaryDocValues(fi.name, maxDoc, dvReader.getBinary(fi), docsWithField);
         break;
       case NUMERIC:
         status.totalNumericFields++;
-        checkNumericDocValues(fi.name, reader, reader.getNumericDocValues(fi.name), docsWithField);
-        if (reader.getBinaryDocValues(fi.name) != null ||
-            reader.getSortedDocValues(fi.name) != null ||
-            reader.getSortedNumericDocValues(fi.name) != null ||
-            reader.getSortedSetDocValues(fi.name) != null) {
-          throw new RuntimeException(fi.name + " returns multiple docvalues types!");
-        }
+        checkNumericDocValues(fi.name, maxDoc, dvReader.getNumeric(fi), docsWithField);
         break;
       default:
         throw new AssertionError();
-    }
-  }
-  
-  private static void checkNorms(FieldInfo fi, AtomicReader reader, PrintStream infoStream) throws IOException {
-    switch(fi.getNormType()) {
-      case NUMERIC:
-        checkNumericDocValues(fi.name, reader, reader.getNormValues(fi.name), new Bits.MatchAllBits(reader.maxDoc()));
-        break;
-      default:
-        throw new AssertionError("wtf: " + fi.getNormType());
     }
   }
 
@@ -1697,7 +1960,7 @@ public class CheckIndex {
    * Test term vectors.
    * @lucene.experimental
    */
-  public static Status.TermVectorStatus testTermVectors(AtomicReader reader, PrintStream infoStream) throws IOException {
+  public static Status.TermVectorStatus testTermVectors(CodecReader reader, PrintStream infoStream) throws IOException {
     return testTermVectors(reader, infoStream, false, false, false);
   }
 
@@ -1705,158 +1968,130 @@ public class CheckIndex {
    * Test term vectors.
    * @lucene.experimental
    */
-  public static Status.TermVectorStatus testTermVectors(AtomicReader reader, PrintStream infoStream, boolean verbose, boolean crossCheckTermVectors, boolean failFast) throws IOException {
+  public static Status.TermVectorStatus testTermVectors(CodecReader reader, PrintStream infoStream, boolean verbose, boolean crossCheckTermVectors, boolean failFast) throws IOException {
+    long startNS = System.nanoTime();
     final Status.TermVectorStatus status = new Status.TermVectorStatus();
     final FieldInfos fieldInfos = reader.getFieldInfos();
-    final Bits onlyDocIsDeleted = new FixedBitSet(1);
     
     try {
       if (infoStream != null) {
         infoStream.print("    test: term vectors........");
       }
 
-      DocsEnum docs = null;
-      DocsAndPositionsEnum postings = null;
+      PostingsEnum postings = null;
 
       // Only used if crossCheckTermVectors is true:
-      DocsEnum postingsDocs = null;
-      DocsAndPositionsEnum postingsPostings = null;
+      PostingsEnum postingsDocs = null;
 
       final Bits liveDocs = reader.getLiveDocs();
 
       final Fields postingsFields;
       // TODO: testTermsIndex
       if (crossCheckTermVectors) {
-        postingsFields = reader.fields();
+        postingsFields = reader.getPostingsReader().getMergeInstance();
       } else {
         postingsFields = null;
       }
 
-      TermsEnum termsEnum = null;
-      TermsEnum postingsTermsEnum = null;
+      TermVectorsReader vectorsReader = reader.getTermVectorsReader();
 
-      for (int j = 0; j < reader.maxDoc(); ++j) {
-        // Intentionally pull/visit (but don't count in
-        // stats) deleted documents to make sure they too
-        // are not corrupt:
-        Fields tfv = reader.getTermVectors(j);
-
-        // TODO: can we make a IS(FIR) that searches just
-        // this term vector... to pass for searcher?
-
-        if (tfv != null) {
-          // First run with no deletions:
-          checkFields(tfv, null, 1, fieldInfos, false, true, infoStream, verbose);
-
-          // Again, with the one doc deleted:
-          checkFields(tfv, onlyDocIsDeleted, 1, fieldInfos, false, true, infoStream, verbose);
-
-          // Only agg stats if the doc is live:
-          final boolean doStats = liveDocs == null || liveDocs.get(j);
-
-          if (doStats) {
-            status.docCount++;
-          }
-
-          for(String field : tfv) {
+      if (vectorsReader != null) {
+        vectorsReader = vectorsReader.getMergeInstance();
+        for (int j = 0; j < reader.maxDoc(); ++j) {
+          // Intentionally pull/visit (but don't count in
+          // stats) deleted documents to make sure they too
+          // are not corrupt:
+          Fields tfv = vectorsReader.get(j);
+          
+          // TODO: can we make a IS(FIR) that searches just
+          // this term vector... to pass for searcher?
+          
+          if (tfv != null) {
+            // First run with no deletions:
+            checkFields(tfv, null, 1, fieldInfos, false, true, infoStream, verbose);
+            
+            // Only agg stats if the doc is live:
+            final boolean doStats = liveDocs == null || liveDocs.get(j);
+            
             if (doStats) {
-              status.totVectors++;
+              status.docCount++;
             }
-
-            // Make sure FieldInfo thinks this field is vector'd:
-            final FieldInfo fieldInfo = fieldInfos.fieldInfo(field);
-            if (!fieldInfo.hasVectors()) {
-              throw new RuntimeException("docID=" + j + " has term vectors for field=" + field + " but FieldInfo has storeTermVector=false");
-            }
-
-            if (crossCheckTermVectors) {
-              Terms terms = tfv.terms(field);
-              termsEnum = terms.iterator(termsEnum);
-              final boolean postingsHasFreq = fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS) >= 0;
-              final boolean postingsHasPayload = fieldInfo.hasPayloads();
-              final boolean vectorsHasPayload = terms.hasPayloads();
-
-              Terms postingsTerms = postingsFields.terms(field);
-              if (postingsTerms == null) {
-                throw new RuntimeException("vector field=" + field + " does not exist in postings; doc=" + j);
+            
+            for(String field : tfv) {
+              if (doStats) {
+                status.totVectors++;
               }
-              postingsTermsEnum = postingsTerms.iterator(postingsTermsEnum);
               
-              final boolean hasProx = terms.hasOffsets() || terms.hasPositions();
-              BytesRef term = null;
-              while ((term = termsEnum.next()) != null) {
+              // Make sure FieldInfo thinks this field is vector'd:
+              final FieldInfo fieldInfo = fieldInfos.fieldInfo(field);
+              if (!fieldInfo.hasVectors()) {
+                throw new RuntimeException("docID=" + j + " has term vectors for field=" + field + " but FieldInfo has storeTermVector=false");
+              }
+              
+              if (crossCheckTermVectors) {
+                Terms terms = tfv.terms(field);
+                TermsEnum termsEnum = terms.iterator();
+                final boolean postingsHasFreq = fieldInfo.getIndexOptions().compareTo(IndexOptions.DOCS_AND_FREQS) >= 0;
+                final boolean postingsHasPayload = fieldInfo.hasPayloads();
+                final boolean vectorsHasPayload = terms.hasPayloads();
+                
+                Terms postingsTerms = postingsFields.terms(field);
+                if (postingsTerms == null) {
+                  throw new RuntimeException("vector field=" + field + " does not exist in postings; doc=" + j);
+                }
+                TermsEnum postingsTermsEnum = postingsTerms.iterator();
+                
+                final boolean hasProx = terms.hasOffsets() || terms.hasPositions();
+                BytesRef term = null;
+                while ((term = termsEnum.next()) != null) {
 
-                if (hasProx) {
-                  postings = termsEnum.docsAndPositions(null, postings);
+                  // This is the term vectors:
+                  postings = termsEnum.postings(postings, PostingsEnum.ALL);
                   assert postings != null;
-                  docs = null;
-                } else {
-                  docs = termsEnum.docs(null, docs);
-                  assert docs != null;
-                  postings = null;
-                }
 
-                final DocsEnum docs2;
-                if (hasProx) {
-                  assert postings != null;
-                  docs2 = postings;
-                } else {
-                  assert docs != null;
-                  docs2 = docs;
-                }
-
-                final DocsEnum postingsDocs2;
-                if (!postingsTermsEnum.seekExact(term)) {
-                  throw new RuntimeException("vector term=" + term + " field=" + field + " does not exist in postings; doc=" + j);
-                }
-                postingsPostings = postingsTermsEnum.docsAndPositions(null, postingsPostings);
-                if (postingsPostings == null) {
-                  // Term vectors were indexed w/ pos but postings were not
-                  postingsDocs = postingsTermsEnum.docs(null, postingsDocs);
-                  if (postingsDocs == null) {
+                  if (!postingsTermsEnum.seekExact(term)) {
                     throw new RuntimeException("vector term=" + term + " field=" + field + " does not exist in postings; doc=" + j);
                   }
-                }
 
-                if (postingsPostings != null) {
-                  postingsDocs2 = postingsPostings;
-                } else {
-                  postingsDocs2 = postingsDocs;
-                }
+                  // This is the inverted index ("real" postings):
+                  postingsDocs = postingsTermsEnum.postings(postingsDocs, PostingsEnum.ALL);
+                  assert postingsDocs != null;
+
                   
-                final int advanceDoc = postingsDocs2.advance(j);
-                if (advanceDoc != j) {
-                  throw new RuntimeException("vector term=" + term + " field=" + field + ": doc=" + j + " was not found in postings (got: " + advanceDoc + ")");
-                }
-
-                final int doc = docs2.nextDoc();
-                  
-                if (doc != 0) {
-                  throw new RuntimeException("vector for doc " + j + " didn't return docID=0: got docID=" + doc);
-                }
-
-                if (postingsHasFreq) {
-                  final int tf = docs2.freq();
-                  if (postingsHasFreq && postingsDocs2.freq() != tf) {
-                    throw new RuntimeException("vector term=" + term + " field=" + field + " doc=" + j + ": freq=" + tf + " differs from postings freq=" + postingsDocs2.freq());
+                  final int advanceDoc = postingsDocs.advance(j);
+                  if (advanceDoc != j) {
+                    throw new RuntimeException("vector term=" + term + " field=" + field + ": doc=" + j + " was not found in postings (got: " + advanceDoc + ")");
                   }
-                
-                  if (hasProx) {
-                    for (int i = 0; i < tf; i++) {
-                      int pos = postings.nextPosition();
-                      if (postingsPostings != null) {
-                        int postingsPos = postingsPostings.nextPosition();
-                        if (terms.hasPositions() && pos != postingsPos) {
-                          throw new RuntimeException("vector term=" + term + " field=" + field + " doc=" + j + ": pos=" + pos + " differs from postings pos=" + postingsPos);
-                        }
-                      }
+                  
+                  final int doc = postings.nextDoc();
+                  
+                  if (doc != 0) {
+                    throw new RuntimeException("vector for doc " + j + " didn't return docID=0: got docID=" + doc);
+                  }
+                  
+                  if (postingsHasFreq) {
+                    final int tf = postings.freq();
+                    if (postingsHasFreq && postingsDocs.freq() != tf) {
+                      throw new RuntimeException("vector term=" + term + " field=" + field + " doc=" + j + ": freq=" + tf + " differs from postings freq=" + postingsDocs.freq());
+                    }
 
-                      // Call the methods to at least make
-                      // sure they don't throw exc:
-                      final int startOffset = postings.startOffset();
-                      final int endOffset = postings.endOffset();
-                      // TODO: these are too anal...?
-                      /*
+                    // Term vectors has prox?
+                    if (hasProx) {
+                      for (int i = 0; i < tf; i++) {
+                        int pos = postings.nextPosition();
+                        if (postingsTerms.hasPositions()) {
+                          int postingsPos = postingsDocs.nextPosition();
+                          if (terms.hasPositions() && pos != postingsPos) {
+                            throw new RuntimeException("vector term=" + term + " field=" + field + " doc=" + j + ": pos=" + pos + " differs from postings pos=" + postingsPos);
+                          }
+                        }
+                        
+                        // Call the methods to at least make
+                        // sure they don't throw exc:
+                        final int startOffset = postings.startOffset();
+                        final int endOffset = postings.endOffset();
+                        // TODO: these are too anal...?
+                        /*
                         if (endOffset < startOffset) {
                         throw new RuntimeException("vector startOffset=" + startOffset + " is > endOffset=" + endOffset);
                         }
@@ -1864,44 +2099,43 @@ public class CheckIndex {
                         throw new RuntimeException("vector startOffset=" + startOffset + " is < prior startOffset=" + lastStartOffset);
                         }
                         lastStartOffset = startOffset;
-                      */
+                         */
 
-                      if (postingsPostings != null) {
-                        final int postingsStartOffset = postingsPostings.startOffset();
+                        if (startOffset != -1 && endOffset != -1 && postingsTerms.hasOffsets()) {
+                          int postingsStartOffset = postingsDocs.startOffset();
+                          int postingsEndOffset = postingsDocs.endOffset();
+                          if (startOffset != postingsStartOffset) {
+                            throw new RuntimeException("vector term=" + term + " field=" + field + " doc=" + j + ": startOffset=" + startOffset + " differs from postings startOffset=" + postingsStartOffset);
+                          }
+                          if (endOffset != postingsEndOffset) {
+                            throw new RuntimeException("vector term=" + term + " field=" + field + " doc=" + j + ": endOffset=" + endOffset + " differs from postings endOffset=" + postingsEndOffset);
+                          }
+                        }
 
-                        final int postingsEndOffset = postingsPostings.endOffset();
-                        if (startOffset != -1 && postingsStartOffset != -1 && startOffset != postingsStartOffset) {
-                          throw new RuntimeException("vector term=" + term + " field=" + field + " doc=" + j + ": startOffset=" + startOffset + " differs from postings startOffset=" + postingsStartOffset);
-                        }
-                        if (endOffset != -1 && postingsEndOffset != -1 && endOffset != postingsEndOffset) {
-                          throw new RuntimeException("vector term=" + term + " field=" + field + " doc=" + j + ": endOffset=" + endOffset + " differs from postings endOffset=" + postingsEndOffset);
-                        }
-                      }
-                      
-                      BytesRef payload = postings.getPayload();
-           
-                      if (payload != null) {
-                        assert vectorsHasPayload;
-                      }
-                      
-                      if (postingsHasPayload && vectorsHasPayload) {
-                        assert postingsPostings != null;
+                        BytesRef payload = postings.getPayload();
                         
-                        if (payload == null) {
-                          // we have payloads, but not at this position. 
-                          // postings has payloads too, it should not have one at this position
-                          if (postingsPostings.getPayload() != null) {
-                            throw new RuntimeException("vector term=" + term + " field=" + field + " doc=" + j + " has no payload but postings does: " + postingsPostings.getPayload());
-                          }
-                        } else {
-                          // we have payloads, and one at this position
-                          // postings should also have one at this position, with the same bytes.
-                          if (postingsPostings.getPayload() == null) {
-                            throw new RuntimeException("vector term=" + term + " field=" + field + " doc=" + j + " has payload=" + payload + " but postings does not.");
-                          }
-                          BytesRef postingsPayload = postingsPostings.getPayload();
-                          if (!payload.equals(postingsPayload)) {
-                            throw new RuntimeException("vector term=" + term + " field=" + field + " doc=" + j + " has payload=" + payload + " but differs from postings payload=" + postingsPayload);
+                        if (payload != null) {
+                          assert vectorsHasPayload;
+                        }
+                        
+                        if (postingsHasPayload && vectorsHasPayload) {
+                          
+                          if (payload == null) {
+                            // we have payloads, but not at this position. 
+                            // postings has payloads too, it should not have one at this position
+                            if (postingsDocs.getPayload() != null) {
+                              throw new RuntimeException("vector term=" + term + " field=" + field + " doc=" + j + " has no payload but postings does: " + postingsDocs.getPayload());
+                            }
+                          } else {
+                            // we have payloads, and one at this position
+                            // postings should also have one at this position, with the same bytes.
+                            if (postingsDocs.getPayload() == null) {
+                              throw new RuntimeException("vector term=" + term + " field=" + field + " doc=" + j + " has payload=" + payload + " but postings does not.");
+                            }
+                            BytesRef postingsPayload = postingsDocs.getPayload();
+                            if (!payload.equals(postingsPayload)) {
+                              throw new RuntimeException("vector term=" + term + " field=" + field + " doc=" + j + " has payload=" + payload + " but differs from postings payload=" + postingsPayload);
+                            }
                           }
                         }
                       }
@@ -1914,8 +2148,8 @@ public class CheckIndex {
         }
       }
       float vectorAvg = status.docCount == 0 ? 0 : status.totVectors / (float)status.docCount;
-      msg(infoStream, "OK [" + status.totVectors + " total vector count; avg " + 
-          NumberFormat.getInstance(Locale.ROOT).format(vectorAvg) + " term/freq vector fields per doc]");
+      msg(infoStream, String.format(Locale.ROOT, "OK [%d total term vector count; avg %.1f term/freq vector fields per doc] [took %.3f sec]",
+                                    status.totVectors, vectorAvg, nsToSec(System.nanoTime() - startNS)));
     } catch (Throwable e) {
       if (failFast) {
         IOUtils.reThrow(e);
@@ -1940,12 +2174,11 @@ public class CheckIndex {
    *  new segments file into the index, effectively removing
    *  all documents in broken segments from the index.
    *  BE CAREFUL.
-   *
-   * <p><b>WARNING</b>: Make sure you only call this when the
-   *  index is not opened  by any writer. */
-  public void fixIndex(Status result) throws IOException {
+   */
+  public void exorciseIndex(Status result) throws IOException {
+    ensureOpen();
     if (result.partial)
-      throw new IllegalArgumentException("can only fix an index that was fully checked (this status checked a subset of segments)");
+      throw new IllegalArgumentException("can only exorcise an index that was fully checked (this status checked a subset of segments)");
     result.newSegments.changed();
     result.newSegments.commit(result.dir);
   }
@@ -1957,36 +2190,40 @@ public class CheckIndex {
     return true;
   }
 
-  private static boolean assertsOn() {
+  /**
+   * Check whether asserts are enabled or not.
+   * @return true iff asserts are enabled
+   */
+  public static boolean assertsOn() {
     assert testAsserts();
     return assertsOn;
   }
 
-  /** Command-line interface to check and fix an index.
+  /** Command-line interface to check and exorcise corrupt segments from an index.
 
     <p>
     Run it like this:
     <pre>
-    java -ea:org.apache.lucene... org.apache.lucene.index.CheckIndex pathToIndex [-fix] [-verbose] [-segment X] [-segment Y]
+    java -ea:org.apache.lucene... org.apache.lucene.index.CheckIndex pathToIndex [-exorcise] [-verbose] [-segment X] [-segment Y]
     </pre>
     <ul>
-    <li><code>-fix</code>: actually write a new segments_N file, removing any problematic segments
+    <li><code>-exorcise</code>: actually write a new segments_N file, removing any problematic segments. *LOSES DATA*
 
     <li><code>-segment X</code>: only check the specified
     segment(s).  This can be specified multiple times,
     to check more than one segment, eg <code>-segment _2
-    -segment _a</code>.  You can't use this with the -fix
+    -segment _a</code>.  You can't use this with the -exorcise
     option.
     </ul>
 
-    <p><b>WARNING</b>: <code>-fix</code> should only be used on an emergency basis as it will cause
+    <p><b>WARNING</b>: <code>-exorcise</code> should only be used on an emergency basis as it will cause
                        documents (perhaps many) to be permanently removed from the index.  Always make
                        a backup copy of your index before running this!  Do not run this tool on an index
                        that is actively being written to.  You have been warned!
 
-    <p>                Run without -fix, this tool will open the index, report version information
-                       and report any exceptions it hits and what action it would take if -fix were
-                       specified.  With -fix, this tool will remove any segments that have issues and
+    <p>                Run without -exorcise, this tool will open the index, report version information
+                       and report any exceptions it hits and what action it would take if -exorcise were
+                       specified.  With -exorcise, this tool will remove any segments that have issues and
                        write a new segments_N file.  This means all documents contained in the affected
                        segments will be removed.
 
@@ -1995,132 +2232,209 @@ public class CheckIndex {
                        corruption, else 0.
    */
   public static void main(String[] args) throws IOException, InterruptedException {
+    int exitCode = doMain(args);
+    System.exit(exitCode);
+  }
 
-    boolean doFix = false;
+  /**
+   * Run-time configuration options for CheckIndex commands.
+   */
+  public static class Options {
+    boolean doExorcise = false;
     boolean doCrossCheckTermVectors = false;
     boolean verbose = false;
+    boolean doChecksumsOnly = false;
     List<String> onlySegments = new ArrayList<>();
     String indexPath = null;
     String dirImpl = null;
-    int i = 0;
-    while(i < args.length) {
-      String arg = args[i];
-      if ("-fix".equals(arg)) {
-        doFix = true;
-      } else if ("-crossCheckTermVectors".equals(arg)) {
-        doCrossCheckTermVectors = true;
-      } else if (arg.equals("-verbose")) {
-        verbose = true;
-      } else if (arg.equals("-segment")) {
-        if (i == args.length-1) {
-          System.out.println("ERROR: missing name for -segment option");
-          System.exit(1);
-        }
-        i++;
-        onlySegments.add(args[i]);
-      } else if ("-dir-impl".equals(arg)) {
-        if (i == args.length - 1) {
-          System.out.println("ERROR: missing value for -dir-impl option");
-          System.exit(1);
-        }
-        i++;
-        dirImpl = args[i];
-      } else {
-        if (indexPath != null) {
-          System.out.println("ERROR: unexpected extra argument '" + args[i] + "'");
-          System.exit(1);
-        }
-        indexPath = args[i];
-      }
-      i++;
+    PrintStream out = null;
+
+    /** Sole constructor. */
+    public Options() {}
+
+    /**
+     * Get the name of the FSDirectory implementation class to use.
+     */
+    public String getDirImpl() {
+      return dirImpl;
     }
 
-    if (indexPath == null) {
-      System.out.println("\nERROR: index path not specified");
-      System.out.println("\nUsage: java org.apache.lucene.index.CheckIndex pathToIndex [-fix] [-crossCheckTermVectors] [-segment X] [-segment Y] [-dir-impl X]\n" +
-                         "\n" +
-                         "  -fix: actually write a new segments_N file, removing any problematic segments\n" +
-                         "  -crossCheckTermVectors: verifies that term vectors match postings; THIS IS VERY SLOW!\n" +
-                         "  -codec X: when fixing, codec to write the new segments_N file with\n" +
-                         "  -verbose: print additional details\n" +
-                         "  -segment X: only check the specified segments.  This can be specified multiple\n" + 
-                         "              times, to check more than one segment, eg '-segment _2 -segment _a'.\n" +
-                         "              You can't use this with the -fix option\n" +
-                         "  -dir-impl X: use a specific " + FSDirectory.class.getSimpleName() + " implementation. " +
-                         "If no package is specified the " + FSDirectory.class.getPackage().getName() + " package will be used.\n" +
-                         "\n" +
-                         "**WARNING**: -fix should only be used on an emergency basis as it will cause\n" +
-                         "documents (perhaps many) to be permanently removed from the index.  Always make\n" +
-                         "a backup copy of your index before running this!  Do not run this tool on an index\n" +
-                         "that is actively being written to.  You have been warned!\n" +
-                         "\n" +
-                         "Run without -fix, this tool will open the index, report version information\n" +
-                         "and report any exceptions it hits and what action it would take if -fix were\n" +
-                         "specified.  With -fix, this tool will remove any segments that have issues and\n" + 
-                         "write a new segments_N file.  This means all documents contained in the affected\n" +
-                         "segments will be removed.\n" +
-                         "\n" +
-                         "This tool exits with exit code 1 if the index cannot be opened or has any\n" +
-                         "corruption, else 0.\n");
-      System.exit(1);
+    /**
+     * Get the directory containing the index.
+     */
+    public String getIndexPath() {
+      return indexPath;
+    }
+
+    /**
+     * Set the PrintStream to use for reporting results.
+     */
+    public void setOut(PrintStream out) {
+      this.out = out;
+    }
+  }
+
+  // actual main: returns exit code instead of terminating JVM (for easy testing)
+  @SuppressForbidden(reason = "System.out required: command line tool")
+  private static int doMain(String args[]) throws IOException, InterruptedException {
+    Options opts;
+    try {
+      opts = parseOptions(args);
+    } catch (IllegalArgumentException e) {
+      System.out.println(e.getMessage());
+      return 1;
     }
 
     if (!assertsOn())
       System.out.println("\nNOTE: testing will be more thorough if you run java with '-ea:org.apache.lucene...', so assertions are enabled");
 
-    if (onlySegments.size() == 0)
-      onlySegments = null;
-    else if (doFix) {
-      System.out.println("ERROR: cannot specify both -fix and -segment");
-      System.exit(1);
-    }
-
-    System.out.println("\nOpening index @ " + indexPath + "\n");
-    Directory dir = null;
+    System.out.println("\nOpening index @ " + opts.indexPath + "\n");
+    Directory directory = null;
+    Path path = Paths.get(opts.indexPath);
     try {
-      if (dirImpl == null) {
-        dir = FSDirectory.open(new File(indexPath));
+      if (opts.dirImpl == null) {
+        directory = FSDirectory.open(path);
       } else {
-        dir = CommandLineUtil.newFSDirectory(dirImpl, new File(indexPath));
+        directory = CommandLineUtil.newFSDirectory(opts.dirImpl, path);
       }
     } catch (Throwable t) {
-      System.out.println("ERROR: could not open directory \"" + indexPath + "\"; exiting");
+      System.out.println("ERROR: could not open directory \"" + opts.indexPath + "\"; exiting");
       t.printStackTrace(System.out);
-      System.exit(1);
+      return 1;
     }
 
-    CheckIndex checker = new CheckIndex(dir);
-    checker.setCrossCheckTermVectors(doCrossCheckTermVectors);
-    checker.setInfoStream(System.out, verbose);
+    try (Directory dir = directory;
+         CheckIndex checker = new CheckIndex(dir)) {
+      opts.out = System.out;
+      return checker.doCheck(opts);
+    }
+  }
 
-    Status result = checker.checkIndex(onlySegments);
+  /**
+   * Parse command line args into fields
+   * @param args The command line arguments
+   * @return An Options struct
+   * @throws IllegalArgumentException if any of the CLI args are invalid
+   */
+  public static Options parseOptions(String[] args) {
+    Options opts = new Options();
+
+    int i = 0;
+    while(i < args.length) {
+      String arg = args[i];
+      if ("-fast".equals(arg)) {
+        opts.doChecksumsOnly = true;
+      } else if ("-exorcise".equals(arg)) {
+        opts.doExorcise = true;
+      } else if ("-crossCheckTermVectors".equals(arg)) {
+        opts.doCrossCheckTermVectors = true;
+      } else if (arg.equals("-verbose")) {
+        opts.verbose = true;
+      } else if (arg.equals("-segment")) {
+        if (i == args.length-1) {
+          throw new IllegalArgumentException("ERROR: missing name for -segment option");
+        }
+        i++;
+        opts.onlySegments.add(args[i]);
+      } else if ("-dir-impl".equals(arg)) {
+        if (i == args.length - 1) {
+          throw new IllegalArgumentException("ERROR: missing value for -dir-impl option");
+        }
+        i++;
+        opts.dirImpl = args[i];
+      } else {
+        if (opts.indexPath != null) {
+          throw new IllegalArgumentException("ERROR: unexpected extra argument '" + args[i] + "'");
+        }
+        opts.indexPath = args[i];
+      }
+      i++;
+    }
+
+    if (opts.indexPath == null) {
+      throw new IllegalArgumentException("\nERROR: index path not specified" +
+                         "\nUsage: java org.apache.lucene.index.CheckIndex pathToIndex [-exorcise] [-crossCheckTermVectors] [-segment X] [-segment Y] [-dir-impl X]\n" +
+                         "\n" +
+                         "  -exorcise: actually write a new segments_N file, removing any problematic segments\n" +
+                         "  -fast: just verify file checksums, omitting logical integrity checks\n" + 
+                         "  -crossCheckTermVectors: verifies that term vectors match postings; THIS IS VERY SLOW!\n" +
+                         "  -codec X: when exorcising, codec to write the new segments_N file with\n" +
+                         "  -verbose: print additional details\n" +
+                         "  -segment X: only check the specified segments.  This can be specified multiple\n" + 
+                         "              times, to check more than one segment, eg '-segment _2 -segment _a'.\n" +
+                         "              You can't use this with the -exorcise option\n" +
+                         "  -dir-impl X: use a specific " + FSDirectory.class.getSimpleName() + " implementation. " +
+                         "If no package is specified the " + FSDirectory.class.getPackage().getName() + " package will be used.\n" +
+                         "\n" +
+                         "**WARNING**: -exorcise *LOSES DATA*. This should only be used on an emergency basis as it will cause\n" +
+                         "documents (perhaps many) to be permanently removed from the index.  Always make\n" +
+                         "a backup copy of your index before running this!  Do not run this tool on an index\n" +
+                         "that is actively being written to.  You have been warned!\n" +
+                         "\n" +
+                         "Run without -exorcise, this tool will open the index, report version information\n" +
+                         "and report any exceptions it hits and what action it would take if -exorcise were\n" +
+                         "specified.  With -exorcise, this tool will remove any segments that have issues and\n" + 
+                         "write a new segments_N file.  This means all documents contained in the affected\n" +
+                         "segments will be removed.\n" +
+                         "\n" +
+                         "This tool exits with exit code 1 if the index cannot be opened or has any\n" +
+                         "corruption, else 0.\n");
+    }
+
+    if (opts.onlySegments.size() == 0) {
+      opts.onlySegments = null;
+    } else if (opts.doExorcise) {
+      throw new IllegalArgumentException("ERROR: cannot specify both -exorcise and -segment");
+    }
+    
+    if (opts.doChecksumsOnly && opts.doCrossCheckTermVectors) {
+      throw new IllegalArgumentException("ERROR: cannot specify both -fast and -crossCheckTermVectors");
+    }
+
+    return opts;
+  }
+
+  /**
+   * Actually perform the index check
+   * @param opts The options to use for this check
+   * @return 0 iff the index is clean, 1 otherwise
+   */
+  public int doCheck(Options opts) throws IOException, InterruptedException {
+    setCrossCheckTermVectors(opts.doCrossCheckTermVectors);
+    setChecksumsOnly(opts.doChecksumsOnly);
+    setInfoStream(opts.out, opts.verbose);
+
+    Status result = checkIndex(opts.onlySegments);
     if (result.missingSegments) {
-      System.exit(1);
+      return 1;
     }
 
     if (!result.clean) {
-      if (!doFix) {
-        System.out.println("WARNING: would write new segments file, and " + result.totLoseDocCount + " documents would be lost, if -fix were specified\n");
+      if (!opts.doExorcise) {
+        opts.out.println("WARNING: would write new segments file, and " + result.totLoseDocCount + " documents would be lost, if -exorcise were specified\n");
       } else {
-        System.out.println("WARNING: " + result.totLoseDocCount + " documents will be lost\n");
-        System.out.println("NOTE: will write new segments file in 5 seconds; this will remove " + result.totLoseDocCount + " docs from the index. THIS IS YOUR LAST CHANCE TO CTRL+C!");
+        opts.out.println("WARNING: " + result.totLoseDocCount + " documents will be lost\n");
+        opts.out.println("NOTE: will write new segments file in 5 seconds; this will remove " + result.totLoseDocCount + " docs from the index. YOU WILL LOSE DATA. THIS IS YOUR LAST CHANCE TO CTRL+C!");
         for(int s=0;s<5;s++) {
           Thread.sleep(1000);
-          System.out.println("  " + (5-s) + "...");
+          opts.out.println("  " + (5-s) + "...");
         }
-        System.out.println("Writing...");
-        checker.fixIndex(result);
-        System.out.println("OK");
-        System.out.println("Wrote new segments file \"" + result.newSegments.getSegmentsFileName() + "\"");
+        opts.out.println("Writing...");
+        exorciseIndex(result);
+        opts.out.println("OK");
+        opts.out.println("Wrote new segments file \"" + result.newSegments.getSegmentsFileName() + "\"");
       }
     }
-    System.out.println("");
+    opts.out.println("");
 
-    final int exitCode;
-    if (result.clean == true)
-      exitCode = 0;
-    else
-      exitCode = 1;
-    System.exit(exitCode);
+    if (result.clean == true) {
+      return 0;
+    } else {
+      return 1;
+    }
+  }
+
+  private static double nsToSec(long ns) {
+    return ns/1000000000.0;
   }
 }

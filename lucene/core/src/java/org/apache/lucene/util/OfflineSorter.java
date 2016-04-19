@@ -1,5 +1,3 @@
-package org.apache.lucene.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
+
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -25,12 +25,11 @@ import java.io.DataInputStream;
 import java.io.DataOutput;
 import java.io.DataOutputStream;
 import java.io.EOFException;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -44,11 +43,14 @@ import java.util.Locale;
  *   <li>exactly the above count of bytes for the sequence to be sorted.
  * </ul>
  * 
- * @see #sort(File, File)
+ * @see #sort(Path, Path)
  * @lucene.experimental
  * @lucene.internal
  */
 public final class OfflineSorter {
+
+  private static Path DEFAULT_TEMP_DIR;
+
   /** Convenience constant for megabytes */
   public final static long MB = 1024 * 1024;
   /** Convenience constant for gigabytes */
@@ -166,7 +168,7 @@ public final class OfflineSorter {
   }
 
   private final BufferSize ramBufferSize;
-  private final File tempDirectory;
+  private final Path tempDirectory;
   
   private final Counter bufferBytesUsed = Counter.newCounter();
   private final BytesRefArray buffer = new BytesRefArray(bufferBytesUsed);
@@ -180,27 +182,27 @@ public final class OfflineSorter {
   /**
    * Defaults constructor.
    * 
-   * @see #defaultTempDir()
+   * @see #getDefaultTempDir()
    * @see BufferSize#automatic()
    */
   public OfflineSorter() throws IOException {
-    this(DEFAULT_COMPARATOR, BufferSize.automatic(), defaultTempDir(), MAX_TEMPFILES);
+    this(DEFAULT_COMPARATOR, BufferSize.automatic(), getDefaultTempDir(), MAX_TEMPFILES);
   }
   
   /**
    * Defaults constructor with a custom comparator.
    * 
-   * @see #defaultTempDir()
+   * @see #getDefaultTempDir()
    * @see BufferSize#automatic()
    */
   public OfflineSorter(Comparator<BytesRef> comparator) throws IOException {
-    this(comparator, BufferSize.automatic(), defaultTempDir(), MAX_TEMPFILES);
+    this(comparator, BufferSize.automatic(), getDefaultTempDir(), MAX_TEMPFILES);
   }
 
   /**
    * All-details constructor.
    */
-  public OfflineSorter(Comparator<BytesRef> comparator, BufferSize ramBufferSize, File tempDirectory, int maxTempfiles) {
+  public OfflineSorter(Comparator<BytesRef> comparator, BufferSize ramBufferSize, Path tempDirectory, int maxTempfiles) {
     if (ramBufferSize.bytes < ABSOLUTE_MIN_SORT_BUFFER_SIZE) {
       throw new IllegalArgumentException(MIN_BUFFER_SIZE_MSG + ": " + ramBufferSize.bytes);
     }
@@ -219,14 +221,16 @@ public final class OfflineSorter {
    * Sort input to output, explicit hint for the buffer size. The amount of allocated
    * memory may deviate from the hint (may be smaller or larger).  
    */
-  public SortInfo sort(File input, File output) throws IOException {
+  public SortInfo sort(Path input, Path output) throws IOException {
     sortInfo = new SortInfo();
     sortInfo.totalTime = System.currentTimeMillis();
 
-    output.delete();
+    // NOTE: don't remove output here: its existence (often created by the caller
+    // up above using Files.createTempFile) prevents another concurrent caller
+    // of this API (from a different thread) from incorrectly re-using this file name
 
-    ArrayList<File> merges = new ArrayList<>();
-    boolean success2 = false;
+    ArrayList<Path> merges = new ArrayList<>();
+    boolean success3 = false;
     try {
       ByteSequencesReader is = new ByteSequencesReader(input);
       boolean success = false;
@@ -239,12 +243,16 @@ public final class OfflineSorter {
 
           // Handle intermediate merges.
           if (merges.size() == maxTempFiles) {
-            File intermediate = File.createTempFile("sort", "intermediate", tempDirectory);
+            Path intermediate = Files.createTempFile(tempDirectory, "sort", "intermediate");
+            boolean success2 = false;
             try {
               mergePartitions(merges, intermediate);
+              success2 = true;
             } finally {
-              for (File file : merges) {
-                file.delete();
+              if (success2) {
+                IOUtils.deleteFilesIfExist(merges);
+              } else {
+                IOUtils.deleteFilesIgnoringExceptions(merges);
               }
               merges.clear();
               merges.add(intermediate);
@@ -254,31 +262,27 @@ public final class OfflineSorter {
         }
         success = true;
       } finally {
-        if (success)
+        if (success) {
           IOUtils.close(is);
-        else
+        } else {
           IOUtils.closeWhileHandlingException(is);
+        }
       }
 
       // One partition, try to rename or copy if unsuccessful.
       if (merges.size() == 1) {     
-        File single = merges.get(0);
-        // If simple rename doesn't work this means the output is
-        // on a different volume or something. Copy the input then.
-        if (!single.renameTo(output)) {
-          copy(single, output);
-        }
+        Files.move(merges.get(0), output, StandardCopyOption.REPLACE_EXISTING);
       } else { 
         // otherwise merge the partitions with a priority queue.
         mergePartitions(merges, output);
       }
-      success2 = true;
+      success3 = true;
     } finally {
-      for (File file : merges) {
-        file.delete();
-      }
-      if (!success2) {
-        output.delete();
+      if (success3) {
+        IOUtils.deleteFilesIfExist(merges);
+      } else {
+        IOUtils.deleteFilesIgnoringExceptions(merges);
+        IOUtils.deleteFilesIgnoringExceptions(output);
       }
     }
 
@@ -286,47 +290,37 @@ public final class OfflineSorter {
     return sortInfo;
   }
 
+  /** Used by test framework */
+  static void setDefaultTempDir(Path tempDir) {
+    DEFAULT_TEMP_DIR = tempDir;
+  }
+
   /**
    * Returns the default temporary directory. By default, java.io.tmpdir. If not accessible
    * or not available, an IOException is thrown
    */
-  public static File defaultTempDir() throws IOException {
-    String tempDirPath = System.getProperty("java.io.tmpdir");
-    if (tempDirPath == null) 
-      throw new IOException("Java has no temporary folder property (java.io.tmpdir)?");
-
-    File tempDirectory = new File(tempDirPath);
-    if (!tempDirectory.exists() || !tempDirectory.canWrite()) {
-      throw new IOException("Java's temporary folder not present or writeable?: " 
-          + tempDirectory.getAbsolutePath());
-    }
-    return tempDirectory;
-  }
-
-  /**
-   * Copies one file to another.
-   */
-  private static void copy(File file, File output) throws IOException {
-    // 64kb copy buffer (empirical pick).
-    byte [] buffer = new byte [16 * 1024];
-    InputStream is = null;
-    OutputStream os = null;
-    try {
-      is = new FileInputStream(file);
-      os = new FileOutputStream(output);
-      int length;
-      while ((length = is.read(buffer)) > 0) {
-        os.write(buffer, 0, length);
+  public synchronized static Path getDefaultTempDir() throws IOException {
+    if (DEFAULT_TEMP_DIR == null) {
+      // Lazy init
+      String tempDirPath = System.getProperty("java.io.tmpdir");
+      if (tempDirPath == null)  {
+        throw new IOException("Java has no temporary folder property (java.io.tmpdir)?");
       }
-    } finally {
-      IOUtils.close(is, os);
+      Path tempDirectory = Paths.get(tempDirPath);
+      if (Files.isWritable(tempDirectory) == false) {
+        throw new IOException("Java's temporary folder not present or writeable?: " 
+                              + tempDirectory.toAbsolutePath());
+      }
+      DEFAULT_TEMP_DIR = tempDirectory;
     }
+
+    return DEFAULT_TEMP_DIR;
   }
 
   /** Sort a single partition in-memory. */
-  protected File sortPartition(int len) throws IOException {
+  protected Path sortPartition(int len) throws IOException {
     BytesRefArray data = this.buffer;
-    File tempFile = File.createTempFile("sort", "partition", tempDirectory);
+    Path tempFile = Files.createTempFile(tempDirectory, "sort", "partition");
 
     long start = System.currentTimeMillis();
     sortInfo.sortTime += (System.currentTimeMillis() - start);
@@ -351,7 +345,7 @@ public final class OfflineSorter {
   }
 
   /** Merge a list of sorted temporary files (partitions) into an output file */
-  void mergePartitions(List<File> merges, File outputFile) throws IOException {
+  void mergePartitions(List<Path> merges, Path outputFile) throws IOException {
     long start = System.currentTimeMillis();
 
     ByteSequencesWriter out = new ByteSequencesWriter(outputFile);
@@ -436,11 +430,11 @@ public final class OfflineSorter {
   public static class ByteSequencesWriter implements Closeable {
     private final DataOutput os;
 
-    /** Constructs a ByteSequencesWriter to the provided File */
-    public ByteSequencesWriter(File file) throws IOException {
+    /** Constructs a ByteSequencesWriter to the provided Path */
+    public ByteSequencesWriter(Path path) throws IOException {
       this(new DataOutputStream(
           new BufferedOutputStream(
-              new FileOutputStream(file))));
+              Files.newOutputStream(path))));
     }
 
     /** Constructs a ByteSequencesWriter to the provided DataOutput */
@@ -500,11 +494,11 @@ public final class OfflineSorter {
   public static class ByteSequencesReader implements Closeable {
     private final DataInput is;
 
-    /** Constructs a ByteSequencesReader from the provided File */
-    public ByteSequencesReader(File file) throws IOException {
+    /** Constructs a ByteSequencesReader from the provided Path */
+    public ByteSequencesReader(Path path) throws IOException {
       this(new DataInputStream(
           new BufferedInputStream(
-              new FileInputStream(file))));
+              Files.newInputStream(path))));
     }
 
     /** Constructs a ByteSequencesReader from the provided DataInput */

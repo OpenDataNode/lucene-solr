@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.pattern;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,9 @@ package org.apache.lucene.analysis.pattern;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.pattern;
 
-import java.io.Reader;
+
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -28,7 +27,7 @@ import org.apache.lucene.util.AttributeFactory;
  * Factory for {@link PatternTokenizer}.
  * This tokenizer uses regex pattern matching to construct distinct tokens
  * for the input stream.  It takes two arguments:  "pattern" and "group".
- * <p/>
+ * <br>
  * <ul>
  * <li>"pattern" is the regular expression.</li>
  * <li>"group" says which group to extract into tokens.</li>
@@ -39,7 +38,7 @@ import org.apache.lucene.util.AttributeFactory;
  * {@link String#split(java.lang.String)}
  * </p>
  * <p>
- * Using group >= 0 selects the matching group as the token.  For example, if you have:<br/>
+ * Using group &gt;= 0 selects the matching group as the token.  For example, if you have:<br>
  * <pre>
  *  pattern = \'([^\']+)\'
  *  group = 0
@@ -47,7 +46,6 @@ import org.apache.lucene.util.AttributeFactory;
  * </pre>
  * the output will be two tokens: 'bbb' and 'ccc' (including the ' marks).  With the same input
  * but using group=1, the output would be: bbb and ccc (no ' marks)
- * </p>
  * <p>NOTE: This Tokenizer does not output tokens that are of zero length.</p>
  *
  * <pre class="prettyprint">
@@ -81,7 +79,7 @@ public class PatternTokenizerFactory extends TokenizerFactory {
    * Split the input using configured pattern
    */
   @Override
-  public PatternTokenizer create(final AttributeFactory factory, final Reader in) {
-    return new PatternTokenizer(factory, in, pattern, group);
+  public PatternTokenizer create(final AttributeFactory factory) {
+    return new PatternTokenizer(factory, pattern, group);
   }
 }

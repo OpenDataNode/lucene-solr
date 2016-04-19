@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.morphlines.solr;
 
 import java.io.File;
@@ -22,17 +21,17 @@ import java.io.IOException;
 import java.util.Iterator;
 import java.util.Locale;
 
+import com.codahale.metrics.MetricRegistry;
+import com.google.common.collect.ListMultimap;
+import com.typesafe.config.Config;
 import org.apache.commons.io.FileUtils;
 import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.embedded.JettySolrRunner;
 import org.apache.solr.cloud.AbstractFullDistribZkTestBase;
 import org.apache.solr.cloud.AbstractZkTestCase;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.cloud.SolrZkClient;
-import org.junit.After;
-import org.junit.Before;
+import org.junit.AfterClass;
 import org.junit.BeforeClass;
-import org.junit.Test;
 import org.kitesdk.morphline.api.Collector;
 import org.kitesdk.morphline.api.Command;
 import org.kitesdk.morphline.api.MorphlineContext;
@@ -41,10 +40,6 @@ import org.kitesdk.morphline.base.Compiler;
 import org.kitesdk.morphline.base.FaultTolerance;
 import org.kitesdk.morphline.base.Notifications;
 import org.kitesdk.morphline.stdlib.PipeBuilder;
-
-import com.codahale.metrics.MetricRegistry;
-import com.google.common.collect.ListMultimap;
-import com.typesafe.config.Config;
 
 public abstract class AbstractSolrMorphlineZkTestBase extends AbstractFullDistribZkTestBase {
   private static File solrHomeDirectory;
@@ -62,24 +57,27 @@ public abstract class AbstractSolrMorphlineZkTestBase extends AbstractFullDistri
   }
   
   public AbstractSolrMorphlineZkTestBase() {
-    fixShardCount = true;
     sliceCount = 3;
-    shardCount = 3;
+    fixShardCount(3);
   }
   
   @BeforeClass
   public static void setupClass() throws Exception {
     assumeFalse("This test fails on UNIX with Turkish default locale (https://issues.apache.org/jira/browse/SOLR-6387)",
         new Locale("tr").getLanguage().equals(Locale.getDefault().getLanguage()));
-    solrHomeDirectory = createTempDir();
+    solrHomeDirectory = createTempDir().toFile();
     AbstractZkTestCase.SOLRHOME = solrHomeDirectory;
     FileUtils.copyDirectory(SOLR_INSTANCE_DIR, solrHomeDirectory);
   }
   
+  @AfterClass
+  public static void tearDownClass() throws Exception {
+    solrHomeDirectory = null;
+  }
+  
   @Override
-  @Before
-  public void setUp() throws Exception {
-    super.setUp();
+  public void distribSetUp() throws Exception {
+    super.distribSetUp();
     System.setProperty("host", "127.0.0.1");
     System.setProperty("numShards", Integer.toString(sliceCount));
     uploadConfFiles();
@@ -87,17 +85,10 @@ public abstract class AbstractSolrMorphlineZkTestBase extends AbstractFullDistri
   }
   
   @Override
-  @After
-  public void tearDown() throws Exception {
-    super.tearDown();
+  public void distribTearDown() throws Exception {
+    super.distribTearDown();
     System.clearProperty("host");
     System.clearProperty("numShards");
-  }
-  
-  @Test
-  @Override
-  public void testDistribSearch() throws Exception {
-    super.testDistribSearch();
   }
   
   @Override
@@ -149,27 +140,6 @@ public abstract class AbstractSolrMorphlineZkTestBase extends AbstractFullDistri
       record.getFields().replaceValues(key, doc.getFieldValues(key));        
     }
     return record;
-  }
-  
-  @Override
-  public JettySolrRunner createJetty(File solrHome, String dataDir,
-      String shardList, String solrConfigOverride, String schemaOverride)
-      throws Exception {
-    
-    JettySolrRunner jetty = new JettySolrRunner(solrHome.getAbsolutePath(),
-        context, 0, solrConfigOverride, schemaOverride, true, null, sslConfig);
-
-    jetty.setShards(shardList);
-    
-    if (System.getProperty("collection") == null) {
-      System.setProperty("collection", "collection1");
-    }
-    
-    jetty.start();
-    
-    System.clearProperty("collection");
-    
-    return jetty;
   }
   
   private void putConfig(SolrZkClient zkClient, String name) throws Exception {

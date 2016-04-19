@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.spans;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.spans;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.spans;
 
 import java.util.List;
 
@@ -28,8 +27,8 @@ import org.apache.lucene.search.spans.SpanOrQuery;
 import org.apache.lucene.search.spans.SpanQuery;
 
 /**
- * This builder creates {@link SpanOrQuery}s from a {@link BooleanQueryNode}.<br/>
- * <br/>
+ * This builder creates {@link SpanOrQuery}s from a {@link BooleanQueryNode}.<br>
+ * <br>
  * 
  * It assumes that the {@link BooleanQueryNode} instance has at least one child.
  */

@@ -1,5 +1,3 @@
-package org.apache.lucene.benchmark.byTask.tasks;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.benchmark.byTask.tasks;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.benchmark.byTask.tasks;
+
 
 import java.io.IOException;
 import java.util.Collection;
@@ -49,7 +49,6 @@ import org.apache.lucene.util.Bits;
  * Read index (abstract) task.
  * Sub classes implement withSearch(), withWarm(), withTraverse() and withRetrieve()
  * methods to configure the actual action.
- * <p/>
  * <p>Note: All ReadTasks reuse the reader if it is already open.
  * Otherwise a reader is opened at start and closed at the end.
  * <p>
@@ -122,16 +121,15 @@ public abstract class ReadTask extends PerfTask {
             // pulling the Weight ourselves:
             TopFieldCollector collector = TopFieldCollector.create(sort, numHits,
                                                                    true, withScore(),
-                                                                   withMaxScore(),
-                                                                   false);
-            searcher.search(q, null, collector);
+                                                                   withMaxScore());
+            searcher.search(q, collector);
             hits = collector.topDocs();
           } else {
             hits = searcher.search(q, numHits);
           }
         } else {
           Collector collector = createCollector();
-          searcher.search(q, null, collector);
+          searcher.search(q, collector);
           //hits = collector.topDocs();
         }
 
@@ -189,7 +187,7 @@ public abstract class ReadTask extends PerfTask {
   }
 
   protected Collector createCollector() throws Exception {
-    return TopScoreDocCollector.create(numHits(), true);
+    return TopScoreDocCollector.create(numHits());
   }
 
 
@@ -237,7 +235,7 @@ public abstract class ReadTask extends PerfTask {
   /**
    * Specify the number of hits to traverse.  Tasks should override this if they want to restrict the number
    * of hits that are traversed when {@link #withTraverse()} is true. Must be greater than 0.
-   * <p/>
+   * <p>
    * Read task calculates the traversal as: Math.min(hits.length(), traversalSize())
    *
    * @return Integer.MAX_VALUE
@@ -266,7 +264,7 @@ public abstract class ReadTask extends PerfTask {
   }
 
   /**
-   * Return true if, with search & results traversing, docs should be retrieved.
+   * Return true if, with search and results traversing, docs should be retrieved.
    */
   public abstract boolean withRetrieve();
 

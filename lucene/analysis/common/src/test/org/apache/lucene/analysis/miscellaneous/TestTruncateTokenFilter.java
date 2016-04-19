@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.miscellaneous;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,11 +14,10 @@ package org.apache.lucene.analysis.miscellaneous;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.miscellaneous;
 
-import java.io.StringReader;
 
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
-import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
 import org.junit.Test;
 
@@ -30,13 +27,13 @@ import org.junit.Test;
 public class TestTruncateTokenFilter extends BaseTokenStreamTestCase {
 
   public void testTruncating() throws Exception {
-    TokenStream stream = new MockTokenizer(new StringReader("abcdefg 1234567 ABCDEFG abcde abc 12345 123"), MockTokenizer.WHITESPACE, false);
+    TokenStream stream = whitespaceMockTokenizer("abcdefg 1234567 ABCDEFG abcde abc 12345 123");
     stream = new TruncateTokenFilter(stream, 5);
     assertTokenStreamContents(stream, new String[]{"abcde", "12345", "ABCDE", "abcde", "abc", "12345", "123"});
   }
 
   @Test(expected = IllegalArgumentException.class)
   public void testNonPositiveLength() throws Exception {
-    new TruncateTokenFilter(new MockTokenizer(new StringReader("length must be a positive number")), -48);
+    new TruncateTokenFilter(whitespaceMockTokenizer("length must be a positive number"), -48);
   }
 }

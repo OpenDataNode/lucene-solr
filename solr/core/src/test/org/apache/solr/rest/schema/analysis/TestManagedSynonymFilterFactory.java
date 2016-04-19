@@ -1,4 +1,3 @@
-package org.apache.solr.rest.schema.analysis;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,8 +14,9 @@ package org.apache.solr.rest.schema.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.rest.schema.analysis;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -42,7 +42,7 @@ public class TestManagedSynonymFilterFactory extends RestTestBase {
    */
   @Before
   public void before() throws Exception {
-    tmpSolrHome = createTempDir();
+    tmpSolrHome = createTempDir().toFile();
     FileUtils.copyDirectory(new File(TEST_HOME()), tmpSolrHome.getAbsoluteFile());
 
     final SortedMap<ServletHolder,String> extraServlets = new TreeMap<>();
@@ -60,8 +60,14 @@ public class TestManagedSynonymFilterFactory extends RestTestBase {
   private void after() throws Exception {
     jetty.stop();
     jetty = null;
+    FileUtils.deleteDirectory(tmpSolrHome);
     System.clearProperty("managed.schema.mutable");
     System.clearProperty("enable.update.log");
+    
+    if (restTestHarness != null) {
+      restTestHarness.close();
+    }
+    restTestHarness = null;
   }
   
   @Test
@@ -183,17 +189,31 @@ public class TestManagedSynonymFilterFactory extends RestTestBase {
     // test for SOLR-6015
     syns = new HashMap<>();
     syns.put("mb", Arrays.asList("megabyte"));    
-    assertJPut(endpoint, 
-               JSONUtil.toJSON(syns),
-               "/responseHeader/status==0");
+    assertJPut(endpoint,
+        JSONUtil.toJSON(syns),
+        "/responseHeader/status==0");
 
     syns.put("MB", Arrays.asList("MiB", "Megabyte"));    
-    assertJPut(endpoint, 
-               JSONUtil.toJSON(syns),
-               "/responseHeader/status==0");
+    assertJPut(endpoint,
+        JSONUtil.toJSON(syns),
+        "/responseHeader/status==0");
     
-    assertJQ(endpoint+"/MB", 
-        "/MB==['Megabyte','MiB','megabyte']");    
+    assertJQ(endpoint + "/MB",
+        "/MB==['Megabyte','MiB','megabyte']");
+
+    // test for SOLR-6878 - by default, expand is true, but only applies when sending in a list
+    List<String> m2mSyns = new ArrayList<>();
+    m2mSyns.addAll(Arrays.asList("funny", "entertaining", "whimiscal", "jocular"));
+    assertJPut(endpoint, JSONUtil.toJSON(m2mSyns), "/responseHeader/status==0");
+
+    assertJQ(endpoint + "/funny",
+        "/funny==['entertaining','funny','jocular','whimiscal']");
+    assertJQ(endpoint + "/entertaining",
+        "/entertaining==['entertaining','funny','jocular','whimiscal']");
+    assertJQ(endpoint + "/jocular",
+        "/jocular==['entertaining','funny','jocular','whimiscal']");
+    assertJQ(endpoint + "/whimiscal",
+        "/whimiscal==['entertaining','funny','jocular','whimiscal']");
   }
 
   /**

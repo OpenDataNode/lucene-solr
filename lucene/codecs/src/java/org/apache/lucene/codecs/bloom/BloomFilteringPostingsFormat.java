@@ -1,6 +1,4 @@
-package org.apache.lucene.codecs.bloom;
-
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
  * this work for additional information regarding copyright ownership.
@@ -16,10 +14,13 @@ package org.apache.lucene.codecs.bloom;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.bloom;
+
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -29,14 +30,11 @@ import java.util.Map.Entry;
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.FieldsConsumer;
 import org.apache.lucene.codecs.FieldsProducer;
-import org.apache.lucene.codecs.PostingsConsumer;
 import org.apache.lucene.codecs.PostingsFormat;
-import org.apache.lucene.codecs.TermStats;
-import org.apache.lucene.codecs.TermsConsumer;
 import org.apache.lucene.codecs.bloom.FuzzySet.ContainsResult;
-import org.apache.lucene.index.DocsAndPositionsEnum;
-import org.apache.lucene.index.DocsEnum;
+import org.apache.lucene.index.PostingsEnum;
 import org.apache.lucene.index.FieldInfo;
+import org.apache.lucene.index.Fields;
 import org.apache.lucene.index.IndexFileNames;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
@@ -45,6 +43,8 @@ import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.store.ChecksumIndexInput;
 import org.apache.lucene.store.DataOutput;
 import org.apache.lucene.store.IndexOutput;
+import org.apache.lucene.util.Accountable;
+import org.apache.lucene.util.Accountables;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.IOUtils;
@@ -72,7 +72,7 @@ import org.apache.lucene.util.automaton.CompiledAutomaton;
  * NumFilteredFields, Filter<sup>NumFilteredFields</sup>, Footer</li>
  * <li>Filter --&gt; FieldNumber, FuzzySet</li>
  * <li>FuzzySet --&gt;See {@link FuzzySet#serialize(DataOutput)}</li>
- * <li>Header --&gt; {@link CodecUtil#writeHeader CodecHeader}</li>
+ * <li>Header --&gt; {@link CodecUtil#writeIndexHeader IndexHeader}</li>
  * <li>DelegatePostingsFormatName --&gt; {@link DataOutput#writeString(String)
  * String} The name of a ServiceProvider registered {@link PostingsFormat}</li>
  * <li>NumFilteredFields --&gt; {@link DataOutput#writeInt Uint32}</li>
@@ -85,9 +85,8 @@ import org.apache.lucene.util.automaton.CompiledAutomaton;
 public final class BloomFilteringPostingsFormat extends PostingsFormat {
   
   public static final String BLOOM_CODEC_NAME = "BloomFilter";
-  public static final int VERSION_START = 1;
-  public static final int VERSION_CHECKSUM = 2;
-  public static final int VERSION_CURRENT = VERSION_CHECKSUM;
+  public static final int VERSION_START = 3;
+  public static final int VERSION_CURRENT = VERSION_START;
   
   /** Extension of Bloom Filters file */
   static final String BLOOM_EXTENSION = "blm";
@@ -114,7 +113,7 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
     this.delegatePostingsFormat = delegatePostingsFormat;
     this.bloomFilterFactory = bloomFilterFactory;
   }
-  
+
   /**
    * Creates Bloom filters for a selection of fields created in the index. This
    * is recorded as a set of Bitsets held as a segment summary in an additional
@@ -144,9 +143,8 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
       throw new UnsupportedOperationException("Error - " + getClass().getName()
           + " has been constructed without a choice of PostingsFormat");
     }
-    return new BloomFilteredFieldsConsumer(
-        delegatePostingsFormat.fieldsConsumer(state), state,
-        delegatePostingsFormat);
+    FieldsConsumer fieldsConsumer = delegatePostingsFormat.fieldsConsumer(state);
+    return new BloomFilteredFieldsConsumer(fieldsConsumer, state);
   }
   
   @Override
@@ -168,7 +166,7 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
       boolean success = false;
       try {
         bloomIn = state.directory.openChecksumInput(bloomFileName, state.context);
-        int version = CodecUtil.checkHeader(bloomIn, BLOOM_CODEC_NAME, VERSION_START, VERSION_CURRENT);
+        CodecUtil.checkIndexHeader(bloomIn, BLOOM_CODEC_NAME, VERSION_START, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
         // // Load the hash function used in the BloomFilter
         // hashFunction = HashFunction.forName(bloomIn.readString());
         // Load the delegate postings format
@@ -184,11 +182,7 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
           FieldInfo fieldInfo = state.fieldInfos.fieldInfo(fieldNum);
           bloomsByFieldName.put(fieldInfo.name, bloom);
         }
-        if (version >= VERSION_CHECKSUM) {
-          CodecUtil.checkFooter(bloomIn);
-        } else {
-          CodecUtil.checkEOF(bloomIn);
-        }
+        CodecUtil.checkFooter(bloomIn);
         IOUtils.close(bloomIn);
         success = true;
       } finally {
@@ -227,10 +221,6 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
       return delegateFieldsProducer.size();
     }
     
-    public long getUniqueTermCount() throws IOException {
-      return delegateFieldsProducer.getUniqueTermCount();
-    }
-    
     class BloomFilteredTerms extends Terms {
       private Terms delegateTerms;
       private FuzzySet filter;
@@ -247,24 +237,8 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
       }
       
       @Override
-      public TermsEnum iterator(TermsEnum reuse) throws IOException {
-        if ((reuse != null) && (reuse instanceof BloomFilteredTermsEnum)) {
-          // recycle the existing BloomFilteredTermsEnum by asking the delegate
-          // to recycle its contained TermsEnum
-          BloomFilteredTermsEnum bfte = (BloomFilteredTermsEnum) reuse;
-          if (bfte.filter == filter) {
-            bfte.reset(delegateTerms, bfte.delegateTermsEnum);
-            return bfte;
-          }
-        }
-        // We have been handed something we cannot reuse (either null, wrong
-        // class or wrong filter) so allocate a new object
-        return new BloomFilteredTermsEnum(delegateTerms, reuse, filter);
-      }
-      
-      @Override
-      public Comparator<BytesRef> getComparator() {
-        return delegateTerms.getComparator();
+      public TermsEnum iterator() throws IOException {
+        return new BloomFilteredTermsEnum(delegateTerms, filter);
       }
       
       @Override
@@ -321,44 +295,36 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
     final class BloomFilteredTermsEnum extends TermsEnum {
       private Terms delegateTerms;
       private TermsEnum delegateTermsEnum;
-      private TermsEnum reuseDelegate;
       private final FuzzySet filter;
       
-      public BloomFilteredTermsEnum(Terms delegateTerms, TermsEnum reuseDelegate, FuzzySet filter) throws IOException {
+      public BloomFilteredTermsEnum(Terms delegateTerms, FuzzySet filter) throws IOException {
         this.delegateTerms = delegateTerms;
-        this.reuseDelegate = reuseDelegate;
         this.filter = filter;
       }
       
-      void reset(Terms delegateTerms, TermsEnum reuseDelegate) throws IOException {
+      void reset(Terms delegateTerms) throws IOException {
         this.delegateTerms = delegateTerms;
-        this.reuseDelegate = reuseDelegate;
         this.delegateTermsEnum = null;
       }
       
-      private final TermsEnum delegate() throws IOException {
+      private TermsEnum delegate() throws IOException {
         if (delegateTermsEnum == null) {
           /* pull the iterator only if we really need it -
            * this can be a relativly heavy operation depending on the 
            * delegate postings format and they underlying directory
            * (clone IndexInput) */
-          delegateTermsEnum = delegateTerms.iterator(reuseDelegate);
+          delegateTermsEnum = delegateTerms.iterator();
         }
         return delegateTermsEnum;
       }
       
       @Override
-      public final BytesRef next() throws IOException {
+      public BytesRef next() throws IOException {
         return delegate().next();
       }
       
       @Override
-      public final Comparator<BytesRef> getComparator() {
-        return delegateTerms.getComparator();
-      }
-      
-      @Override
-      public final boolean seekExact(BytesRef text)
+      public boolean seekExact(BytesRef text)
           throws IOException {
         // The magical fail-fast speed up that is the entire point of all of
         // this code - save a disk seek if there is a match on an in-memory
@@ -372,50 +338,42 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
       }
       
       @Override
-      public final SeekStatus seekCeil(BytesRef text)
+      public SeekStatus seekCeil(BytesRef text)
           throws IOException {
         return delegate().seekCeil(text);
       }
       
       @Override
-      public final void seekExact(long ord) throws IOException {
+      public void seekExact(long ord) throws IOException {
         delegate().seekExact(ord);
       }
       
       @Override
-      public final BytesRef term() throws IOException {
+      public BytesRef term() throws IOException {
         return delegate().term();
       }
       
       @Override
-      public final long ord() throws IOException {
+      public long ord() throws IOException {
         return delegate().ord();
       }
       
       @Override
-      public final int docFreq() throws IOException {
+      public int docFreq() throws IOException {
         return delegate().docFreq();
       }
       
       @Override
-      public final long totalTermFreq() throws IOException {
+      public long totalTermFreq() throws IOException {
         return delegate().totalTermFreq();
       }
-      
 
       @Override
-      public DocsAndPositionsEnum docsAndPositions(Bits liveDocs,
-          DocsAndPositionsEnum reuse, int flags) throws IOException {
-        return delegate().docsAndPositions(liveDocs, reuse, flags);
-      }
-
-      @Override
-      public DocsEnum docs(Bits liveDocs, DocsEnum reuse, int flags)
+      public PostingsEnum postings(PostingsEnum reuse, int flags)
           throws IOException {
-        return delegate().docs(liveDocs, reuse, flags);
+        return delegate().postings(reuse, flags);
       }
-      
-      
+
     }
 
     @Override
@@ -429,8 +387,23 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
     }
 
     @Override
+    public Collection<Accountable> getChildResources() {
+      List<Accountable> resources = new ArrayList<>();
+      resources.addAll(Accountables.namedAccountables("field", bloomsByFieldName));
+      if (delegateFieldsProducer != null) {
+        resources.add(Accountables.namedAccountable("delegate", delegateFieldsProducer));
+      }
+      return Collections.unmodifiableList(resources);
+    }
+
+    @Override
     public void checkIntegrity() throws IOException {
       delegateFieldsProducer.checkIntegrity();
+    }
+
+    @Override
+    public String toString() {
+      return getClass().getSimpleName() + "(fields=" + bloomsByFieldName.size() + ",delegate=" + delegateFieldsProducer + ")";
     }
   }
   
@@ -439,30 +412,67 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
     private Map<FieldInfo,FuzzySet> bloomFilters = new HashMap<>();
     private SegmentWriteState state;
     
-    
     public BloomFilteredFieldsConsumer(FieldsConsumer fieldsConsumer,
-        SegmentWriteState state, PostingsFormat delegatePostingsFormat) {
+        SegmentWriteState state) {
       this.delegateFieldsConsumer = fieldsConsumer;
       this.state = state;
     }
-    
+
     @Override
-    public TermsConsumer addField(FieldInfo field) throws IOException {
-      FuzzySet bloomFilter = bloomFilterFactory.getSetForField(state,field);
-      if (bloomFilter != null) {
-        assert bloomFilters.containsKey(field) == false;
-        bloomFilters.put(field, bloomFilter);
-        return new WrappedTermsConsumer(delegateFieldsConsumer.addField(field),bloomFilter);
-      } else {
-        // No, use the unfiltered fieldsConsumer - we are not interested in
-        // recording any term Bitsets.
-        return delegateFieldsConsumer.addField(field);
+    public void write(Fields fields) throws IOException {
+
+      // Delegate must write first: it may have opened files
+      // on creating the class
+      // (e.g. Lucene41PostingsConsumer), and write() will
+      // close them; alternatively, if we delayed pulling
+      // the fields consumer until here, we could do it
+      // afterwards:
+      delegateFieldsConsumer.write(fields);
+
+      for(String field : fields) {
+        Terms terms = fields.terms(field);
+        if (terms == null) {
+          continue;
+        }
+        FieldInfo fieldInfo = state.fieldInfos.fieldInfo(field);
+        TermsEnum termsEnum = terms.iterator();
+
+        FuzzySet bloomFilter = null;
+
+        PostingsEnum postingsEnum = null;
+        while (true) {
+          BytesRef term = termsEnum.next();
+          if (term == null) {
+            break;
+          }
+          if (bloomFilter == null) {
+            bloomFilter = bloomFilterFactory.getSetForField(state, fieldInfo);
+            if (bloomFilter == null) {
+              // Field not bloom'd
+              break;
+            }
+            assert bloomFilters.containsKey(field) == false;
+            bloomFilters.put(fieldInfo, bloomFilter);
+          }
+          // Make sure there's at least one doc for this term:
+          postingsEnum = termsEnum.postings(postingsEnum, 0);
+          if (postingsEnum.nextDoc() != PostingsEnum.NO_MORE_DOCS) {
+            bloomFilter.addValue(term);
+          }
+        }
       }
     }
+
+    private boolean closed;
     
     @Override
     public void close() throws IOException {
+      if (closed) {
+        return;
+      }
+      closed = true;
       delegateFieldsConsumer.close();
+
       // Now we are done accumulating values for these fields
       List<Entry<FieldInfo,FuzzySet>> nonSaturatedBlooms = new ArrayList<>();
       
@@ -474,10 +484,8 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
       }
       String bloomFileName = IndexFileNames.segmentFileName(
           state.segmentInfo.name, state.segmentSuffix, BLOOM_EXTENSION);
-      IndexOutput bloomOutput = null;
-      try {
-        bloomOutput = state.directory.createOutput(bloomFileName, state.context);
-        CodecUtil.writeHeader(bloomOutput, BLOOM_CODEC_NAME, VERSION_CURRENT);
+      try (IndexOutput bloomOutput = state.directory.createOutput(bloomFileName, state.context)) {
+        CodecUtil.writeIndexHeader(bloomOutput, BLOOM_CODEC_NAME, VERSION_CURRENT, state.segmentInfo.getId(), state.segmentSuffix);
         // remember the name of the postings format we will delegate to
         bloomOutput.writeString(delegatePostingsFormat.getName());
         
@@ -490,8 +498,6 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
           saveAppropriatelySizedBloomFilter(bloomOutput, bloomFilter, fieldInfo);
         }
         CodecUtil.writeFooter(bloomOutput);
-      } finally {
-        IOUtils.close(bloomOutput);
       }
       //We are done with large bitsets so no need to keep them hanging around
       bloomFilters.clear(); 
@@ -507,44 +513,10 @@ public final class BloomFilteringPostingsFormat extends PostingsFormat {
       }
       rightSizedSet.serialize(bloomOutput);
     }
-    
   }
-  
-  class WrappedTermsConsumer extends TermsConsumer {
-    private TermsConsumer delegateTermsConsumer;
-    private FuzzySet bloomFilter;
-    
-    public WrappedTermsConsumer(TermsConsumer termsConsumer,FuzzySet bloomFilter) {
-      this.delegateTermsConsumer = termsConsumer;
-      this.bloomFilter = bloomFilter;
-    }
-    
-    @Override
-    public PostingsConsumer startTerm(BytesRef text) throws IOException {
-      return delegateTermsConsumer.startTerm(text);
-    }
-    
-    @Override
-    public void finishTerm(BytesRef text, TermStats stats) throws IOException {
-      
-      // Record this term in our BloomFilter
-      if (stats.docFreq > 0) {
-        bloomFilter.addValue(text);
-      }
-      delegateTermsConsumer.finishTerm(text, stats);
-    }
-    
-    @Override
-    public void finish(long sumTotalTermFreq, long sumDocFreq, int docCount)
-        throws IOException {
-      delegateTermsConsumer.finish(sumTotalTermFreq, sumDocFreq, docCount);
-    }
-    
-    @Override
-    public Comparator<BytesRef> getComparator() throws IOException {
-      return delegateTermsConsumer.getComparator();
-    }
-    
+
+  @Override
+  public String toString() {
+    return "BloomFilteringPostingsFormat(" + delegatePostingsFormat + ")";
   }
-  
 }

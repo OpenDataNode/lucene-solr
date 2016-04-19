@@ -1,4 +1,3 @@
-package org.apache.lucene.search.vectorhighlight;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,7 +14,7 @@ package org.apache.lucene.search.vectorhighlight;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.lucene.search.vectorhighlight;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -23,17 +22,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.BoostQuery;
 import org.apache.lucene.search.ConstantScoreQuery;
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.FilteredQuery;
-import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.RegexpQuery;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TermRangeQuery;
@@ -53,57 +52,74 @@ public class FieldQueryTest extends AbstractTestCase {
     boost = usually() ? 1F : random().nextFloat() * 10000;
   }
 
+  public void testHandlesDeprecatedBoosts() throws Exception {
+    Query q1 = new TermQuery(new Term("foo", "bar"));
+    q1.setBoost(5);
+    Query q2 = new BoostQuery(new TermQuery(new Term("foo", "bar")), 5);
+
+    FieldQuery fq1 = new FieldQuery(q1, true, true);
+    FieldQuery fq2 = new FieldQuery(q2, true, true);
+    Set<Query> flatQueries1 = new HashSet<>();
+    Set<Query> flatQueries2 = new HashSet<>();
+    fq1.flatten(q1, reader, flatQueries1, 1f);
+    fq1.flatten(q2, reader, flatQueries2, 1f);
+    assertEquals(flatQueries1, flatQueries2);
+  }
+
   public void testFlattenBoolean() throws Exception {
     initBoost();
-    BooleanQuery booleanQuery = new BooleanQuery();
-    booleanQuery.setBoost( boost );
-    booleanQuery.add(tq("A"), Occur.MUST);
-    booleanQuery.add(tq("B"), Occur.MUST);
-    booleanQuery.add(tq("C"), Occur.SHOULD);
+    BooleanQuery.Builder booleanQueryB = new BooleanQuery.Builder();
+    booleanQueryB.add(tq("A"), Occur.MUST);
+    booleanQueryB.add(tq("B"), Occur.MUST);
+    booleanQueryB.add(tq("C"), Occur.SHOULD);
 
-    BooleanQuery innerQuery = new BooleanQuery();
+    BooleanQuery.Builder innerQuery = new BooleanQuery.Builder();
     innerQuery.add(tq("D"), Occur.MUST);
     innerQuery.add(tq("E"), Occur.MUST);
-    booleanQuery.add(innerQuery, Occur.MUST_NOT);
+    booleanQueryB.add(innerQuery.build(), Occur.MUST_NOT);
 
+    Query booleanQuery = booleanQueryB.build();
+    booleanQuery = new BoostQuery(booleanQuery, boost);
+    
     FieldQuery fq = new FieldQuery(booleanQuery, true, true );
     Set<Query> flatQueries = new HashSet<>();
-    fq.flatten(booleanQuery, reader, flatQueries);
+    fq.flatten(booleanQuery, reader, flatQueries, 1f);
     assertCollectionQueries( flatQueries, tq( boost, "A" ), tq( boost, "B" ), tq( boost, "C" ) );
   }
 
   public void testFlattenDisjunctionMaxQuery() throws Exception {
     initBoost();
     Query query = dmq( tq( "A" ), tq( "B" ), pqF( "C", "D" ) );
-    query.setBoost( boost );
+    query = new BoostQuery( query, boost );
     FieldQuery fq = new FieldQuery( query, true, true );
     Set<Query> flatQueries = new HashSet<>();
-    fq.flatten( query, reader, flatQueries );
+    fq.flatten( query, reader, flatQueries, 1f );
     assertCollectionQueries( flatQueries, tq( boost, "A" ), tq( boost, "B" ), pqF( boost, "C", "D" ) );
   }
 
   public void testFlattenTermAndPhrase() throws Exception {
     initBoost();
-    BooleanQuery booleanQuery = new BooleanQuery();
-    booleanQuery.setBoost( boost );
-    booleanQuery.add(tq("A"), Occur.MUST);
-    booleanQuery.add(pqF("B", "C"), Occur.MUST);
+    BooleanQuery.Builder booleanQueryB = new BooleanQuery.Builder();
+    booleanQueryB.add(tq("A"), Occur.MUST);
+    booleanQueryB.add(pqF("B", "C"), Occur.MUST);
+    Query booleanQuery = booleanQueryB.build();
+    booleanQuery = new BoostQuery(booleanQuery, boost);
 
     FieldQuery fq = new FieldQuery(booleanQuery, true, true );
     Set<Query> flatQueries = new HashSet<>();
-    fq.flatten(booleanQuery, reader, flatQueries);
+    fq.flatten(booleanQuery, reader, flatQueries, 1f);
     assertCollectionQueries( flatQueries, tq( boost, "A" ), pqF( boost, "B", "C" ) );
   }
 
   public void testFlattenTermAndPhrase2gram() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(new TermQuery(new Term(F, "AA")), Occur.MUST);
     query.add(toPhraseQuery(analyze("BCD", F, analyzerB), F), Occur.MUST);
     query.add(toPhraseQuery(analyze("EFGH", F, analyzerB), F), Occur.SHOULD);
 
-    FieldQuery fq = new FieldQuery( query, true, true );
+    FieldQuery fq = new FieldQuery( query.build(), true, true );
     Set<Query> flatQueries = new HashSet<>();
-    fq.flatten( query, reader, flatQueries );
+    fq.flatten( query.build(), reader, flatQueries, 1f );
     assertCollectionQueries( flatQueries, tq( "AA" ), pqF( "BC", "CD" ), pqF( "EF", "FG", "GH" ) );
   }
 
@@ -111,7 +127,7 @@ public class FieldQueryTest extends AbstractTestCase {
     Query query = pqF( "A" );
     FieldQuery fq = new FieldQuery( query, true, true );
     Set<Query> flatQueries = new HashSet<>();
-    fq.flatten( query, reader, flatQueries );
+    fq.flatten( query, reader, flatQueries, 1f );
     assertCollectionQueries( flatQueries, tq( "A" ) );
   }
 
@@ -277,17 +293,17 @@ public class FieldQueryTest extends AbstractTestCase {
   }
 
   public void testGetTermSet() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(new TermQuery(new Term(F, "A")), Occur.MUST);
     query.add(new TermQuery(new Term(F, "B")), Occur.MUST);
     query.add(new TermQuery(new Term("x", "C")), Occur.SHOULD);
 
-    BooleanQuery innerQuery = new BooleanQuery();
+    BooleanQuery.Builder innerQuery = new BooleanQuery.Builder();
     innerQuery.add(new TermQuery(new Term(F, "D")), Occur.MUST);
     innerQuery.add(new TermQuery(new Term(F, "E")), Occur.MUST);
-    query.add(innerQuery, Occur.MUST_NOT);
+    query.add(innerQuery.build(), Occur.MUST_NOT);
 
-    FieldQuery fq = new FieldQuery( query, true, true );
+    FieldQuery fq = new FieldQuery( query.build(), true, true );
     assertEquals( 2, fq.termSetMap.size() );
     Set<String> termSet = fq.getTermSet( F );
     assertEquals( 2, termSet.size() );
@@ -478,12 +494,12 @@ public class FieldQueryTest extends AbstractTestCase {
   }
   
   public void testQueryPhraseMap2Phrases() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add( pqF( "a", "b" ), Occur.SHOULD );
     query.add( pqF( 2, "c", "d" ), Occur.SHOULD );
     
     // phraseHighlight = true, fieldMatch = true
-    FieldQuery fq = new FieldQuery( query, true, true );
+    FieldQuery fq = new FieldQuery( query.build(), true, true );
     Map<String, QueryPhraseMap> map = fq.rootMaps;
     assertEquals( 1, map.size() );
     assertNull( map.get( null ) );
@@ -513,12 +529,12 @@ public class FieldQueryTest extends AbstractTestCase {
   }
   
   public void testQueryPhraseMap2PhrasesFields() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add( pq( F1, "a", "b" ), Occur.SHOULD );
     query.add( pq( 2F, F2, "c", "d" ), Occur.SHOULD );
     
     // phraseHighlight = true, fieldMatch = true
-    FieldQuery fq = new FieldQuery( query, true, true );
+    FieldQuery fq = new FieldQuery( query.build(), true, true );
     Map<String, QueryPhraseMap> map = fq.rootMaps;
     assertEquals( 2, map.size() );
     assertNull( map.get( null ) );
@@ -550,7 +566,7 @@ public class FieldQueryTest extends AbstractTestCase {
     assertEquals( 2F, qpm3.boost, 0);
     
     // phraseHighlight = true, fieldMatch = false
-    fq = new FieldQuery( query, true, false );
+    fq = new FieldQuery( query.build(), true, false );
     map = fq.rootMaps;
     assertEquals( 1, map.size() );
     assertNull( map.get( F1 ) );
@@ -589,13 +605,13 @@ public class FieldQueryTest extends AbstractTestCase {
    * +-d-<t>
    */
   public void testQueryPhraseMapOverlapPhrases() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add( pqF( "a", "b", "c" ), Occur.SHOULD );
     query.add( pqF( 2, "b", "c", "d" ), Occur.SHOULD );
     query.add( pqF( 3, "b", "d" ), Occur.SHOULD );
     
     // phraseHighlight = true, fieldMatch = true
-    FieldQuery fq = new FieldQuery( query, true, true );
+    FieldQuery fq = new FieldQuery( query.build(), true, true );
     Map<String, QueryPhraseMap> map = fq.rootMaps;
     assertEquals( 1, map.size() );
     assertNull( map.get( null ) );
@@ -647,12 +663,12 @@ public class FieldQueryTest extends AbstractTestCase {
    *   +-c-<t>
    */
   public void testQueryPhraseMapOverlapPhrases2() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add( pqF( "a", "b" ), Occur.SHOULD );
     query.add( pqF( 2, "a", "b", "c" ), Occur.SHOULD );
     
     // phraseHighlight = true, fieldMatch = true
-    FieldQuery fq = new FieldQuery( query, true, true );
+    FieldQuery fq = new FieldQuery( query.build(), true, true );
     Map<String, QueryPhraseMap> map = fq.rootMaps;
     assertEquals( 1, map.size() );
     assertNull( map.get( null ) );
@@ -687,12 +703,12 @@ public class FieldQueryTest extends AbstractTestCase {
    *         +-a-<t>
    */
   public void testQueryPhraseMapOverlapPhrases3() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add( pqF( "a", "a", "a", "a" ), Occur.SHOULD );
     query.add( pqF( 2, "a", "a", "a" ), Occur.SHOULD );
     
     // phraseHighlight = true, fieldMatch = true
-    FieldQuery fq = new FieldQuery( query, true, true );
+    FieldQuery fq = new FieldQuery( query.build(), true, true );
     Map<String, QueryPhraseMap> map = fq.rootMaps;
     assertEquals( 1, map.size() );
     assertNull( map.get( null ) );
@@ -733,12 +749,12 @@ public class FieldQueryTest extends AbstractTestCase {
   }
   
   public void testQueryPhraseMapOverlap2gram() throws Exception {
-    BooleanQuery query = new BooleanQuery();
+    BooleanQuery.Builder query = new BooleanQuery.Builder();
     query.add(toPhraseQuery(analyze("abc", F, analyzerB), F), Occur.MUST);
     query.add(toPhraseQuery(analyze("bcd", F, analyzerB), F), Occur.MUST);
 
     // phraseHighlight = true, fieldMatch = true
-    FieldQuery fq = new FieldQuery( query, true, true );
+    FieldQuery fq = new FieldQuery( query.build(), true, true );
     Map<String, QueryPhraseMap> map = fq.rootMaps;
     assertEquals( 1, map.size() );
     assertNull( map.get( null ) );
@@ -774,7 +790,7 @@ public class FieldQueryTest extends AbstractTestCase {
     assertEquals( 1F, qpm3.boost, 0);
     
     // phraseHighlight = false, fieldMatch = true
-    fq = new FieldQuery( query, false, true );
+    fq = new FieldQuery( query.build(), false, true );
     map = fq.rootMaps;
     assertEquals( 1, map.size() );
     assertNull( map.get( null ) );
@@ -904,7 +920,7 @@ public class FieldQueryTest extends AbstractTestCase {
   public void testRegexpQuery() throws Exception {
     makeIndexStrMV();
     Term term = new Term(F, "d[a-z].g");
-    defgMultiTermQueryTest(new RegexpQuery (term));
+    defgMultiTermQueryTest(new RegexpQuery(term));
   }
 
   public void testRangeQuery() throws Exception {
@@ -940,25 +956,29 @@ public class FieldQueryTest extends AbstractTestCase {
     initBoost();
     Query query = new FilteredQuery(pqF( "A" ), new Filter() {
       @Override
-      public DocIdSet getDocIdSet(AtomicReaderContext context, Bits acceptDocs)
+      public DocIdSet getDocIdSet(LeafReaderContext context, Bits acceptDocs)
           throws IOException {
         return null;
       }
+      @Override
+      public String toString(String field) {
+        return "filterToBeFlattened";
+      }
     });
-    query.setBoost(boost);
+    query = new BoostQuery(query, boost);
     FieldQuery fq = new FieldQuery( query, true, true );
     Set<Query> flatQueries = new HashSet<>();
-    fq.flatten( query, reader, flatQueries );
+    fq.flatten( query, reader, flatQueries, 1f );
     assertCollectionQueries( flatQueries, tq( boost, "A" ) );
   }
   
   public void testFlattenConstantScoreQuery() throws Exception {
     initBoost();
     Query query = new ConstantScoreQuery(pqF( "A" ));
-    query.setBoost(boost);
+    query = new BoostQuery(query, boost);
     FieldQuery fq = new FieldQuery( query, true, true );
     Set<Query> flatQueries = new HashSet<>();
-    fq.flatten( query, reader, flatQueries );
+    fq.flatten( query, reader, flatQueries, 1f );
     assertCollectionQueries( flatQueries, tq( boost, "A" ) );
   }
   

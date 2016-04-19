@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.response;
 
 import org.apache.solr.request.SolrQueryRequest;
@@ -31,6 +30,8 @@ import java.util.Iterator;
 import java.util.Map;
 
 public class SolrParamResourceLoader extends ResourceLoader {
+  public static final String TEMPLATE_PARAM_PREFIX = VelocityResponseWriter.TEMPLATE + ".";
+
   private Map<String,String> templates = new HashMap<>();
   public SolrParamResourceLoader(SolrQueryRequest request) {
     super();
@@ -44,8 +45,8 @@ public class SolrParamResourceLoader extends ResourceLoader {
     while (names.hasNext()) {
       String name = names.next();
       
-      if (name.startsWith("v.template.")) {
-        templates.put(name.substring(11) + ".vm",params.get(name));
+      if (name.startsWith(TEMPLATE_PARAM_PREFIX)) {
+        templates.put(name.substring(TEMPLATE_PARAM_PREFIX.length()) + VelocityResponseWriter.TEMPLATE_EXTENSION,params.get(name));
       }
     }
   }

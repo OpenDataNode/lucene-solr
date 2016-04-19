@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.cz;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,11 @@ package org.apache.lucene.analysis.cz;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.cz;
+
 
 import java.io.IOException;
+
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.util.CharArraySet;
@@ -31,34 +32,25 @@ import org.apache.lucene.util.Version;
  *
  */
 public class TestCzechAnalyzer extends BaseTokenStreamTestCase {
-  /**
-   * @deprecated (3.1) Remove this test when support for 3.0 indexes is no longer needed.
-   */
-  @Deprecated
-  public void testStopWordLegacy() throws Exception {
-    assertAnalyzesTo(new CzechAnalyzer(Version.LUCENE_3_0), "Pokud mluvime o volnem",
-        new String[] { "mluvime", "volnem" });
+  
+  /** This test fails with NPE when the 
+   * stopwords file is missing in classpath */
+  public void testResourcesAvailable() {
+    new CzechAnalyzer().close();
   }
   
   public void testStopWord() throws Exception {
-    assertAnalyzesTo(new CzechAnalyzer(), "Pokud mluvime o volnem", 
+    Analyzer analyzer = new CzechAnalyzer();
+    assertAnalyzesTo(analyzer, "Pokud mluvime o volnem", 
         new String[] { "mluvim", "voln" });
-  }
-  
-  /**
-   * @deprecated (3.1) Remove this test when support for 3.0 indexes is no longer needed.
-   */
-  @Deprecated
-  public void testReusableTokenStreamLegacy() throws Exception {
-    Analyzer analyzer = new CzechAnalyzer(Version.LUCENE_3_0);
-    assertAnalyzesTo(analyzer, "Pokud mluvime o volnem", new String[] { "mluvime", "volnem" });
-    assertAnalyzesTo(analyzer, "Česká Republika", new String[] { "česká", "republika" });
+    analyzer.close();
   }
   
   public void testReusableTokenStream() throws Exception {
     Analyzer analyzer = new CzechAnalyzer();
     assertAnalyzesTo(analyzer, "Pokud mluvime o volnem", new String[] { "mluvim", "voln" });
     assertAnalyzesTo(analyzer, "Česká Republika", new String[] { "česk", "republik" });
+    analyzer.close();
   }
 
   public void testWithStemExclusionSet() throws IOException{
@@ -66,10 +58,20 @@ public class TestCzechAnalyzer extends BaseTokenStreamTestCase {
     set.add("hole");
     CzechAnalyzer cz = new CzechAnalyzer(CharArraySet.EMPTY_SET, set);
     assertAnalyzesTo(cz, "hole desek", new String[] {"hole", "desk"});
+    cz.close();
   }
   
   /** blast some random strings through the analyzer */
   public void testRandomStrings() throws Exception {
-    checkRandomData(random(), new CzechAnalyzer(), 1000*RANDOM_MULTIPLIER);
+    Analyzer analyzer = new CzechAnalyzer();
+    checkRandomData(random(), analyzer, 1000*RANDOM_MULTIPLIER);
+    analyzer.close();
+  }
+
+  public void testBackcompat40() throws IOException {
+    CzechAnalyzer a = new CzechAnalyzer();
+    a.setVersion(Version.LUCENE_4_6_1);
+    // this is just a test to see the correct unicode version is being used, not actually testing hebrew
+    assertAnalyzesTo(a, "א\"א", new String[] {"א", "א"});
   }
 }

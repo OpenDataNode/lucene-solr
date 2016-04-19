@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.uima;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.uima;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.uima;
+
 
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
@@ -30,7 +30,6 @@ import org.apache.uima.cas.text.AnnotationFS;
 import org.apache.uima.resource.ResourceInitializationException;
 
 import java.io.IOException;
-import java.io.Reader;
 import java.util.Map;
 
 /**
@@ -53,13 +52,13 @@ public final class UIMATypeAwareAnnotationsTokenizer extends BaseUIMATokenizer {
 
   private int finalOffset = 0;
 
-  public UIMATypeAwareAnnotationsTokenizer(String descriptorPath, String tokenType, String typeAttributeFeaturePath, Map<String, Object> configurationParameters, Reader input) {
-    this(descriptorPath, tokenType, typeAttributeFeaturePath, configurationParameters,DEFAULT_TOKEN_ATTRIBUTE_FACTORY, input);
+  public UIMATypeAwareAnnotationsTokenizer(String descriptorPath, String tokenType, String typeAttributeFeaturePath, Map<String, Object> configurationParameters) {
+    this(descriptorPath, tokenType, typeAttributeFeaturePath, configurationParameters, DEFAULT_TOKEN_ATTRIBUTE_FACTORY);
   }
 
   public UIMATypeAwareAnnotationsTokenizer(String descriptorPath, String tokenType, String typeAttributeFeaturePath, 
-                                           Map<String, Object> configurationParameters, AttributeFactory factory, Reader input) {
-    super(factory, input, descriptorPath, configurationParameters);
+                                           Map<String, Object> configurationParameters, AttributeFactory factory) {
+    super(factory, descriptorPath, configurationParameters);
     this.tokenTypeString = tokenType;
     this.termAttr = addAttribute(CharTermAttribute.class);
     this.typeAttr = addAttribute(TypeAttribute.class);
@@ -71,9 +70,7 @@ public final class UIMATypeAwareAnnotationsTokenizer extends BaseUIMATokenizer {
   protected void initializeIterator() throws IOException {
     try {
       analyzeInput();
-    } catch (AnalysisEngineProcessException e) {
-      throw new IOException(e);
-    } catch (ResourceInitializationException e) {
+    } catch (AnalysisEngineProcessException | ResourceInitializationException e) {
       throw new IOException(e);
     }
     featurePath = cas.createFeaturePath();

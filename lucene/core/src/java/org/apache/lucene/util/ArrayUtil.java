@@ -1,5 +1,3 @@
-package org.apache.lucene.util;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,7 +14,10 @@ package org.apache.lucene.util;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.util;
 
+
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 
@@ -134,7 +135,7 @@ public final class ArrayUtil {
  END APACHE HARMONY CODE
   */
 
-  /** Returns an array size >= minTargetSize, generally
+  /** Returns an array size &gt;= minTargetSize, generally
    *  over-allocating exponentially to achieve amortized
    *  linear-time cost as the array grows.
    *
@@ -234,6 +235,14 @@ public final class ArrayUtil {
       return newSize;
     else
       return currentSize;
+  }
+
+  public static <T> T[] grow(T[] array, int minSize) {
+    assert minSize >= 0: "size must be positive (got " + minSize + "): likely integer overflow?";
+    if (array.length < minSize) {
+      return Arrays.copyOf(array, oversize(minSize, RamUsageEstimator.NUM_BYTES_OBJECT_REF));
+    } else
+      return array;
   }
 
   public static short[] grow(short[] array, int minSize) {
@@ -620,8 +629,7 @@ public final class ArrayUtil {
     }
   }
 
-  @SuppressWarnings("rawtypes")
-  private static final Comparator<?> NATURAL_COMPARATOR = new NaturalComparator();
+  private static final Comparator<?> NATURAL_COMPARATOR = new NaturalComparator<>();
 
   /** Get the natural {@link Comparator} for the provided object class. */
   @SuppressWarnings("unchecked")

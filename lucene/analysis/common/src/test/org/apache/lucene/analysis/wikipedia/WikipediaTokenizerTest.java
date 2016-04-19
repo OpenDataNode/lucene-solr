@@ -15,10 +15,8 @@
  * limitations under the License.
  */
 
-
 package org.apache.lucene.analysis.wikipedia;
 
-import java.io.Reader;
 import java.io.StringReader;
 import java.io.IOException;
 import java.util.Collections;
@@ -41,7 +39,8 @@ public class WikipediaTokenizerTest extends BaseTokenStreamTestCase {
 
   public void testSimple() throws Exception {
     String text = "This is a [[Category:foo]]";
-    WikipediaTokenizer tf = new WikipediaTokenizer(newAttributeFactory(), new StringReader(text), WikipediaTokenizer.TOKENS_ONLY, Collections.<String>emptySet());
+    WikipediaTokenizer tf = new WikipediaTokenizer(newAttributeFactory(), WikipediaTokenizer.TOKENS_ONLY, Collections.<String>emptySet());
+    tf.setReader(new StringReader(text));
     assertTokenStreamContents(tf,
         new String[] { "This", "is", "a", "foo" },
         new int[] { 0, 5, 8, 21 },
@@ -63,7 +62,8 @@ public class WikipediaTokenizerTest extends BaseTokenStreamTestCase {
         + " [http://foo.boo.com/test/test/ Test Test] [http://foo.boo.com/test/test/test.html Test Test]"
         + " [http://foo.boo.com/test/test/test.html?g=b&c=d Test Test] <ref>Citation</ref> <sup>martian</sup> <span class=\"glue\">code</span>";
     
-    WikipediaTokenizer tf = new WikipediaTokenizer(newAttributeFactory(), new StringReader(test), WikipediaTokenizer.TOKENS_ONLY, Collections.<String>emptySet());
+    WikipediaTokenizer tf = new WikipediaTokenizer(newAttributeFactory(), WikipediaTokenizer.TOKENS_ONLY, Collections.<String>emptySet());
+    tf.setReader(new StringReader(test));
     assertTokenStreamContents(tf, 
       new String[] {"link", "This", "is", "a",
         "foo", "Category", "This", "is", "a", "linked", "bar", "none",
@@ -104,7 +104,8 @@ public class WikipediaTokenizerTest extends BaseTokenStreamTestCase {
   }
 
   public void testLinkPhrases() throws Exception {
-    WikipediaTokenizer tf = new WikipediaTokenizer(newAttributeFactory(), new StringReader(LINK_PHRASES), WikipediaTokenizer.TOKENS_ONLY, Collections.<String>emptySet());
+    WikipediaTokenizer tf = new WikipediaTokenizer(newAttributeFactory(), WikipediaTokenizer.TOKENS_ONLY, Collections.<String>emptySet());
+    tf.setReader(new StringReader(LINK_PHRASES));
     checkLinkPhrases(tf);
   }
 
@@ -117,7 +118,8 @@ public class WikipediaTokenizerTest extends BaseTokenStreamTestCase {
 
   public void testLinks() throws Exception {
     String test = "[http://lucene.apache.org/java/docs/index.html#news here] [http://lucene.apache.org/java/docs/index.html?b=c here] [https://lucene.apache.org/java/docs/index.html?b=c here]";
-    WikipediaTokenizer tf = new WikipediaTokenizer(newAttributeFactory(), new StringReader(test), WikipediaTokenizer.TOKENS_ONLY, Collections.<String>emptySet());
+    WikipediaTokenizer tf = new WikipediaTokenizer(newAttributeFactory(), WikipediaTokenizer.TOKENS_ONLY, Collections.<String>emptySet());
+    tf.setReader(new StringReader(test));
     assertTokenStreamContents(tf,
         new String[] { "http://lucene.apache.org/java/docs/index.html#news", "here",
           "http://lucene.apache.org/java/docs/index.html?b=c", "here",
@@ -132,10 +134,12 @@ public class WikipediaTokenizerTest extends BaseTokenStreamTestCase {
     untoks.add(WikipediaTokenizer.CATEGORY);
     untoks.add(WikipediaTokenizer.ITALICS);
     //should be exactly the same, regardless of untoks
-    WikipediaTokenizer tf = new WikipediaTokenizer(newAttributeFactory(), new StringReader(LINK_PHRASES), WikipediaTokenizer.TOKENS_ONLY, untoks);
+    WikipediaTokenizer tf = new WikipediaTokenizer(newAttributeFactory(), WikipediaTokenizer.TOKENS_ONLY, untoks);
+    tf.setReader(new StringReader(LINK_PHRASES));
     checkLinkPhrases(tf);
     String test = "[[Category:a b c d]] [[Category:e f g]] [[link here]] [[link there]] ''italics here'' something ''more italics'' [[Category:h   i   j]]";
-    tf = new WikipediaTokenizer(new StringReader(test), WikipediaTokenizer.UNTOKENIZED_ONLY, untoks);
+    tf = new WikipediaTokenizer(WikipediaTokenizer.UNTOKENIZED_ONLY, untoks);
+    tf.setReader(new StringReader(test));
     assertTokenStreamContents(tf,
         new String[] { "a b c d", "e f g", "link", "here", "link",
           "there", "italics here", "something", "more italics", "h   i   j" },
@@ -151,7 +155,8 @@ public class WikipediaTokenizerTest extends BaseTokenStreamTestCase {
     untoks.add(WikipediaTokenizer.ITALICS);
     String test = "[[Category:a b c d]] [[Category:e f g]] [[link here]] [[link there]] ''italics here'' something ''more italics'' [[Category:h   i   j]]";
     //should output all the indivual tokens plus the untokenized tokens as well.  Untokenized tokens
-    WikipediaTokenizer tf = new WikipediaTokenizer(newAttributeFactory(), new StringReader(test), WikipediaTokenizer.BOTH, untoks);
+    WikipediaTokenizer tf = new WikipediaTokenizer(newAttributeFactory(), WikipediaTokenizer.BOTH, untoks);
+    tf.setReader(new StringReader(test));
     assertTokenStreamContents(tf,
         new String[] { "a b c d", "a", "b", "c", "d", "e f g", "e", "f", "g",
           "link", "here", "link", "there", "italics here", "italics", "here",
@@ -162,7 +167,8 @@ public class WikipediaTokenizerTest extends BaseTokenStreamTestCase {
        );
     
     // now check the flags, TODO: add way to check flags from BaseTokenStreamTestCase?
-    tf = new WikipediaTokenizer(newAttributeFactory(), new StringReader(test), WikipediaTokenizer.BOTH, untoks);
+    tf = new WikipediaTokenizer(newAttributeFactory(), WikipediaTokenizer.BOTH, untoks);
+    tf.setReader(new StringReader(test));
     int expectedFlags[] = new int[] { UNTOKENIZED_TOKEN_FLAG, 0, 0, 0, 0, UNTOKENIZED_TOKEN_FLAG, 0, 0, 0, 0, 
         0, 0, 0, UNTOKENIZED_TOKEN_FLAG, 0, 0, 0, UNTOKENIZED_TOKEN_FLAG, 0, 0, UNTOKENIZED_TOKEN_FLAG, 0, 0, 0 };
     FlagsAttribute flagsAtt = tf.addAttribute(FlagsAttribute.class);
@@ -180,13 +186,14 @@ public class WikipediaTokenizerTest extends BaseTokenStreamTestCase {
     Analyzer a = new Analyzer() {
 
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new WikipediaTokenizer(newAttributeFactory(), reader, WikipediaTokenizer.TOKENS_ONLY, Collections.<String>emptySet());
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new WikipediaTokenizer(newAttributeFactory(), WikipediaTokenizer.TOKENS_ONLY, Collections.<String>emptySet());
         return new TokenStreamComponents(tokenizer, tokenizer);
       } 
     };
     // TODO: properly support positionLengthAttribute
     checkRandomData(random(), a, 1000*RANDOM_MULTIPLIER, 20, false, false);
+    a.close();
   }
   
   /** blast some random large strings through the analyzer */
@@ -195,12 +202,13 @@ public class WikipediaTokenizerTest extends BaseTokenStreamTestCase {
     Analyzer a = new Analyzer() {
 
       @Override
-      protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
-        Tokenizer tokenizer = new WikipediaTokenizer(newAttributeFactory(), reader, WikipediaTokenizer.TOKENS_ONLY, Collections.<String>emptySet());
+      protected TokenStreamComponents createComponents(String fieldName) {
+        Tokenizer tokenizer = new WikipediaTokenizer(newAttributeFactory(), WikipediaTokenizer.TOKENS_ONLY, Collections.<String>emptySet());
         return new TokenStreamComponents(tokenizer, tokenizer);
       } 
     };
     // TODO: properly support positionLengthAttribute
     checkRandomData(random, a, 100*RANDOM_MULTIPLIER, 8192, false, false);
+    a.close();
   }
 }

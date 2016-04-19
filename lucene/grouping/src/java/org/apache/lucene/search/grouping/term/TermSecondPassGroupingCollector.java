@@ -1,5 +1,3 @@
-package org.apache.lucene.search.grouping.term;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,13 +14,14 @@ package org.apache.lucene.search.grouping.term;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.grouping.term;
 
 import java.io.IOException;
 import java.util.Collection;
 
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.SortedDocValues;
-import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.grouping.AbstractSecondPassGroupingCollector;
 import org.apache.lucene.search.grouping.SearchGroup;
@@ -38,24 +37,25 @@ import org.apache.lucene.util.SentinelIntSet;
  */
 public class TermSecondPassGroupingCollector extends AbstractSecondPassGroupingCollector<BytesRef> {
 
-  private final SentinelIntSet ordSet;
-  private SortedDocValues index;
   private final String groupField;
+  private final SentinelIntSet ordSet;
 
-  @SuppressWarnings({"unchecked"})
+  private SortedDocValues index;
+
+  @SuppressWarnings({"unchecked", "rawtypes"})
   public TermSecondPassGroupingCollector(String groupField, Collection<SearchGroup<BytesRef>> groups, Sort groupSort, Sort withinGroupSort,
                                          int maxDocsPerGroup, boolean getScores, boolean getMaxScores, boolean fillSortFields)
       throws IOException {
     super(groups, groupSort, withinGroupSort, maxDocsPerGroup, getScores, getMaxScores, fillSortFields);
-    ordSet = new SentinelIntSet(groupMap.size(), -2);
     this.groupField = groupField;
-    groupDocs = (SearchGroupDocs<BytesRef>[]) new SearchGroupDocs[ordSet.keys.length];
+    this.ordSet = new SentinelIntSet(groupMap.size(), -2);
+    super.groupDocs = (SearchGroupDocs<BytesRef>[]) new SearchGroupDocs[ordSet.keys.length];
   }
 
   @Override
-  public void setNextReader(AtomicReaderContext readerContext) throws IOException {
-    super.setNextReader(readerContext);
-    index = FieldCache.DEFAULT.getTermsIndex(readerContext.reader(), groupField);
+  protected void doSetNextReader(LeafReaderContext readerContext) throws IOException {
+    super.doSetNextReader(readerContext);
+    index = DocValues.getSorted(readerContext.reader(), groupField);
 
     // Rebuild ordSet
     ordSet.clear();
@@ -76,4 +76,5 @@ public class TermSecondPassGroupingCollector extends AbstractSecondPassGroupingC
     }
     return null;
   }
+
 }

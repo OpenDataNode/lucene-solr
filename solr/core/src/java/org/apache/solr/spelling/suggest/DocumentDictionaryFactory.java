@@ -1,5 +1,3 @@
-package org.apache.solr.spelling.suggest;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.solr.spelling.suggest;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.spelling.suggest;
 
 import org.apache.lucene.search.spell.Dictionary;
 import org.apache.lucene.search.suggest.DocumentDictionary;
@@ -33,6 +32,8 @@ public class DocumentDictionaryFactory extends DictionaryFactory {
   
   public static final String PAYLOAD_FIELD = "payloadField";
 
+  public static final String CONTEXT_FIELD = "contextField";
+
   @Override
   public Dictionary create(SolrCore core, SolrIndexSearcher searcher) {
     if(params == null) {
@@ -42,15 +43,13 @@ public class DocumentDictionaryFactory extends DictionaryFactory {
     String field = (String) params.get(FIELD);
     String weightField = (String) params.get(WEIGHT_FIELD);
     String payloadField = (String) params.get(PAYLOAD_FIELD);
-    
+    String contextField = (String) params.get(CONTEXT_FIELD);
+
     if (field == null) {
       throw new IllegalArgumentException(FIELD + " is a mandatory parameter");
     }
-    if (weightField == null) {
-      throw new IllegalArgumentException(WEIGHT_FIELD + " is a mandatory parameter");
-    }
-    
-    return new DocumentDictionary(searcher.getIndexReader(), field, weightField, payloadField);
+
+    return new DocumentDictionary(searcher.getIndexReader(), field, weightField, payloadField, contextField);
   }
   
 }

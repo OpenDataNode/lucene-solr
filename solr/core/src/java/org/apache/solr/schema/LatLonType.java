@@ -1,4 +1,3 @@
-package org.apache.solr.schema;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,31 +14,30 @@ package org.apache.solr.schema;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.solr.schema;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
-import com.spatial4j.core.shape.Point;
 import org.apache.lucene.document.FieldType;
-import org.apache.lucene.index.IndexableField;
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.valuesource.VectorValueSource;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
-import org.apache.lucene.search.ComplexExplanation;
+import org.apache.lucene.search.ConstantScoreWeight;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Explanation;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.Weight;
-import org.apache.lucene.util.Bits;
+import org.apache.lucene.uninverting.UninvertingReader.Type;
 import org.apache.solr.common.SolrException;
 import org.apache.solr.response.TextResponseWriter;
 import org.apache.solr.search.DelegatingCollector;
@@ -47,11 +45,12 @@ import org.apache.solr.search.ExtendedQueryBase;
 import org.apache.solr.search.PostFilter;
 import org.apache.solr.search.QParser;
 import org.apache.solr.search.SpatialOptions;
+import org.apache.solr.util.SpatialUtils;
 
 import com.spatial4j.core.context.SpatialContext;
 import com.spatial4j.core.distance.DistanceUtils;
+import com.spatial4j.core.shape.Point;
 import com.spatial4j.core.shape.Rectangle;
-import org.apache.solr.util.SpatialUtils;
 
 
 /**
@@ -99,13 +98,14 @@ public class LatLonType extends AbstractSubTypeFieldType implements SpatialQuery
 
     SchemaField latSF = subField(field, LAT, parser.getReq().getSchema());
     SchemaField lonSF = subField(field, LON, parser.getReq().getSchema());
-    BooleanQuery result = new BooleanQuery(true);
+    BooleanQuery.Builder result = new BooleanQuery.Builder();
+    result.setDisableCoord(true);
     // points must currently be ordered... should we support specifying any two opposite corner points?
     result.add(latSF.getType().getRangeQuery(parser, latSF,
         Double.toString(p1.getY()), Double.toString(p2.getY()), minInclusive, maxInclusive), BooleanClause.Occur.MUST);
     result.add(lonSF.getType().getRangeQuery(parser, lonSF,
         Double.toString(p1.getX()), Double.toString(p2.getX()), minInclusive, maxInclusive), BooleanClause.Occur.MUST);
-    return result;
+    return result.build();
   }
 
   @Override
@@ -114,12 +114,13 @@ public class LatLonType extends AbstractSubTypeFieldType implements SpatialQuery
 
     SchemaField latSF = subField(field, LAT, parser.getReq().getSchema());
     SchemaField lonSF = subField(field, LON, parser.getReq().getSchema());
-    BooleanQuery result = new BooleanQuery(true);
+    BooleanQuery.Builder result = new BooleanQuery.Builder();
+    result.setDisableCoord(true);
     result.add(latSF.getType().getFieldQuery(parser, latSF,
         Double.toString(p1.getY())), BooleanClause.Occur.MUST);
     result.add(lonSF.getType().getFieldQuery(parser, lonSF,
         Double.toString(p1.getX())), BooleanClause.Occur.MUST);
-    return result;
+    return result.build();
   }
 
 
@@ -159,7 +160,7 @@ public class LatLonType extends AbstractSubTypeFieldType implements SpatialQuery
 
 
     if (options.bbox) {
-      BooleanQuery result = new BooleanQuery();
+      BooleanQuery.Builder result = new BooleanQuery.Builder();
 
       Query latRange = latSF.getType().getRangeQuery(parser, latSF,
                 String.valueOf(latMin),
@@ -174,7 +175,7 @@ public class LatLonType extends AbstractSubTypeFieldType implements SpatialQuery
                 true, true);
         if (lon2Min != -180 || lon2Max != 180) {
           // another valid longitude range
-          BooleanQuery bothLons = new BooleanQuery();
+          BooleanQuery.Builder bothLons = new BooleanQuery.Builder();
           bothLons.add(lonRange, BooleanClause.Occur.SHOULD);
 
           lonRange = lonSF.getType().getRangeQuery(parser, lonSF,
@@ -183,13 +184,13 @@ public class LatLonType extends AbstractSubTypeFieldType implements SpatialQuery
                 true, true);
           bothLons.add(lonRange, BooleanClause.Occur.SHOULD);
 
-          lonRange = bothLons;
+          lonRange = bothLons.build();
         }
 
         result.add(lonRange, BooleanClause.Occur.MUST);
       }
 
-      spatial.bboxQuery = result;
+      spatial.bboxQuery = result.build();
     }
 
 
@@ -218,7 +219,7 @@ public class LatLonType extends AbstractSubTypeFieldType implements SpatialQuery
   public ValueSource getValueSource(SchemaField field, QParser parser) {
     ArrayList<ValueSource> vs = new ArrayList<>(2);
     for (int i = 0; i < 2; i++) {
-      SchemaField sub = subField(field, i, parser.getReq().getSchema());
+      SchemaField sub = subField(field, i, schema);
       vs.add(sub.getType().getValueSource(sub, parser));
     }
     return new LatLonValueSource(field, vs);
@@ -238,6 +239,11 @@ public class LatLonType extends AbstractSubTypeFieldType implements SpatialQuery
   public SortField getSortField(SchemaField field, boolean top) {
     throw new SolrException(SolrException.ErrorCode.BAD_REQUEST, "Sorting not supported on LatLonType " + field.getName());
   }
+  
+  @Override
+  public Type getUninversionType(SchemaField sf) {
+    return null;
+  }
 
 
 
@@ -246,6 +252,11 @@ public class LatLonType extends AbstractSubTypeFieldType implements SpatialQuery
   @Override
   public IndexableField createField(SchemaField field, Object value, float boost) {
     throw new UnsupportedOperationException("LatLonType uses multiple fields.  field=" + field.getName());
+  }
+
+  @Override
+  public double getSphereRadius() {
+    return DistanceUtils.EARTH_MEAN_RADIUS_KM;
   }
 
 }
@@ -293,21 +304,19 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
 
   @Override
   public Query rewrite(IndexReader reader) throws IOException {
+    if (getBoost() != 1f) {
+      return super.rewrite(reader);
+    }
     return bboxQuery != null ? bboxQuery.rewrite(reader) : this;
   }
 
-  @Override
-  public void extractTerms(Set terms) {}
-
-
-  protected class SpatialWeight extends Weight {
+  protected class SpatialWeight extends ConstantScoreWeight {
     protected IndexSearcher searcher;
-    protected float queryNorm;
-    protected float queryWeight;
     protected Map latContext;
     protected Map lonContext;
 
     public SpatialWeight(IndexSearcher searcher) throws IOException {
+      super(SpatialDistanceQuery.this);
       this.searcher = searcher;
       this.latContext = ValueSource.newContext(searcher);
       this.lonContext = ValueSource.newContext(searcher);
@@ -316,30 +325,13 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
     }
 
     @Override
-    public Query getQuery() {
-      return SpatialDistanceQuery.this;
+    public Scorer scorer(LeafReaderContext context) throws IOException {
+      return new SpatialScorer(context, this, score());
     }
 
     @Override
-    public float getValueForNormalization() throws IOException {
-      queryWeight = getBoost();
-      return queryWeight * queryWeight;
-    }
-
-    @Override
-    public void normalize(float norm, float topLevelBoost) {
-      this.queryNorm = norm * topLevelBoost;
-      queryWeight *= this.queryNorm;
-    }
-
-    @Override
-    public Scorer scorer(AtomicReaderContext context, Bits acceptDocs) throws IOException {
-      return new SpatialScorer(context, acceptDocs, this, queryWeight);
-    }
-
-    @Override
-    public Explanation explain(AtomicReaderContext context, int doc) throws IOException {
-      return ((SpatialScorer)scorer(context, context.reader().getLiveDocs())).explain(doc);
+    public Explanation explain(LeafReaderContext context, int doc) throws IOException {
+      return ((SpatialScorer)scorer(context)).explain(super.explain(context, doc), doc);
     }
   }
 
@@ -351,7 +343,6 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
     int doc=-1;
     final FunctionValues latVals;
     final FunctionValues lonVals;
-    final Bits acceptDocs;
 
 
     final double lonMin, lonMax, lon2Min, lon2Max, latMin, latMax;
@@ -367,13 +358,12 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
     int lastDistDoc;
     double lastDist;
 
-    public SpatialScorer(AtomicReaderContext readerContext, Bits acceptDocs, SpatialWeight w, float qWeight) throws IOException {
+    public SpatialScorer(LeafReaderContext readerContext, SpatialWeight w, float qWeight) throws IOException {
       super(w);
       this.weight = w;
       this.qWeight = qWeight;
       this.reader = readerContext.reader();
       this.maxDoc = reader.maxDoc();
-      this.acceptDocs = acceptDocs;
       latVals = latSource.getValues(weight.latContext, readerContext);
       lonVals = lonSource.getValues(weight.lonContext, readerContext);
 
@@ -440,28 +430,44 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
       return doc;
     }
 
-    // instead of matching all docs, we could also embed a query.
-    // the score could either ignore the subscore, or boost it.
-    // Containment:  floatline(foo:myTerm, "myFloatField", 1.0, 0.0f)
-    // Boost:        foo:myTerm^floatline("myFloatField",1.0,0.0f)
     @Override
-    public int nextDoc() throws IOException {
-      for(;;) {
-        ++doc;
-        if (doc>=maxDoc) {
-          return doc=NO_MORE_DOCS;
-        }
-        if (acceptDocs != null && !acceptDocs.get(doc)) continue;
-        if (!match()) continue;
-        return doc;
-      }
-    }
+    public DocIdSetIterator iterator() {
+      return new DocIdSetIterator() {
 
-    @Override
-    public int advance(int target) throws IOException {
-      // this will work even if target==NO_MORE_DOCS
-      doc=target-1;
-      return nextDoc();
+        @Override
+        public int docID() {
+          return doc;
+        }
+
+        // instead of matching all docs, we could also embed a query.
+        // the score could either ignore the subscore, or boost it.
+        // Containment:  floatline(foo:myTerm, "myFloatField", 1.0, 0.0f)
+        // Boost:        foo:myTerm^floatline("myFloatField",1.0,0.0f)
+        @Override
+        public int nextDoc() throws IOException {
+          for(;;) {
+            ++doc;
+            if (doc>=maxDoc) {
+              return doc=NO_MORE_DOCS;
+            }
+            if (!match()) continue;
+            return doc;
+          }
+        }
+
+        @Override
+        public int advance(int target) throws IOException {
+          // this will work even if target==NO_MORE_DOCS
+          doc=target-1;
+          return nextDoc();
+        }
+
+        @Override
+        public long cost() {
+          return maxDoc;
+        }
+
+      };
     }
 
     @Override
@@ -475,29 +481,17 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
       return 1;
     }
 
-    @Override
-    public long cost() {
-      return maxDoc;
-    }
-
-    public Explanation explain(int doc) throws IOException {
-      advance(doc);
-      boolean matched = this.doc == doc;
-      this.doc = doc;
-
-      float sc = matched ? score() : 0;
+    public Explanation explain(Explanation base, int doc) throws IOException {
+      if (base.isMatch() == false) {
+        return base;
+      }
       double dist = dist(latVals.doubleVal(doc), lonVals.doubleVal(doc));
 
       String description = SpatialDistanceQuery.this.toString();
-
-      Explanation result = new ComplexExplanation
-        (this.doc == doc, sc, description +  " product of:");
-      // result.addDetail(new Explanation((float)dist, "hsin("+latVals.explain(doc)+","+lonVals.explain(doc)));
-      result.addDetail(new Explanation((float)dist, "hsin("+latVals.doubleVal(doc)+","+lonVals.doubleVal(doc)));
-      result.addDetail(new Explanation(getBoost(), "boost"));
-      result.addDetail(new Explanation(weight.queryNorm,"queryNorm"));
-      return result;
+      return Explanation.match((float) (base.getValue() * dist), description + " product of:",
+          base, Explanation.match((float) dist, "hsin("+latVals.doubleVal(doc)+","+lonVals.doubleVal(doc)));
     }
+
   }
 
   @Override
@@ -522,20 +516,20 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
     @Override
     public void collect(int doc) throws IOException {
       spatialScorer.doc = doc;
-      if (spatialScorer.match()) delegate.collect(doc);
+      if (spatialScorer.match()) leafDelegate.collect(doc);
     }
 
     @Override
-    public void setNextReader(AtomicReaderContext context) throws IOException {
+    protected void doSetNextReader(LeafReaderContext context) throws IOException {
+      super.doSetNextReader(context);
       maxdoc = context.reader().maxDoc();
-      spatialScorer = new SpatialScorer(context, null, weight, 1.0f);
-      super.setNextReader(context);
+      spatialScorer = new SpatialScorer(context, weight, 1.0f);
     }
   }
 
 
   @Override
-  public Weight createWeight(IndexSearcher searcher) throws IOException {
+  public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
     // if we were supposed to use bboxQuery, then we should have been rewritten using that query
     assert bboxQuery == null;
     return new SpatialWeight(searcher);
@@ -546,8 +540,7 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
   @Override
   public String toString(String field)
   {
-    float boost = getBoost();
-    return super.getOptions() + (boost!=1.0?"(":"") +
+    return super.getOptions() +
             (calcDist ? "geofilt" : "bbox") + "(latlonSource="+origField +"(" + latSource + "," + lonSource + ")"
             +",latCenter="+latCenter+",lonCenter="+lonCenter
             +",dist=" + dist
@@ -557,8 +550,7 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
             +",calcDist="+calcDist
             +",planetRadius="+planetRadius
             // + (bboxQuery == null ? "" : ",bboxQuery="+bboxQuery)
-            +")"
-            + (boost==1.0 ? "" : ")^"+boost);
+            +")";
   }
 
 
@@ -580,7 +572,6 @@ class SpatialDistanceQuery extends ExtendedQueryBase implements PostFilter {
             && this.calcDist == other.calcDist
             && this.lonSource.equals(other.lonSource)
             && this.latSource.equals(other.latSource)
-            && this.getBoost() == other.getBoost()
         ;
   }
 

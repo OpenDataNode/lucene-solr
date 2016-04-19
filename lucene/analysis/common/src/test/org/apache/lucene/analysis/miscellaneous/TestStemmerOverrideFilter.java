@@ -1,4 +1,3 @@
-package org.apache.lucene.analysis.miscellaneous;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,13 +14,15 @@ package org.apache.lucene.analysis.miscellaneous;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.miscellaneous;
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Map;
 import java.util.Set;
 
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
@@ -31,19 +32,28 @@ import org.apache.lucene.analysis.core.KeywordTokenizer;
 import org.apache.lucene.analysis.core.WhitespaceTokenizer;
 import org.apache.lucene.analysis.en.PorterStemFilter;
 import org.apache.lucene.analysis.miscellaneous.StemmerOverrideFilter.StemmerOverrideMap;
+import org.apache.lucene.analysis.util.CharacterUtils;
 import org.apache.lucene.util.TestUtil;
 
 /**
  * 
  */
 public class TestStemmerOverrideFilter extends BaseTokenStreamTestCase {
+
+  private KeywordTokenizer keywordTokenizer(String data) throws IOException {
+    KeywordTokenizer tokenizer = new KeywordTokenizer();
+    tokenizer.setReader(new StringReader(data));
+    return tokenizer;
+  }
+
+
   public void testOverride() throws IOException {
     // lets make booked stem to books
     // the override filter will convert "booked" to "books",
     // but also mark it with KeywordAttribute so Porter will not change it.
     StemmerOverrideFilter.Builder builder = new StemmerOverrideFilter.Builder();
     builder.add("booked", "books");
-    Tokenizer tokenizer = new KeywordTokenizer(new StringReader("booked"));
+    Tokenizer tokenizer = keywordTokenizer("booked");
     TokenStream stream = new PorterStemFilter(new StemmerOverrideFilter(
         tokenizer, builder.build()));
     assertTokenStreamContents(stream, new String[] {"books"});
@@ -55,7 +65,7 @@ public class TestStemmerOverrideFilter extends BaseTokenStreamTestCase {
     // but also mark it with KeywordAttribute so Porter will not change it.
     StemmerOverrideFilter.Builder builder = new StemmerOverrideFilter.Builder(true);
     builder.add("boOkEd", "books");
-    Tokenizer tokenizer = new KeywordTokenizer(new StringReader("BooKeD"));
+    Tokenizer tokenizer = keywordTokenizer("BooKeD");
     TokenStream stream = new PorterStemFilter(new StemmerOverrideFilter(
         tokenizer, builder.build()));
     assertTokenStreamContents(stream, new String[] {"books"});
@@ -63,7 +73,7 @@ public class TestStemmerOverrideFilter extends BaseTokenStreamTestCase {
 
   public void testNoOverrides() throws IOException {
     StemmerOverrideFilter.Builder builder = new StemmerOverrideFilter.Builder(true);
-    Tokenizer tokenizer = new KeywordTokenizer(new StringReader("book"));
+    Tokenizer tokenizer = keywordTokenizer("book");
     TokenStream stream = new PorterStemFilter(new StemmerOverrideFilter(
         tokenizer, builder.build()));
     assertTokenStreamContents(stream, new String[] {"book"});
@@ -71,7 +81,12 @@ public class TestStemmerOverrideFilter extends BaseTokenStreamTestCase {
   
   public void testRandomRealisticWhiteSpace() throws IOException {
     Map<String,String> map = new HashMap<>();
+    Set<String> seen = new HashSet<>();
     int numTerms = atLeast(50);
+    boolean ignoreCase = random().nextBoolean();
+
+    CharacterUtils charUtils = CharacterUtils.getInstance();
+
     for (int i = 0; i < numTerms; i++) {
       String randomRealisticUnicodeString = TestUtil
           .randomRealisticUnicodeString(random());
@@ -85,16 +100,31 @@ public class TestStemmerOverrideFilter extends BaseTokenStreamTestCase {
         j += Character.charCount(cp);
       }
       if (builder.length() > 0) {
-        String value = TestUtil.randomSimpleString(random());
-        map.put(builder.toString(),
-            value.isEmpty() ? "a" : value);
-        
+        String inputValue = builder.toString();
+
+        // Make sure we don't try to add two inputs that vary only by case:
+        String seenInputValue;
+        if (ignoreCase) {
+          // TODO: can we simply use inputValue.toLowerCase(Locale.ROOT)???
+          char[] buffer = inputValue.toCharArray();
+          charUtils.toLowerCase(buffer, 0, buffer.length);
+          seenInputValue = buffer.toString();
+        } else {
+          seenInputValue = inputValue;
+        }
+
+        if (seen.contains(seenInputValue) == false) {
+          seen.add(seenInputValue);
+          String value = TestUtil.randomSimpleString(random());
+          map.put(inputValue,
+              value.isEmpty() ? "a" : value);
+        }
       }
     }
     if (map.isEmpty()) {
       map.put("booked", "books");
     }
-    StemmerOverrideFilter.Builder builder = new StemmerOverrideFilter.Builder(random().nextBoolean());
+    StemmerOverrideFilter.Builder builder = new StemmerOverrideFilter.Builder(ignoreCase);
     Set<Entry<String,String>> entrySet = map.entrySet();
     StringBuilder input = new StringBuilder();
     List<String> output = new ArrayList<>();
@@ -105,7 +135,8 @@ public class TestStemmerOverrideFilter extends BaseTokenStreamTestCase {
         output.add(entry.getValue());
       }
     }
-    Tokenizer tokenizer = new WhitespaceTokenizer(new StringReader(input.toString()));
+    Tokenizer tokenizer = new WhitespaceTokenizer();
+    tokenizer.setReader(new StringReader(input.toString()));
     TokenStream stream = new PorterStemFilter(new StemmerOverrideFilter(
         tokenizer, builder.build()));
     assertTokenStreamContents(stream, output.toArray(new String[0]));
@@ -134,8 +165,8 @@ public class TestStemmerOverrideFilter extends BaseTokenStreamTestCase {
     StemmerOverrideMap build = builder.build();
     for (Entry<String,String> entry : entrySet) {
       if (random().nextBoolean()) {
-        Tokenizer tokenizer = new KeywordTokenizer(new StringReader(
-            entry.getKey()));
+        Tokenizer tokenizer = new KeywordTokenizer();
+        tokenizer.setReader(new StringReader(entry.getKey()));
         TokenStream stream = new PorterStemFilter(new StemmerOverrideFilter(
             tokenizer, build));
         assertTokenStreamContents(stream, new String[] {entry.getValue()});

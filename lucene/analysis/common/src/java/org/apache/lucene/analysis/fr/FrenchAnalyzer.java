@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.fr;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.fr;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.fr;
+
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.LowerCaseFilter;
@@ -27,6 +27,7 @@ import org.apache.lucene.analysis.snowball.SnowballFilter;
 import org.apache.lucene.analysis.standard.StandardFilter;
 import org.apache.lucene.analysis.standard.StandardTokenizer;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;  // for javadoc
+import org.apache.lucene.analysis.standard.std40.StandardTokenizer40;
 import org.apache.lucene.analysis.util.CharArraySet;
 import org.apache.lucene.analysis.util.ElisionFilter;
 import org.apache.lucene.analysis.util.StopwordAnalyzerBase;
@@ -49,50 +50,10 @@ import java.util.Arrays;
  * exclusion list is empty by default.
  * </p>
  *
- * <a name="version"/>
- * <p>You may specify the {@link Version}
- * compatibility when creating FrenchAnalyzer:
- * <ul>
- *   <li> As of 3.6, FrenchLightStemFilter is used for less aggressive stemming.
- *   <li> As of 3.1, Snowball stemming is done with SnowballFilter, 
- *        LowerCaseFilter is used prior to StopFilter, and ElisionFilter and 
- *        Snowball stopwords are used by default.
- * </ul>
- *
- * <p><b>NOTE</b>: This class uses the same {@link Version}
+ * <p><b>NOTE</b>: This class uses the same {@link org.apache.lucene.util.Version}
  * dependent settings as {@link StandardAnalyzer}.</p>
  */
 public final class FrenchAnalyzer extends StopwordAnalyzerBase {
-
-  /**
-   * Extended list of typical French stopwords.
-   * @deprecated (3.1) remove in Lucene 5.0 (index bw compat)
-   */
-  @Deprecated
-  private final static String[] FRENCH_STOP_WORDS = {
-    "a", "afin", "ai", "ainsi", "après", "attendu", "au", "aujourd", "auquel", "aussi",
-    "autre", "autres", "aux", "auxquelles", "auxquels", "avait", "avant", "avec", "avoir",
-    "c", "car", "ce", "ceci", "cela", "celle", "celles", "celui", "cependant", "certain",
-    "certaine", "certaines", "certains", "ces", "cet", "cette", "ceux", "chez", "ci",
-    "combien", "comme", "comment", "concernant", "contre", "d", "dans", "de", "debout",
-    "dedans", "dehors", "delà", "depuis", "derrière", "des", "désormais", "desquelles",
-    "desquels", "dessous", "dessus", "devant", "devers", "devra", "divers", "diverse",
-    "diverses", "doit", "donc", "dont", "du", "duquel", "durant", "dès", "elle", "elles",
-    "en", "entre", "environ", "est", "et", "etc", "etre", "eu", "eux", "excepté", "hormis",
-    "hors", "hélas", "hui", "il", "ils", "j", "je", "jusqu", "jusque", "l", "la", "laquelle",
-    "le", "lequel", "les", "lesquelles", "lesquels", "leur", "leurs", "lorsque", "lui", "là",
-    "ma", "mais", "malgré", "me", "merci", "mes", "mien", "mienne", "miennes", "miens", "moi",
-    "moins", "mon", "moyennant", "même", "mêmes", "n", "ne", "ni", "non", "nos", "notre",
-    "nous", "néanmoins", "nôtre", "nôtres", "on", "ont", "ou", "outre", "où", "par", "parmi",
-    "partant", "pas", "passé", "pendant", "plein", "plus", "plusieurs", "pour", "pourquoi",
-    "proche", "près", "puisque", "qu", "quand", "que", "quel", "quelle", "quelles", "quels",
-    "qui", "quoi", "quoique", "revoici", "revoilà", "s", "sa", "sans", "sauf", "se", "selon",
-    "seront", "ses", "si", "sien", "sienne", "siennes", "siens", "sinon", "soi", "soit",
-    "son", "sont", "sous", "suivant", "sur", "ta", "te", "tes", "tien", "tienne", "tiennes",
-    "tiens", "toi", "ton", "tous", "tout", "toute", "toutes", "tu", "un", "une", "va", "vers",
-    "voici", "voilà", "vos", "votre", "vous", "vu", "vôtre", "vôtres", "y", "à", "ça", "ès",
-    "été", "être", "ô"
-  };
 
   /** File containing default French stopwords. */
   public final static String DEFAULT_STOPWORD_FILE = "french_stop.txt";
@@ -101,7 +62,7 @@ public final class FrenchAnalyzer extends StopwordAnalyzerBase {
   public static final CharArraySet DEFAULT_ARTICLES = CharArraySet.unmodifiableSet(
       new CharArraySet(Arrays.asList(
           "l", "m", "t", "qu", "n", "s", "j", "d", "c", "jusqu", "quoiqu", "lorsqu", "puisqu"), true));
-  
+
   /**
    * Contains words that should be indexed but not stemmed.
    */
@@ -116,11 +77,6 @@ public final class FrenchAnalyzer extends StopwordAnalyzerBase {
   }
   
   private static class DefaultSetHolder {
-    /** @deprecated (3.1) remove this in Lucene 5.0, index bw compat */
-    @Deprecated
-    static final CharArraySet DEFAULT_STOP_SET_30 = CharArraySet
-        .unmodifiableSet(new CharArraySet(Version.LUCENE_CURRENT, Arrays.asList(FRENCH_STOP_WORDS),
-            false));
     static final CharArraySet DEFAULT_STOP_SET;
     static {
       try {
@@ -140,16 +96,6 @@ public final class FrenchAnalyzer extends StopwordAnalyzerBase {
   public FrenchAnalyzer() {
     this(DefaultSetHolder.DEFAULT_STOP_SET);
   }
-
-  /**
-   * @deprecated Use {@link #FrenchAnalyzer()}
-   */
-  @Deprecated
-  public FrenchAnalyzer(Version matchVersion) {
-    this(matchVersion,
-        matchVersion.onOrAfter(Version.LUCENE_3_1) ? DefaultSetHolder.DEFAULT_STOP_SET
-            : DefaultSetHolder.DEFAULT_STOP_SET_30);
-  }
   
   /**
    * Builds an analyzer with the given stop words
@@ -159,14 +105,6 @@ public final class FrenchAnalyzer extends StopwordAnalyzerBase {
    */
   public FrenchAnalyzer(CharArraySet stopwords){
     this(stopwords, CharArraySet.EMPTY_SET);
-  }
-
-  /**
-   * @deprecated Use {@link #FrenchAnalyzer(CharArraySet)}
-   */
-  @Deprecated
-  public FrenchAnalyzer(Version matchVersion, CharArraySet stopwords){
-    this(matchVersion, stopwords, CharArraySet.EMPTY_SET);
   }
   
   /**
@@ -185,17 +123,6 @@ public final class FrenchAnalyzer extends StopwordAnalyzerBase {
   }
 
   /**
-   * @deprecated Use {@link #FrenchAnalyzer(CharArraySet,CharArraySet)}
-   */
-  @Deprecated
-  public FrenchAnalyzer(Version matchVersion, CharArraySet stopwords,
-      CharArraySet stemExclutionSet) {
-    super(matchVersion, stopwords);
-    this.excltable = CharArraySet.unmodifiableSet(CharArraySet
-        .copy(matchVersion, stemExclutionSet));
-  }
-
-  /**
    * Creates
    * {@link org.apache.lucene.analysis.Analyzer.TokenStreamComponents}
    * used to tokenize all the text in the provided {@link Reader}.
@@ -208,32 +135,21 @@ public final class FrenchAnalyzer extends StopwordAnalyzerBase {
    *         provided, and {@link FrenchLightStemFilter}
    */
   @Override
-  protected TokenStreamComponents createComponents(String fieldName,
-      Reader reader) {
-    if (getVersion().onOrAfter(Version.LUCENE_3_1_0)) {
-      final Tokenizer source = new StandardTokenizer(getVersion(), reader);
-      TokenStream result = new StandardFilter(getVersion(), source);
-      result = new ElisionFilter(result, DEFAULT_ARTICLES);
-      result = new LowerCaseFilter(getVersion(), result);
-      result = new StopFilter(getVersion(), result, stopwords);
-      if(!excltable.isEmpty())
-        result = new SetKeywordMarkerFilter(result, excltable);
-      if (getVersion().onOrAfter(Version.LUCENE_3_6_0)) {
-        result = new FrenchLightStemFilter(result);
-      } else {
-        result = new SnowballFilter(result, new org.tartarus.snowball.ext.FrenchStemmer());
-      }
-      return new TokenStreamComponents(source, result);
+  protected TokenStreamComponents createComponents(String fieldName) {
+    final Tokenizer source;
+    if (getVersion().onOrAfter(Version.LUCENE_4_7_0)) {
+      source = new StandardTokenizer();
     } else {
-      final Tokenizer source = new StandardTokenizer(getVersion(), reader);
-      TokenStream result = new StandardFilter(getVersion(), source);
-      result = new StopFilter(getVersion(), result, stopwords);
-      if(!excltable.isEmpty())
-        result = new SetKeywordMarkerFilter(result, excltable);
-      result = new FrenchStemFilter(result);
-      // Convert to lowercase after stemming!
-      return new TokenStreamComponents(source, new LowerCaseFilter(getVersion(), result));
+      source = new StandardTokenizer40();
     }
+    TokenStream result = new StandardFilter(source);
+    result = new ElisionFilter(result, DEFAULT_ARTICLES);
+    result = new LowerCaseFilter(result);
+    result = new StopFilter(result, stopwords);
+    if(!excltable.isEmpty())
+      result = new SetKeywordMarkerFilter(result, excltable);
+    result = new FrenchLightStemFilter(result);
+    return new TokenStreamComponents(source, result);
   }
 }
 

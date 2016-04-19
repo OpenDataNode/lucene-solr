@@ -14,32 +14,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.schema;
 
 import java.io.IOException;
-import java.io.Reader;
 import java.util.Map;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.docvalues.BoolDocValues;
-import org.apache.lucene.queries.function.valuesource.OrdFieldSource;
-import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.SortField;
+import org.apache.lucene.uninverting.UninvertingReader.Type;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.CharsRef;
+import org.apache.lucene.util.CharsRefBuilder;
 import org.apache.lucene.util.mutable.MutableValue;
 import org.apache.lucene.util.mutable.MutableValueBool;
 import org.apache.solr.analysis.SolrAnalyzer;
 import org.apache.solr.response.TextResponseWriter;
 import org.apache.solr.search.QParser;
+import org.apache.solr.search.function.OrdFieldSource;
 /**
  *
  */
@@ -51,8 +51,17 @@ public class BoolField extends PrimitiveFieldType {
   }
 
   @Override
+  public Type getUninversionType(SchemaField sf) {
+    if (sf.multiValued()) {
+      return Type.SORTED_SET_BINARY;
+    } else {
+      return Type.SORTED;
+    }
+  }
+
+  @Override
   public ValueSource getValueSource(SchemaField field, QParser qparser) {
-    field.checkFieldCacheSource(qparser);
+    field.checkFieldCacheSource();
     return new BoolFieldSource(field.name);
   }
 
@@ -66,8 +75,8 @@ public class BoolField extends PrimitiveFieldType {
 
   protected final static Analyzer boolAnalyzer = new SolrAnalyzer() {
     @Override
-    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      Tokenizer tokenizer = new Tokenizer(reader) {
+    public TokenStreamComponents createComponents(String fieldName) {
+      Tokenizer tokenizer = new Tokenizer() {
         final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
         boolean done = false;
 
@@ -137,13 +146,13 @@ public class BoolField extends PrimitiveFieldType {
   private static final CharsRef FALSE = new CharsRef("false");
   
   @Override
-  public CharsRef indexedToReadable(BytesRef input, CharsRef charsRef) {
+  public CharsRef indexedToReadable(BytesRef input, CharsRefBuilder charsRef) {
     if (input.length > 0 && input.bytes[input.offset] == 'T') {
       charsRef.copyChars(TRUE);
     } else {
       charsRef.copyChars(FALSE);
     }
-    return charsRef;
+    return charsRef.get();
   }
 
   @Override
@@ -162,7 +171,7 @@ public class BoolField extends PrimitiveFieldType {
   }
 }
 
-// TODO - this can be much more efficient - use OpenBitSet or Bits
+// TODO - this can be much more efficient - use FixedBitSet or Bits
 class BoolFieldSource extends ValueSource {
   protected String field;
 
@@ -177,8 +186,8 @@ class BoolFieldSource extends ValueSource {
 
 
   @Override
-  public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
-    final SortedDocValues sindex = FieldCache.DEFAULT.getTermsIndex(readerContext.reader(), field);
+  public FunctionValues getValues(Map context, LeafReaderContext readerContext) throws IOException {
+    final SortedDocValues sindex = DocValues.getSorted(readerContext.reader(), field);
 
     // figure out what ord maps to true
     int nord = sindex.getValueCount();

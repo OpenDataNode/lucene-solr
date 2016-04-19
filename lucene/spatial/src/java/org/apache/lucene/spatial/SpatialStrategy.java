@@ -1,5 +1,3 @@
-package org.apache.lucene.spatial;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.spatial;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.spatial;
 
 import com.spatial4j.core.context.SpatialContext;
 import com.spatial4j.core.shape.Point;
@@ -24,15 +23,13 @@ import com.spatial4j.core.shape.Shape;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.valuesource.ReciprocalFloatFunction;
-import org.apache.lucene.search.ConstantScoreQuery;
-import org.apache.lucene.search.Filter;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.spatial.query.SpatialArgs;
 
 /**
  * The SpatialStrategy encapsulates an approach to indexing and searching based
  * on shapes.
- * <p/>
+ * <p>
  * Different implementations will support different features. A strategy should
  * document these common elements:
  * <ul>
@@ -41,17 +38,18 @@ import org.apache.lucene.spatial.query.SpatialArgs;
  *   <li>What types of query shapes can be used?</li>
  *   <li>What types of query operations are supported?
  *   This might vary per shape.</li>
- *   <li>Does it use the {@link org.apache.lucene.search.FieldCache},
- *   or some other type of cache?  When?
+ *   <li>Does it use some type of cache?  When?
  * </ul>
  * If a strategy only supports certain shapes at index or query time, then in
  * general it will throw an exception if given an incompatible one.  It will not
  * be coerced into compatibility.
- * <p/>
+ * <p>
  * Note that a SpatialStrategy is not involved with the Lucene stored field
- * values of shapes, which is immaterial to indexing & search.
- * <p/>
+ * values of shapes, which is immaterial to indexing and search.
+ * <p>
  * Thread-safe.
+ * <p>
+ * This API is marked as experimental, however it is quite stable.
  *
  * @lucene.experimental
  */
@@ -89,7 +87,7 @@ public abstract class SpatialStrategy {
    * Returns the IndexableField(s) from the {@code shape} that are to be
    * added to the {@link org.apache.lucene.document.Document}.  These fields
    * are expected to be marked as indexed and not stored.
-   * <p/>
+   * <p>
    * Note: If you want to <i>store</i> the shape as a string for retrieval in
    * search results, you could add it like this:
    * <pre>document.add(new StoredField(fieldName,ctx.toString(shape)));</pre>
@@ -119,32 +117,13 @@ public abstract class SpatialStrategy {
 
   /**
    * Make a Query based principally on {@link org.apache.lucene.spatial.query.SpatialOperation}
-   * and {@link Shape} from the supplied {@code args}.
-   * The default implementation is
-   * <pre>return new ConstantScoreQuery(makeFilter(args));</pre>
+   * and {@link Shape} from the supplied {@code args}.  It should be constant scoring of 1.
    *
    * @throws UnsupportedOperationException If the strategy does not support the shape in {@code args}
    * @throws org.apache.lucene.spatial.query.UnsupportedSpatialOperation If the strategy does not support the {@link
    * org.apache.lucene.spatial.query.SpatialOperation} in {@code args}.
    */
-  public Query makeQuery(SpatialArgs args) {
-    return new ConstantScoreQuery(makeFilter(args));
-  }
-
-  /**
-   * Make a Filter based principally on {@link org.apache.lucene.spatial.query.SpatialOperation}
-   * and {@link Shape} from the supplied {@code args}.
-   * <p />
-   * If a subclasses implements
-   * {@link #makeQuery(org.apache.lucene.spatial.query.SpatialArgs)}
-   * then this method could be simply:
-   * <pre>return new QueryWrapperFilter(makeQuery(args).getQuery());</pre>
-   *
-   * @throws UnsupportedOperationException If the strategy does not support the shape in {@code args}
-   * @throws org.apache.lucene.spatial.query.UnsupportedSpatialOperation If the strategy does not support the {@link
-   * org.apache.lucene.spatial.query.SpatialOperation} in {@code args}.
-   */
-  public abstract Filter makeFilter(SpatialArgs args);
+  public abstract Query makeQuery(SpatialArgs args);
 
   /**
    * Returns a ValueSource with values ranging from 1 to 0, depending inversely

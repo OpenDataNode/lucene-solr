@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.builders;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard.builders;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.builders;
 
 import java.util.List;
 
@@ -25,6 +24,7 @@ import org.apache.lucene.queryparser.flexible.core.nodes.FieldQueryNode;
 import org.apache.lucene.queryparser.flexible.core.nodes.QueryNode;
 import org.apache.lucene.queryparser.flexible.core.nodes.TokenizedPhraseQueryNode;
 import org.apache.lucene.search.PhraseQuery;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 
 /**
@@ -38,10 +38,10 @@ public class PhraseQueryNodeBuilder implements StandardQueryBuilder {
   }
 
   @Override
-  public PhraseQuery build(QueryNode queryNode) throws QueryNodeException {
+  public Query build(QueryNode queryNode) throws QueryNodeException {
     TokenizedPhraseQueryNode phraseNode = (TokenizedPhraseQueryNode) queryNode;
 
-    PhraseQuery phraseQuery = new PhraseQuery();
+    PhraseQuery.Builder builder = new PhraseQuery.Builder();
 
     List<QueryNode> children = phraseNode.getChildren();
 
@@ -52,13 +52,12 @@ public class PhraseQueryNodeBuilder implements StandardQueryBuilder {
             .getTag(QueryTreeBuilder.QUERY_TREE_BUILDER_TAGID);
         FieldQueryNode termNode = (FieldQueryNode) child;
 
-        phraseQuery.add(termQuery.getTerm(), termNode.getPositionIncrement());
-
+        builder.add(termQuery.getTerm(), termNode.getPositionIncrement());
       }
 
     }
 
-    return phraseQuery;
+    return builder.build();
 
   }
 

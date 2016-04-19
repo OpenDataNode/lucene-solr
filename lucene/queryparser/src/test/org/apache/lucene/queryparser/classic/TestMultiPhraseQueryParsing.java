@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.classic;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.classic;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.classic;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.Tokenizer;
@@ -48,8 +47,8 @@ public class TestMultiPhraseQueryParsing extends LuceneTestCase {
     }
 
     @Override
-    public TokenStreamComponents createComponents(String fieldName, Reader reader) {
-      return new TokenStreamComponents(new CannedTokenizer(reader, tokens));
+    public TokenStreamComponents createComponents(String fieldName) {
+      return new TokenStreamComponents(new CannedTokenizer(tokens));
     }
   }
 
@@ -60,8 +59,8 @@ public class TestMultiPhraseQueryParsing extends LuceneTestCase {
     private final CharTermAttribute termAtt = addAttribute(CharTermAttribute.class);
     private final PositionIncrementAttribute posIncrAtt = addAttribute(PositionIncrementAttribute.class);
 
-    public CannedTokenizer(Reader reader, TokenAndPos[] tokens) {
-      super(reader);
+    public CannedTokenizer(TokenAndPos[] tokens) {
+      super();
       this.tokens = tokens;
     }
 

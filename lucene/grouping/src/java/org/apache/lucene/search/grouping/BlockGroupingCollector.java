@@ -1,5 +1,3 @@
-package org.apache.lucene.search.grouping;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,14 +14,25 @@ package org.apache.lucene.search.grouping;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+package org.apache.lucene.search.grouping;
 
 import java.io.IOException;
-import java.util.Collection;
 
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.search.*;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.FieldComparator;
+import org.apache.lucene.search.LeafCollector;
+import org.apache.lucene.search.LeafFieldComparator;
+import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.SimpleCollector;
+import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.SortField;
+import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.search.TopDocsCollector;
+import org.apache.lucene.search.TopFieldCollector;
+import org.apache.lucene.search.TopScoreDocCollector;
+import org.apache.lucene.search.Weight;
 import org.apache.lucene.util.ArrayUtil;
 import org.apache.lucene.util.PriorityQueue;
 
@@ -55,7 +64,7 @@ import org.apache.lucene.util.PriorityQueue;
  * @lucene.experimental
  */
 
-public class BlockGroupingCollector extends Collector {
+public class BlockGroupingCollector extends SimpleCollector {
 
   private int[] pendingSubDocs;
   private float[] pendingSubScores;
@@ -63,17 +72,18 @@ public class BlockGroupingCollector extends Collector {
 
   private final Sort groupSort;
   private final int topNGroups;
-  private final Filter lastDocPerGroup;
+  private final Weight lastDocPerGroup;
 
   // TODO: specialize into 2 classes, static "create" method:
   private final boolean needsScores;
 
   private final FieldComparator<?>[] comparators;
+  private final LeafFieldComparator[] leafComparators;
   private final int[] reversed;
   private final int compIDXEnd;
   private int bottomSlot;
   private boolean queueFull;
-  private AtomicReaderContext currentReaderContext;
+  private LeafReaderContext currentReaderContext;
 
   private int topGroupDoc;
   private int totalHitCount;
@@ -85,58 +95,8 @@ public class BlockGroupingCollector extends Collector {
   private final GroupQueue groupQueue;
   private boolean groupCompetes;
 
-  private final static class FakeScorer extends Scorer {
-
-    float score;
-    int doc;
-
-    public FakeScorer() {
-      super(null);
-    }
-
-    @Override
-    public float score() {
-      return score;
-    }
-    
-    @Override
-    public int freq() {
-      throw new UnsupportedOperationException(); // TODO: wtf does this class do?
-    }
-
-    @Override
-    public int docID() {
-      return doc;
-    }
-
-    @Override
-    public int advance(int target) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public int nextDoc() {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public long cost() {
-      return 1;
-    }
-
-    @Override
-    public Weight getWeight() {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Collection<ChildScorer> getChildren() {
-      throw new UnsupportedOperationException();
-    }
-  }
-
   private static final class OneGroup {
-    AtomicReaderContext readerContext;
+    LeafReaderContext readerContext;
     //int groupOrd;
     int topGroupDoc;
     int[] docs;
@@ -202,7 +162,7 @@ public class BlockGroupingCollector extends Collector {
           bottomSlot = bottomGroup.comparatorSlot;
           //System.out.println("    set bottom=" + bottomSlot);
           for (int i = 0; i < comparators.length; i++) {
-            comparators[i].setBottom(bottomSlot);
+            leafComparators[i].setBottom(bottomSlot);
           }
           //System.out.println("     QUEUE FULL");
         } else {
@@ -231,7 +191,7 @@ public class BlockGroupingCollector extends Collector {
 
         //System.out.println("    set bottom=" + bottomSlot);
         for (int i = 0; i < comparators.length; i++) {
-          comparators[i].setBottom(bottomSlot);
+          leafComparators[i].setBottom(bottomSlot);
         }
       }
     }
@@ -253,10 +213,10 @@ public class BlockGroupingCollector extends Collector {
    *    in the withinGroupSort or because you plan to pass true
    *    for either getSscores or getMaxScores to {@link
    *    #getTopGroups}
-   *  @param lastDocPerGroup a {@link Filter} that marks the
+   *  @param lastDocPerGroup a {@link Weight} that marks the
    *    last document in each group.
    */
-  public BlockGroupingCollector(Sort groupSort, int topNGroups, boolean needsScores, Filter lastDocPerGroup) throws IOException {
+  public BlockGroupingCollector(Sort groupSort, int topNGroups, boolean needsScores, Weight lastDocPerGroup) throws IOException {
 
     if (topNGroups < 1) {
       throw new IllegalArgumentException("topNGroups must be >= 1 (got " + topNGroups + ")");
@@ -270,14 +230,14 @@ public class BlockGroupingCollector extends Collector {
 
     this.needsScores = needsScores;
     this.lastDocPerGroup = lastDocPerGroup;
-    // TODO: allow null groupSort to mean "by relevance",
-    // and specialize it?
+
     this.groupSort = groupSort;
     
     this.topNGroups = topNGroups;
 
     final SortField[] sortFields = groupSort.getSort();
     comparators = new FieldComparator<?>[sortFields.length];
+    leafComparators = new LeafFieldComparator[sortFields.length];
     compIDXEnd = comparators.length - 1;
     reversed = new int[sortFields.length];
     for (int i = 0; i < sortFields.length; i++) {
@@ -293,18 +253,17 @@ public class BlockGroupingCollector extends Collector {
   // in the UI?
 
   /** Returns the grouped results.  Returns null if the
-   *  number of groups collected is <= groupOffset.
+   *  number of groups collected is &lt;= groupOffset.
    *
    *  <p><b>NOTE</b>: This collector is unable to compute
    *  the groupValue per group so it will always be null.
    *  This is normally not a problem, as you can obtain the
    *  value just like you obtain other values for each
    *  matching document (eg, via stored fields, via
-   *  FieldCache, etc.)
+   *  DocValues, etc.)
    *
    *  @param withinGroupSort The {@link Sort} used to sort
-   *    documents within each group.  Passing null is
-   *    allowed, to sort by relevance.
+   *    documents within each group.
    *  @param groupOffset Which group to start from
    *  @param withinGroupOffset Which document to start from
    *    within each group
@@ -338,26 +297,26 @@ public class BlockGroupingCollector extends Collector {
       // At this point we hold all docs w/ in each group,
       // unsorted; we now sort them:
       final TopDocsCollector<?> collector;
-      if (withinGroupSort == null) {
+      if (withinGroupSort.equals(Sort.RELEVANCE)) {
         // Sort by score
         if (!needsScores) {
           throw new IllegalArgumentException("cannot sort by relevance within group: needsScores=false");
         }
-        collector = TopScoreDocCollector.create(maxDocsPerGroup, true);
+        collector = TopScoreDocCollector.create(maxDocsPerGroup);
       } else {
         // Sort by fields
-        collector = TopFieldCollector.create(withinGroupSort, maxDocsPerGroup, fillSortFields, needsScores, needsScores, true);
+        collector = TopFieldCollector.create(withinGroupSort, maxDocsPerGroup, fillSortFields, needsScores, needsScores);
       }
 
-      collector.setScorer(fakeScorer);
-      collector.setNextReader(og.readerContext);
+      LeafCollector leafCollector = collector.getLeafCollector(og.readerContext);
+      leafCollector.setScorer(fakeScorer);
       for(int docIDX=0;docIDX<og.count;docIDX++) {
         final int doc = og.docs[docIDX];
         fakeScorer.doc = doc;
         if (needsScores) {
           fakeScorer.score = og.scores[docIDX];
         }
-        collector.collect(doc);
+        leafCollector.collect(doc);
       }
       totalGroupedHitCount += og.count;
 
@@ -394,7 +353,7 @@ public class BlockGroupingCollector extends Collector {
     */
 
     return new TopGroups<>(new TopGroups<>(groupSort.getSort(),
-                                       withinGroupSort == null ? null : withinGroupSort.getSort(),
+                                       withinGroupSort.getSort(),
                                        totalHitCount, totalGroupedHitCount, groups, maxScore),
                          totalGroupCount);
   }
@@ -402,7 +361,7 @@ public class BlockGroupingCollector extends Collector {
   @Override
   public void setScorer(Scorer scorer) throws IOException {
     this.scorer = scorer;
-    for (FieldComparator<?> comparator : comparators) {
+    for (LeafFieldComparator comparator : leafComparators) {
       comparator.setScorer(scorer);
     }
   }
@@ -443,7 +402,7 @@ public class BlockGroupingCollector extends Collector {
         assert !queueFull;
 
         //System.out.println("    init copy to bottomSlot=" + bottomSlot);
-        for (FieldComparator<?> fc : comparators) {
+        for (LeafFieldComparator fc : leafComparators) {
           fc.copy(bottomSlot, doc);
           fc.setBottom(bottomSlot);
         }        
@@ -451,7 +410,7 @@ public class BlockGroupingCollector extends Collector {
       } else {
         // Compare to bottomSlot
         for (int compIDX = 0;; compIDX++) {
-          final int c = reversed[compIDX] * comparators[compIDX].compareBottom(doc);
+          final int c = reversed[compIDX] * leafComparators[compIDX].compareBottom(doc);
           if (c < 0) {
             // Definitely not competitive -- done
             return;
@@ -468,7 +427,7 @@ public class BlockGroupingCollector extends Collector {
 
         //System.out.println("       best w/in group!");
         
-        for (FieldComparator<?> fc : comparators) {
+        for (LeafFieldComparator fc : leafComparators) {
           fc.copy(bottomSlot, doc);
           // Necessary because some comparators cache
           // details of bottom slot; this forces them to
@@ -481,7 +440,7 @@ public class BlockGroupingCollector extends Collector {
       // We're not sure this group will make it into the
       // queue yet
       for (int compIDX = 0;; compIDX++) {
-        final int c = reversed[compIDX] * comparators[compIDX].compareBottom(doc);
+        final int c = reversed[compIDX] * leafComparators[compIDX].compareBottom(doc);
         if (c < 0) {
           // Definitely not competitive -- done
           //System.out.println("    doc doesn't compete w/ top groups");
@@ -498,7 +457,7 @@ public class BlockGroupingCollector extends Collector {
         }
       }
       groupCompetes = true;
-      for (FieldComparator<?> fc : comparators) {
+      for (LeafFieldComparator fc : leafComparators) {
         fc.copy(bottomSlot, doc);
         // Necessary because some comparators cache
         // details of bottom slot; this forces them to
@@ -511,24 +470,29 @@ public class BlockGroupingCollector extends Collector {
   }
 
   @Override
-  public boolean acceptsDocsOutOfOrder() {
-    return false;
-  }
-
-  @Override
-  public void setNextReader(AtomicReaderContext readerContext) throws IOException {
+  protected void doSetNextReader(LeafReaderContext readerContext) throws IOException {
     if (subDocUpto != 0) {
       processGroup();
     }
     subDocUpto = 0;
     docBase = readerContext.docBase;
     //System.out.println("setNextReader base=" + docBase + " r=" + readerContext.reader);
-    lastDocPerGroupBits = lastDocPerGroup.getDocIdSet(readerContext, readerContext.reader().getLiveDocs()).iterator();
+    Scorer s = lastDocPerGroup.scorer(readerContext);
+    if (s == null) {
+      lastDocPerGroupBits = null;
+    } else {
+      lastDocPerGroupBits = s.iterator();
+    }
     groupEndDocID = -1;
 
     currentReaderContext = readerContext;
     for (int i=0; i<comparators.length; i++) {
-      comparators[i] = comparators[i].setNextReader(readerContext);
+      leafComparators[i] = comparators[i].getLeafComparator(readerContext);
     }
+  }
+
+  @Override
+  public boolean needsScores() {
+    return needsScores;
   }
 }

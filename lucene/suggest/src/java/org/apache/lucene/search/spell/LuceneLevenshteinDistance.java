@@ -1,5 +1,3 @@
-package org.apache.lucene.search.spell;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.search.spell;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search.spell;
 
 import org.apache.lucene.util.IntsRef;
 
@@ -55,8 +54,8 @@ public final class LuceneLevenshteinDistance implements StringDistance {
     // NOTE: if we cared, we could 3*m space instead of m*n space, similar to 
     // what LevenshteinDistance does, except cycling thru a ring of three 
     // horizontal cost arrays... but this comparator is never actually used by 
-    // DirectSpellChecker, its only used for merging results from multiple shards 
-    // in "distributed spellcheck", and its inefficient in other ways too...
+    // DirectSpellChecker, it's only used for merging results from multiple shards 
+    // in "distributed spellcheck", and it's inefficient in other ways too...
 
     // cheaper to do this up front once
     targetPoints = toIntsRef(target);

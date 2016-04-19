@@ -1,5 +1,3 @@
-package org.apache.lucene.spatial.query;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.spatial.query;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.spatial.query;
 
 import com.spatial4j.core.context.SpatialContext;
 import com.spatial4j.core.exception.InvalidShapeException;
@@ -36,7 +35,7 @@ import java.util.StringTokenizer;
  * <pre>
  *   Intersects(ENVELOPE(-10,-8,22,20)) distErrPct=0.025
  * </pre>
- * <p/>
+ * <p>
  * In the future it would be good to support something at least semi-standardized like a
  * variant of <a href="http://docs.geoserver.org/latest/en/user/filter/ecql_reference.html#spatial-predicate">
  *   [E]CQL</a>.

@@ -1,5 +1,3 @@
-package org.apache.lucene.store;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.store;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.store;
+
 
 import java.io.IOException;
 
@@ -46,40 +46,13 @@ import java.io.IOException;
 
 public abstract class LockFactory {
 
-  protected String lockPrefix = null;
-
   /**
-   * Set the prefix in use for all locks created in this
-   * LockFactory.  This is normally called once, when a
-   * Directory gets this LockFactory instance.  However, you
-   * can also call this (after this instance is assigned to
-   * a Directory) to override the prefix in use.  This
-   * is helpful if you're running Lucene on machines that
-   * have different mount points for the same shared
-   * directory.
-   */
-  public void setLockPrefix(String lockPrefix) {
-    this.lockPrefix = lockPrefix;
-  }
-
-  /**
-   * Get the prefix in use for all locks created in this LockFactory.
-   */
-  public String getLockPrefix() {
-    return this.lockPrefix;
-  }
-
-  /**
-   * Return a new Lock instance identified by lockName.
+   * Return a new obtained Lock instance identified by lockName.
    * @param lockName name of the lock to be created.
+   * @throws LockObtainFailedException (optional specific exception) if the lock could
+   *         not be obtained because it is currently held elsewhere.
+   * @throws IOException if any i/o error occurs attempting to gain the lock
    */
-  public abstract Lock makeLock(String lockName);
+  public abstract Lock obtainLock(Directory dir, String lockName) throws IOException;
 
-  /**
-   * Attempt to clear (forcefully unlock and remove) the
-   * specified lock.  Only call this at a time when you are
-   * certain this lock is no longer in use.
-   * @param lockName name of the lock to be cleared.
-   */
-  abstract public void clearLock(String lockName) throws IOException;
 }

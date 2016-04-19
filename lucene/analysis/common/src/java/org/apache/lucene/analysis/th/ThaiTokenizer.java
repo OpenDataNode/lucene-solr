@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.th;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,9 @@ package org.apache.lucene.analysis.th;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.th;
 
-import java.io.Reader;
+
 import java.text.BreakIterator;
 import java.util.Locale;
 
@@ -60,13 +59,13 @@ public class ThaiTokenizer extends SegmentingTokenizerBase {
   private final OffsetAttribute offsetAtt = addAttribute(OffsetAttribute.class);
   
   /** Creates a new ThaiTokenizer */
-  public ThaiTokenizer(Reader reader) {
-    this(DEFAULT_TOKEN_ATTRIBUTE_FACTORY, reader);
+  public ThaiTokenizer() {
+    this(DEFAULT_TOKEN_ATTRIBUTE_FACTORY);
   }
       
   /** Creates a new ThaiTokenizer, supplying the AttributeFactory */
-  public ThaiTokenizer(AttributeFactory factory, Reader reader) {
-    super(factory, reader, (BreakIterator)sentenceProto.clone());
+  public ThaiTokenizer(AttributeFactory factory) {
+    super(factory, (BreakIterator)sentenceProto.clone());
     if (!DBBI_AVAILABLE) {
       throw new UnsupportedOperationException("This JRE does not have support for Thai segmentation");
     }

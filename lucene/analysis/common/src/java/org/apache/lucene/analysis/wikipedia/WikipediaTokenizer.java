@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.lucene.analysis.wikipedia;
 
 import org.apache.lucene.analysis.Tokenizer;
@@ -34,8 +33,6 @@ import java.util.*;
 /**
  * Extension of StandardTokenizer that is aware of Wikipedia syntax.  It is based off of the
  * Wikipedia tutorial available at http://en.wikipedia.org/wiki/Wikipedia:Tutorial, but it may not be complete.
- * <p/>
- * <p/>
  * @lucene.experimental
  */
 public final class WikipediaTokenizer extends Tokenizer {
@@ -128,22 +125,18 @@ public final class WikipediaTokenizer extends Tokenizer {
   /**
    * Creates a new instance of the {@link WikipediaTokenizer}. Attaches the
    * <code>input</code> to a newly created JFlex scanner.
-   *
-   * @param input The Input Reader
    */
-  public WikipediaTokenizer(Reader input) {
-    this(input, TOKENS_ONLY, Collections.<String>emptySet());
+  public WikipediaTokenizer() {
+    this(TOKENS_ONLY, Collections.<String>emptySet());
   }
 
   /**
    * Creates a new instance of the {@link org.apache.lucene.analysis.wikipedia.WikipediaTokenizer}.  Attaches the
    * <code>input</code> to a the newly created JFlex scanner.
    *
-   * @param input The input
    * @param tokenOutput One of {@link #TOKENS_ONLY}, {@link #UNTOKENIZED_ONLY}, {@link #BOTH}
    */
-  public WikipediaTokenizer(Reader input, int tokenOutput, Set<String> untokenizedTypes) {
-    super(input);
+  public WikipediaTokenizer(int tokenOutput, Set<String> untokenizedTypes) {
     this.scanner = new WikipediaTokenizerImpl(this.input);
     init(tokenOutput, untokenizedTypes);
   }
@@ -152,15 +145,14 @@ public final class WikipediaTokenizer extends Tokenizer {
    * Creates a new instance of the {@link org.apache.lucene.analysis.wikipedia.WikipediaTokenizer}.  Attaches the
    * <code>input</code> to a the newly created JFlex scanner. Uses the given {@link org.apache.lucene.util.AttributeFactory}.
    *
-   * @param input The input
    * @param tokenOutput One of {@link #TOKENS_ONLY}, {@link #UNTOKENIZED_ONLY}, {@link #BOTH}
    */
-  public WikipediaTokenizer(AttributeFactory factory, Reader input, int tokenOutput, Set<String> untokenizedTypes) {
-    super(factory, input);
+  public WikipediaTokenizer(AttributeFactory factory, int tokenOutput, Set<String> untokenizedTypes) {
+    super(factory);
     this.scanner = new WikipediaTokenizerImpl(this.input);
     init(tokenOutput, untokenizedTypes);
   }
-
+  
   private void init(int tokenOutput, Set<String> untokenizedTypes) {
     // TODO: cutover to enum
     if (tokenOutput != TOKENS_ONLY &&

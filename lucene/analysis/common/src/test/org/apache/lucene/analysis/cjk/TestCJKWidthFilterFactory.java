@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.cjk;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.cjk;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.cjk;
+
 
 import java.io.Reader;
 import java.io.StringReader;
@@ -30,7 +30,7 @@ import org.apache.lucene.analysis.util.BaseTokenStreamFactoryTestCase;
 public class TestCJKWidthFilterFactory extends BaseTokenStreamFactoryTestCase {
   public void test() throws Exception {
     Reader reader = new StringReader("Ｔｅｓｔ １２３４");
-    TokenStream stream = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream stream = whitespaceMockTokenizer(reader);
     stream = tokenFilterFactory("CJKWidth").create(stream);
     assertTokenStreamContents(stream, new String[] { "Test", "1234" });
   }

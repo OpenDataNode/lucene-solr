@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.common.params;
 
 import org.apache.solr.common.SolrException;
@@ -106,7 +105,7 @@ public class RequiredSolrParams extends SolrParams {
 
   //----------------------------------------------------------
   // Functions with a default value - pass directly to the
-  // wrapped SolrParams (they won't return null - unless its the default)
+  // wrapped SolrParams (they won't return null - unless it's the default)
   //----------------------------------------------------------
 
   @Override

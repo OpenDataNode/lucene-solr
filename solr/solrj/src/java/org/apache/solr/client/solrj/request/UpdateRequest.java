@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.client.solrj.request;
 
 import java.io.IOException;
@@ -24,13 +23,14 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Set;
-import java.util.LinkedHashMap;
 
-import org.apache.solr.client.solrj.impl.LBHttpSolrServer;
+import org.apache.solr.client.solrj.impl.LBHttpSolrClient;
 import org.apache.solr.client.solrj.util.ClientUtils;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.cloud.DocCollection;
@@ -46,16 +46,20 @@ import org.apache.solr.common.util.XML;
  * @since solr 1.3
  */
 public class UpdateRequest extends AbstractUpdateRequest {
+
   public static final String REPFACT = "rf";
   public static final String MIN_REPFACT = "min_rf";
   public static final String VER = "ver";
+  public static final String ROUTE = "_route_";
   public static final String OVERWRITE = "ow";
   public static final String COMMIT_WITHIN = "cw";
   private Map<SolrInputDocument,Map<String,Object>> documents = null;
   private Iterator<SolrInputDocument> docIterator = null;
   private Map<String,Map<String,Object>> deleteById = null;
   private List<String> deleteQuery = null;
-  
+
+  private boolean isLastDocInBatch = false;
+
   public UpdateRequest() {
     super(METHOD.POST, "/update");
   }
@@ -84,25 +88,50 @@ public class UpdateRequest extends AbstractUpdateRequest {
   
   // ---------------------------------------------------------------------------
   // ---------------------------------------------------------------------------
-  
+
+  /**
+   * Add a SolrInputDocument to this request
+   *
+   * @throws NullPointerException if the document is null
+   */
   public UpdateRequest add(final SolrInputDocument doc) {
+    Objects.requireNonNull(doc, "Cannot add a null SolrInputDocument");
     if (documents == null) {
       documents = new LinkedHashMap<>();
     }
     documents.put(doc, null);
     return this;
   }
-  
+
+  /**
+   * Add a SolrInputDocument to this request
+   * @param doc the document
+   * @param overwrite true if the document should overwrite existing docs with the same id
+   * @throws NullPointerException if the document is null
+   */
   public UpdateRequest add(final SolrInputDocument doc, Boolean overwrite) {
     return add(doc, null, overwrite);
   }
-  
+
+  /**
+   * Add a SolrInputDocument to this request
+   * @param doc the document
+   * @param commitWithin the time horizon by which the document should be committed (in ms)
+   * @throws NullPointerException if the document is null
+   */
   public UpdateRequest add(final SolrInputDocument doc, Integer commitWithin) {
     return add(doc, commitWithin, null);
   }
-  
-  public UpdateRequest add(final SolrInputDocument doc, Integer commitWithin,
-      Boolean overwrite) {
+
+  /**
+   * Add a SolrInputDocument to this request
+   * @param doc the document
+   * @param commitWithin the time horizon by which the document should be committed (in ms)
+   * @param overwrite true if the document should overwrite existing docs with the same id
+   * @throws NullPointerException if the document is null
+   */
+  public UpdateRequest add(final SolrInputDocument doc, Integer commitWithin, Boolean overwrite) {
+    Objects.requireNonNull(doc, "Cannot add a null SolrInputDocument");
     if (documents == null) {
       documents = new LinkedHashMap<>();
     }
@@ -114,12 +143,18 @@ public class UpdateRequest extends AbstractUpdateRequest {
     
     return this;
   }
-  
+
+  /**
+   * Add a collection of SolrInputDocuments to this request
+   *
+   * @throws NullPointerException if any of the documents in the collection are null
+   */
   public UpdateRequest add(final Collection<SolrInputDocument> docs) {
     if (documents == null) {
       documents = new LinkedHashMap<>();
     }
     for (SolrInputDocument doc : docs) {
+      Objects.requireNonNull(doc, "Cannot add a null SolrInputDocument");
       documents.put(doc, null);
     }
     return this;
@@ -132,7 +167,25 @@ public class UpdateRequest extends AbstractUpdateRequest {
     deleteById.put(id, null);
     return this;
   }
-  
+
+  public UpdateRequest deleteById(String id, String route) {
+    return deleteById(id, route, null);
+  }
+
+  public UpdateRequest deleteById(String id, String route, Long version) {
+    if (deleteById == null) {
+      deleteById = new LinkedHashMap<>();
+    }
+    Map<String, Object> params = (route == null && version == null) ? null : new HashMap<String, Object>(1);
+    if (version != null)
+      params.put(VER, version);
+    if (route != null)
+      params.put(ROUTE, route);
+    deleteById.put(id, params);
+    return this;
+  }
+
+
   public UpdateRequest deleteById(List<String> ids) {
     if (deleteById == null) {
       deleteById = new LinkedHashMap<>();
@@ -146,13 +199,7 @@ public class UpdateRequest extends AbstractUpdateRequest {
   }
   
   public UpdateRequest deleteById(String id, Long version) {
-    if (deleteById == null) {
-      deleteById = new LinkedHashMap<>();
-    }
-    Map<String,Object> params = new HashMap<>(1);
-    params.put(VER, version);
-    deleteById.put(id, params);
-    return this;
+    return deleteById(id, null, version);
   }
   
   public UpdateRequest deleteByQuery(String q) {
@@ -171,7 +218,7 @@ public class UpdateRequest extends AbstractUpdateRequest {
    * @param idField the id field
    * @return a Map of urls to requests
    */
-  public Map<String,LBHttpSolrServer.Req> getRoutes(DocRouter router,
+  public Map<String,LBHttpSolrClient.Req> getRoutes(DocRouter router,
       DocCollection col, Map<String,List<String>> urlMap,
       ModifiableSolrParams params, String idField) {
     
@@ -180,7 +227,7 @@ public class UpdateRequest extends AbstractUpdateRequest {
       return null;
     }
     
-    Map<String,LBHttpSolrServer.Req> routes = new HashMap<>();
+    Map<String,LBHttpSolrClient.Req> routes = new HashMap<>();
     if (documents != null) {
       Set<Entry<SolrInputDocument,Map<String,Object>>> entries = documents.entrySet();
       for (Entry<SolrInputDocument,Map<String,Object>> entry : entries) {
@@ -190,13 +237,13 @@ public class UpdateRequest extends AbstractUpdateRequest {
           return null;
         }
         Slice slice = router.getTargetSlice(id
-            .toString(), doc, null, col);
+            .toString(), doc, null, null, col);
         if (slice == null) {
           return null;
         }
         List<String> urls = urlMap.get(slice.getName());
         String leaderUrl = urls.get(0);
-        LBHttpSolrServer.Req request = (LBHttpSolrServer.Req) routes
+        LBHttpSolrClient.Req request = (LBHttpSolrClient.Req) routes
             .get(leaderUrl);
         if (request == null) {
           UpdateRequest updateRequest = new UpdateRequest();
@@ -204,11 +251,21 @@ public class UpdateRequest extends AbstractUpdateRequest {
           updateRequest.setCommitWithin(getCommitWithin());
           updateRequest.setParams(params);
           updateRequest.setPath(getPath());
-          request = new LBHttpSolrServer.Req(updateRequest, urls);
+          updateRequest.setBasicAuthCredentials(getBasicAuthUser(), getBasicAuthPassword());
+          request = new LBHttpSolrClient.Req(updateRequest, urls);
           routes.put(leaderUrl, request);
         }
         UpdateRequest urequest = (UpdateRequest) request.getRequest();
-        urequest.add(doc);
+        Map<String,Object> value = entry.getValue();
+        Boolean ow = null;
+        if (value != null) {
+          ow = (Boolean) value.get(OVERWRITE);
+        }
+        if (ow != null) {
+          urequest.add(doc, ow);
+        } else {
+          urequest.add(doc);
+        }
       }
     }
     
@@ -228,13 +285,13 @@ public class UpdateRequest extends AbstractUpdateRequest {
         if (map != null) {
           version = (Long) map.get(VER);
         }
-        Slice slice = router.getTargetSlice(deleteId, null, null, col);
+        Slice slice = router.getTargetSlice(deleteId, null, null, null, col);
         if (slice == null) {
           return null;
         }
         List<String> urls = urlMap.get(slice.getName());
         String leaderUrl = urls.get(0);
-        LBHttpSolrServer.Req request = routes.get(leaderUrl);
+        LBHttpSolrClient.Req request = routes.get(leaderUrl);
         if (request != null) {
           UpdateRequest urequest = (UpdateRequest) request.getRequest();
           urequest.deleteById(deleteId, version);
@@ -242,7 +299,8 @@ public class UpdateRequest extends AbstractUpdateRequest {
           UpdateRequest urequest = new UpdateRequest();
           urequest.setParams(params);
           urequest.deleteById(deleteId, version);
-          request = new LBHttpSolrServer.Req(urequest, urls);
+          urequest.setCommitWithin(getCommitWithin());
+          request = new LBHttpSolrClient.Req(urequest, urls);
           routes.put(leaderUrl, request);
         }
       }
@@ -375,8 +433,13 @@ public class UpdateRequest extends AbstractUpdateRequest {
           Map<String,Object> map = entry.getValue();
           if (map != null) {
             Long version = (Long) map.get(VER);
+            String route = (String)map.get(ROUTE);
             if (version != null) {
               writer.append(" version=\"" + version + "\"");
+            }
+            
+            if (route != null) {
+              writer.append(" _route_=\"" + route + "\"");
             }
           }
           writer.append(">");
@@ -432,4 +495,11 @@ public class UpdateRequest extends AbstractUpdateRequest {
     return deleteQuery;
   }
   
+  public boolean isLastDocInBatch() {
+    return isLastDocInBatch;
+  }
+  
+  public void lastDocInBatch() {
+    isLastDocInBatch = true;
+  }
 }

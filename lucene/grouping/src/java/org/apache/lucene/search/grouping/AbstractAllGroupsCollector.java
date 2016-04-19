@@ -1,5 +1,3 @@
-package org.apache.lucene.search.grouping;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,27 +14,27 @@ package org.apache.lucene.search.grouping;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import org.apache.lucene.search.Collector;
-import org.apache.lucene.search.Scorer;
-import org.apache.lucene.util.BytesRef;
+package org.apache.lucene.search.grouping;
 
 import java.io.IOException;
 import java.util.Collection;
+
+import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.SimpleCollector;
+import org.apache.lucene.util.BytesRef;
 
 /**
  * A collector that collects all groups that match the
  * query. Only the group value is collected, and the order
  * is undefined.  This collector does not determine
  * the most relevant document of a group.
- *
- * <p/>
+ * <p>
  * This is an abstract version. Concrete implementations define
  * what a group actually is and how it is internally collected.
  *
  * @lucene.experimental
  */
-public abstract class AbstractAllGroupsCollector<GROUP_VALUE_TYPE> extends Collector {
+public abstract class AbstractAllGroupsCollector<GROUP_VALUE_TYPE> extends SimpleCollector {
 
   /**
    * Returns the total number of groups for the executed search.
@@ -50,7 +48,7 @@ public abstract class AbstractAllGroupsCollector<GROUP_VALUE_TYPE> extends Colle
 
   /**
    * Returns the group values
-   * <p/>
+   * <p>
    * This is an unordered collections of group values. For each group that matched the query there is a {@link BytesRef}
    * representing a group value.
    *
@@ -63,7 +61,7 @@ public abstract class AbstractAllGroupsCollector<GROUP_VALUE_TYPE> extends Colle
   public void setScorer(Scorer scorer) throws IOException {}
 
   @Override
-  public boolean acceptsDocsOutOfOrder() {
-    return true;
+  public boolean needsScores() {
+    return false; // the result is unaffected by relevancy
   }
 }

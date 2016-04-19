@@ -1,5 +1,3 @@
-package org.apache.lucene.facet.taxonomy;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,10 +14,11 @@ package org.apache.lucene.facet.taxonomy;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.facet.taxonomy;
 
 import java.io.IOException;
 
-import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.util.IntsRef;
 
 /** Provides per-document ordinals. */
@@ -42,7 +41,7 @@ public abstract class OrdinalsReader {
   }
 
   /** Set current atomic reader. */
-  public abstract OrdinalsSegmentReader getReader(AtomicReaderContext context) throws IOException;
+  public abstract OrdinalsSegmentReader getReader(LeafReaderContext context) throws IOException;
 
   /** Returns the indexed field name this {@code
    *  OrdinalsReader} is reading from. */

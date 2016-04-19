@@ -14,32 +14,37 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.search;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 import org.apache.lucene.analysis.core.SimpleAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.StringField;
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.search.BitsFilteredDocIdSet;
 import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.Filter;
+import org.apache.lucene.search.FilterCollector;
+import org.apache.lucene.search.FilterLeafCollector;
+import org.apache.lucene.search.FilteredQuery;
 import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.LeafCollector;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.ScoreDoc;
-import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.SortField.Type;
@@ -47,6 +52,8 @@ import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopFieldCollector;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.RAMDirectory;
+import org.apache.lucene.uninverting.UninvertingReader;
+import org.apache.lucene.util.BitDocIdSet;
 import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.TestUtil;
@@ -54,8 +61,13 @@ import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.schema.SchemaField;
 import org.junit.BeforeClass;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class TestSort extends SolrTestCaseJ4 {
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
   @BeforeClass
   public static void beforeClass() throws Exception {
     initCore("solrconfig.xml","schema-minimal.xml");
@@ -132,7 +144,7 @@ public class TestSort extends SolrTestCaseJ4 {
       SortField[] sorts = null;
       List<SchemaField> fields = null;
       try {
-        SortSpec spec = QueryParsing.parseSortSpec(input.toString(), req);
+        SortSpec spec = SortSpecParsing.parseSortSpec(input.toString(), req);
         sorts = spec.getSort().getSort();
         fields = spec.getSchemaFields();
       } catch (RuntimeException e) {
@@ -183,7 +195,7 @@ public class TestSort extends SolrTestCaseJ4 {
     for (int iterCnt = 0; iterCnt<iter; iterCnt++) {
       IndexWriter iw = new IndexWriter(
           dir,
-          new IndexWriterConfig(TEST_VERSION_CURRENT, new SimpleAnalyzer()).
+          new IndexWriterConfig(new SimpleAnalyzer()).
               setOpenMode(IndexWriterConfig.OpenMode.CREATE)
       );
       final MyDoc[] mydocs = new MyDoc[ndocs];
@@ -218,8 +230,11 @@ public class TestSort extends SolrTestCaseJ4 {
       }
       iw.close();
 
+      Map<String,UninvertingReader.Type> mapping = new HashMap<>();
+      mapping.put("f", UninvertingReader.Type.SORTED);
+      mapping.put("f2", UninvertingReader.Type.SORTED);
 
-      DirectoryReader reader = DirectoryReader.open(dir);
+      DirectoryReader reader = UninvertingReader.wrap(DirectoryReader.open(dir), mapping);
       IndexSearcher searcher = new IndexSearcher(reader);
       // System.out.println("segments="+searcher.getIndexReader().getSequentialSubReaders().length);
       assertTrue(reader.leaves().size() > 1);
@@ -227,8 +242,12 @@ public class TestSort extends SolrTestCaseJ4 {
       for (int i=0; i<qiter; i++) {
         Filter filt = new Filter() {
           @Override
-          public DocIdSet getDocIdSet(AtomicReaderContext context, Bits acceptDocs) {
+          public DocIdSet getDocIdSet(LeafReaderContext context, Bits acceptDocs) {
             return BitsFilteredDocIdSet.wrap(randSet(context.reader().maxDoc()), acceptDocs);
+          }
+          @Override
+          public String toString(String field) {
+            return "TestSortFilter";
           }
         };
 
@@ -261,37 +280,28 @@ public class TestSort extends SolrTestCaseJ4 {
         boolean trackScores = r.nextBoolean();
         boolean trackMaxScores = r.nextBoolean();
         boolean scoreInOrder = r.nextBoolean();
-        final TopFieldCollector topCollector = TopFieldCollector.create(sort, top, true, trackScores, trackMaxScores, scoreInOrder);
+        final TopFieldCollector topCollector = TopFieldCollector.create(sort, top, true, trackScores, trackMaxScores);
 
         final List<MyDoc> collectedDocs = new ArrayList<>();
         // delegate and collect docs ourselves
-        Collector myCollector = new Collector() {
-          int docBase;
+        Collector myCollector = new FilterCollector(topCollector) {
 
           @Override
-          public void setScorer(Scorer scorer) throws IOException {
-            topCollector.setScorer(scorer);
+          public LeafCollector getLeafCollector(LeafReaderContext context)
+              throws IOException {
+            final int docBase = context.docBase;
+            return new FilterLeafCollector(super.getLeafCollector(context)) {
+              @Override
+              public void collect(int doc) throws IOException {
+                super.collect(doc);
+                collectedDocs.add(mydocs[docBase + doc]);
+              }
+            };
           }
 
-          @Override
-          public void collect(int doc) throws IOException {
-            topCollector.collect(doc);
-            collectedDocs.add(mydocs[doc + docBase]);
-          }
-
-          @Override
-          public void setNextReader(AtomicReaderContext context) throws IOException {
-            topCollector.setNextReader(context);
-            docBase = context.docBase;
-          }
-
-          @Override
-          public boolean acceptsDocsOutOfOrder() {
-            return topCollector.acceptsDocsOutOfOrder();
-          }
         };
 
-        searcher.search(new MatchAllDocsQuery(), filt, myCollector);
+        searcher.search(new FilteredQuery(new MatchAllDocsQuery(), filt), myCollector);
 
         Collections.sort(collectedDocs, new Comparator<MyDoc>() {
           @Override
@@ -340,7 +350,7 @@ public class TestSort extends SolrTestCaseJ4 {
     for (int i=0; i<n; i++) {
       obs.set(r.nextInt(sz));
     }
-    return obs;
+    return new BitDocIdSet(obs);
   }  
   
 

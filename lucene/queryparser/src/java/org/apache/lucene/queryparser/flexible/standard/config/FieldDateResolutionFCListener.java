@@ -1,5 +1,3 @@
-package org.apache.lucene.queryparser.flexible.standard.config;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,7 @@ package org.apache.lucene.queryparser.flexible.standard.config;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.queryparser.flexible.standard.config;
 
 import java.util.Map;
 
@@ -29,7 +28,7 @@ import org.apache.lucene.queryparser.flexible.core.config.QueryConfigHandler;
 /**
  * This listener listens for every field configuration request and assign a
  * {@link ConfigurationKeys#DATE_RESOLUTION} to the equivalent {@link FieldConfig} based
- * on a defined map: fieldName -> {@link Resolution} stored in
+ * on a defined map: fieldName -&gt; {@link Resolution} stored in
  * {@link ConfigurationKeys#FIELD_DATE_RESOLUTION_MAP}.
  * 
  * @see ConfigurationKeys#DATE_RESOLUTION

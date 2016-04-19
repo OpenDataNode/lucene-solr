@@ -1,5 +1,3 @@
-package org.apache.solr.analysis;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,17 +14,17 @@ package org.apache.solr.analysis;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.analysis;
 
-import java.io.StringReader;
 import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.lucene.analysis.BaseTokenStreamTestCase;
-import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.analysis.TokenStream;
-import org.apache.solr.SolrTestCaseJ4;
 import org.apache.lucene.analysis.miscellaneous.WordDelimiterFilterFactory;
 import org.apache.lucene.analysis.util.ResourceLoader;
+import org.apache.lucene.util.Version;
+import org.apache.solr.SolrTestCaseJ4;
 import org.apache.solr.core.SolrResourceLoader;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -125,7 +123,7 @@ public class TestWordDelimiterFilterFactory extends SolrTestCaseJ4 {
     clearIndex();
   }
 
-  /***
+  /*
   public void testPerformance() throws IOException {
     String s = "now is the time-for all good men to come to-the aid of their country.";
     Token tok = new Token();
@@ -198,9 +196,9 @@ public class TestWordDelimiterFilterFactory extends SolrTestCaseJ4 {
   @Test
   public void testCustomTypes() throws Exception {
     String testText = "I borrowed $5,400.00 at 25% interest-rate";
-    ResourceLoader loader = new SolrResourceLoader("solr/collection1");
+    ResourceLoader loader = new SolrResourceLoader(TEST_PATH().resolve("collection1"));
     Map<String,String> args = new HashMap<>();
-    args.put("luceneMatchVersion", TEST_VERSION_CURRENT.toString());
+    args.put("luceneMatchVersion", Version.LATEST.toString());
     args.put("generateWordParts", "1");
     args.put("generateNumberParts", "1");
     args.put("catenateWords", "1");
@@ -212,13 +210,11 @@ public class TestWordDelimiterFilterFactory extends SolrTestCaseJ4 {
     WordDelimiterFilterFactory factoryDefault = new WordDelimiterFilterFactory(args);
     factoryDefault.inform(loader);
     
-    TokenStream ts = factoryDefault.create(
-        new MockTokenizer(new StringReader(testText), MockTokenizer.WHITESPACE, false));
+    TokenStream ts = factoryDefault.create(whitespaceMockTokenizer(testText));
     BaseTokenStreamTestCase.assertTokenStreamContents(ts, 
         new String[] { "I", "borrowed", "5", "540000", "400", "00", "at", "25", "interest", "interestrate", "rate" });
 
-    ts = factoryDefault.create(
-        new MockTokenizer(new StringReader("foo\u200Dbar"), MockTokenizer.WHITESPACE, false));
+    ts = factoryDefault.create(whitespaceMockTokenizer("foo\u200Dbar"));
     BaseTokenStreamTestCase.assertTokenStreamContents(ts, 
         new String[] { "foo", "foobar", "bar" });
 
@@ -226,7 +222,7 @@ public class TestWordDelimiterFilterFactory extends SolrTestCaseJ4 {
     /* custom behavior */
     args = new HashMap<>();
     // use a custom type mapping
-    args.put("luceneMatchVersion", TEST_VERSION_CURRENT.toString());
+    args.put("luceneMatchVersion", Version.LATEST.toString());
     args.put("generateWordParts", "1");
     args.put("generateNumberParts", "1");
     args.put("catenateWords", "1");
@@ -237,14 +233,12 @@ public class TestWordDelimiterFilterFactory extends SolrTestCaseJ4 {
     WordDelimiterFilterFactory factoryCustom = new WordDelimiterFilterFactory(args);
     factoryCustom.inform(loader);
     
-    ts = factoryCustom.create(
-        new MockTokenizer(new StringReader(testText), MockTokenizer.WHITESPACE, false));
+    ts = factoryCustom.create(whitespaceMockTokenizer(testText));
     BaseTokenStreamTestCase.assertTokenStreamContents(ts, 
         new String[] { "I", "borrowed", "$5,400.00", "at", "25%", "interest", "interestrate", "rate" });
     
     /* test custom behavior with a char > 0x7F, because we had to make a larger byte[] */
-    ts = factoryCustom.create(
-        new MockTokenizer(new StringReader("foo\u200Dbar"), MockTokenizer.WHITESPACE, false));
+    ts = factoryCustom.create(whitespaceMockTokenizer("foo\u200Dbar"));
     BaseTokenStreamTestCase.assertTokenStreamContents(ts, 
         new String[] { "foo\u200Dbar" });
   }

@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import java.io.PrintStream;
 
@@ -24,11 +24,11 @@ import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.index.DocumentsWriterPerThread.IndexingChain;
 import org.apache.lucene.index.IndexWriter.IndexReaderWarmer;
 import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.store.SleepingLockWrapper;
 import org.apache.lucene.util.InfoStream;
 import org.apache.lucene.util.PrintStreamInfoStream;
 import org.apache.lucene.util.SetOnce;
 import org.apache.lucene.util.SetOnce.AlreadySetException;
-import org.apache.lucene.util.Version;
 
 /**
  * Holds all the configuration that is used to create an {@link IndexWriter}.
@@ -72,9 +72,6 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig {
     CREATE_OR_APPEND 
   }
 
-  /** Default value is 32. Change using {@link #setTermIndexInterval(int)}. */
-  public static final int DEFAULT_TERM_INDEX_INTERVAL = 32; // TODO: this should be private to the codec, not settable here
-
   /** Denotes a flush trigger is disabled. */
   public final static int DISABLE_AUTO_FLUSH = -1;
 
@@ -91,55 +88,26 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig {
   public final static double DEFAULT_RAM_BUFFER_SIZE_MB = 16.0;
 
   /**
-   * Default value for the write lock timeout (1,000 ms).
-   *
-   * @see #setDefaultWriteLockTimeout(long)
+   * Default value for the write lock timeout (0 ms: no sleeping).
+   * @deprecated Use {@link SleepingLockWrapper} if you want sleeping.
    */
-  public static long WRITE_LOCK_TIMEOUT = 1000;
+  @Deprecated
+  public static final long WRITE_LOCK_TIMEOUT = 0;
 
   /** Default setting for {@link #setReaderPooling}. */
   public final static boolean DEFAULT_READER_POOLING = false;
 
-  /** Default value is 1. Change using {@link #setReaderTermsIndexDivisor(int)}. */
-  public static final int DEFAULT_READER_TERMS_INDEX_DIVISOR = DirectoryReader.DEFAULT_TERMS_INDEX_DIVISOR;
-
   /** Default value is 1945. Change using {@link #setRAMPerThreadHardLimitMB(int)} */
   public static final int DEFAULT_RAM_PER_THREAD_HARD_LIMIT_MB = 1945;
-  
-  /** The maximum number of simultaneous threads that may be
-   *  indexing documents at once in IndexWriter; if more
-   *  than this many threads arrive they will wait for
-   *  others to finish. Default value is 8. */
-  public final static int DEFAULT_MAX_THREAD_STATES = 8;
   
   /** Default value for compound file system for newly written segments
    *  (set to <code>true</code>). For batch indexing with very large 
    *  ram buffers use <code>false</code> */
   public final static boolean DEFAULT_USE_COMPOUND_FILE_SYSTEM = true;
   
-  /** Default value for calling {@link AtomicReader#checkIntegrity()} before
-   *  merging segments (set to <code>false</code>). You can set this
-   *  to <code>true</code> for additional safety. */
-  public final static boolean DEFAULT_CHECK_INTEGRITY_AT_MERGE = false;
+  /** Default value for whether calls to {@link IndexWriter#close()} include a commit. */
+  public final static boolean DEFAULT_COMMIT_ON_CLOSE = true;
   
-  /**
-   * Sets the default (for any instance) maximum time to wait for a write lock
-   * (in milliseconds).
-   */
-  public static void setDefaultWriteLockTimeout(long writeLockTimeout) {
-    WRITE_LOCK_TIMEOUT = writeLockTimeout;
-  }
-
-  /**
-   * Returns the default write lock timeout for newly instantiated
-   * IndexWriterConfigs.
-   *
-   * @see #setDefaultWriteLockTimeout(long)
-   */
-  public static long getDefaultWriteLockTimeout() {
-    return WRITE_LOCK_TIMEOUT;
-  }
-
   // indicates whether this config instance is already attached to a writer.
   // not final so that it can be cloned properly.
   private SetOnce<IndexWriter> writer = new SetOnce<>();
@@ -151,24 +119,25 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig {
    *           if this config is already attached to a writer.
    */
   IndexWriterConfig setIndexWriter(IndexWriter writer) {
+    if (this.writer.get() != null) {
+      throw new IllegalStateException("do not share IndexWriterConfig instances across IndexWriters");
+    }
     this.writer.set(writer);
     return this;
   }
   
   /**
-   * Creates a new config that with defaults that match the specified
-   * {@link Version} as well as the default {@link
-   * Analyzer}. If matchVersion is >= {@link
-   * Version#LUCENE_3_2}, {@link TieredMergePolicy} is used
-   * for merging; else {@link LogByteSizeMergePolicy}.
+   * Creates a new config that with the default {@link
+   * Analyzer}. By default, {@link TieredMergePolicy} is used
+   * for merging;
    * Note that {@link TieredMergePolicy} is free to select
    * non-contiguous merges, which means docIDs may not
    * remain monotonic over time.  If this is a problem you
    * should switch to {@link LogByteSizeMergePolicy} or
    * {@link LogDocMergePolicy}.
    */
-  public IndexWriterConfig(Version matchVersion, Analyzer analyzer) {
-    super(analyzer, matchVersion);
+  public IndexWriterConfig(Analyzer analyzer) {
+    super(analyzer);
   }
 
   /** Specifies {@link OpenMode} of the index.
@@ -218,7 +187,9 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig {
 
   /**
    * Expert: allows to open a certain commit point. The default is null which
-   * opens the latest commit point.
+   * opens the latest commit point.  This can also be used to open {@link IndexWriter}
+   * from a near-real-time reader, if you pass the reader's
+   * {@link DirectoryReader#getIndexCommit}.
    *
    * <p>Only takes effect when IndexWriter is first created. */
   public IndexWriterConfig setIndexCommit(IndexCommit commit) {
@@ -272,10 +243,12 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig {
 
   /**
    * Sets the maximum time to wait for a write lock (in milliseconds) for this
-   * instance. You can change the default value for all instances by calling
-   * {@link #setDefaultWriteLockTimeout(long)}.
+   * instance. Note that the value can be zero, for no sleep/retry behavior.
    *
-   * <p>Only takes effect when IndexWriter is first created. */
+   * <p>Only takes effect when IndexWriter is first created.
+   * @deprecated Use {@link SleepingLockWrapper} if you want sleeping.
+   */
+  @Deprecated
   public IndexWriterConfig setWriteLockTimeout(long writeLockTimeout) {
     this.writeLockTimeout = writeLockTimeout;
     return this;
@@ -313,7 +286,6 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig {
 
   /** Expert: Sets the {@link DocumentsWriterPerThreadPool} instance used by the
    * IndexWriter to assign thread-states to incoming indexing threads.
-   * </p>
    * <p>
    * NOTE: The given {@link DocumentsWriterPerThreadPool} instance must not be used with
    * other {@link IndexWriter} instances once it has been initialized / associated with an
@@ -334,31 +306,14 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig {
     return indexerThreadPool;
   }
 
-  /**
-   * Sets the max number of simultaneous threads that may be indexing documents
-   * at once in IndexWriter. Values &lt; 1 are invalid and if passed
-   * <code>maxThreadStates</code> will be set to
-   * {@link #DEFAULT_MAX_THREAD_STATES}.
-   *
-   * <p>Only takes effect when IndexWriter is first created. */
-  public IndexWriterConfig setMaxThreadStates(int maxThreadStates) {
-    this.indexerThreadPool = new DocumentsWriterPerThreadPool(maxThreadStates);
-    return this;
-  }
-
-  @Override
-  public int getMaxThreadStates() {
-    return indexerThreadPool.getMaxThreadStates();
-  }
-
   /** By default, IndexWriter does not pool the
    *  SegmentReaders it must open for deletions and
    *  merging, unless a near-real-time reader has been
-   *  obtained by calling {@link DirectoryReader#open(IndexWriter, boolean)}.
+   *  obtained by calling {@link DirectoryReader#open(IndexWriter)}.
    *  This method lets you enable pooling without getting a
    *  near-real-time reader.  NOTE: if you set this to
    *  false, IndexWriter will still pool readers once
-   *  {@link DirectoryReader#open(IndexWriter, boolean)} is called.
+   *  {@link DirectoryReader#open(IndexWriter)} is called.
    *
    * <p>Only takes effect when IndexWriter is first created. */
   public IndexWriterConfig setReaderPooling(boolean readerPooling) {
@@ -369,22 +324,6 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig {
   @Override
   public boolean getReaderPooling() {
     return readerPooling;
-  }
-
-  /** Expert: sets the {@link DocConsumer} chain to be used to process documents.
-   *
-   * <p>Only takes effect when IndexWriter is first created. */
-  IndexWriterConfig setIndexingChain(IndexingChain indexingChain) {
-    if (indexingChain == null) {
-      throw new IllegalArgumentException("indexingChain must not be null");
-    }
-    this.indexingChain = indexingChain;
-    return this;
-  }
-
-  @Override
-  IndexingChain getIndexingChain() {
-    return indexingChain;
   }
 
   /**
@@ -462,16 +401,6 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig {
     return super.getRAMBufferSizeMB();
   }
   
-  @Override
-  public int getReaderTermsIndexDivisor() {
-    return super.getReaderTermsIndexDivisor();
-  }
-  
-  @Override
-  public int getTermIndexInterval() {
-    return super.getTermIndexInterval();
-  }
-  
   /** 
    * Information about merges, deletes and a
    * message when maxFieldLength is reached will be printed
@@ -523,24 +452,23 @@ public final class IndexWriterConfig extends LiveIndexWriterConfig {
   }
   
   @Override
-  public IndexWriterConfig setReaderTermsIndexDivisor(int divisor) {
-    return (IndexWriterConfig) super.setReaderTermsIndexDivisor(divisor);
-  }
-  
-  @Override
-  public IndexWriterConfig setTermIndexInterval(int interval) {
-    return (IndexWriterConfig) super.setTermIndexInterval(interval);
-  }
-  
-  @Override
   public IndexWriterConfig setUseCompoundFile(boolean useCompoundFile) {
     return (IndexWriterConfig) super.setUseCompoundFile(useCompoundFile);
+  }
+
+  /**
+   * Sets if calls {@link IndexWriter#close()} should first commit
+   * before closing.  Use <code>true</code> to match behavior of Lucene 4.x.
+   */
+  public IndexWriterConfig setCommitOnClose(boolean commitOnClose) {
+    this.commitOnClose = commitOnClose;
+    return this;
   }
 
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder(super.toString());
-    sb.append("writer=").append(writer).append("\n");
+    sb.append("writer=").append(writer.get()).append("\n");
     return sb.toString();
   }
   

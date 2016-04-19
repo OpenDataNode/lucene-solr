@@ -1,22 +1,3 @@
-package org.apache.solr.handler.dataimport;
-
-import java.io.File;
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Locale;
-import java.util.Map;
-
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
-
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -33,8 +14,32 @@ import org.junit.Test;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.handler.dataimport;
+
+import java.io.File;
+import java.lang.invoke.MethodHandles;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+
+import org.apache.solr.common.util.SuppressForbidden;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 
 public class TestSimplePropertiesWriter extends AbstractDIHJdbcTestCase {
+
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
   
   private boolean useJdbcEscapeSyntax;
   private String dateFormat;
@@ -43,10 +48,11 @@ public class TestSimplePropertiesWriter extends AbstractDIHJdbcTestCase {
   
   @Before
   public void spwBefore() throws Exception {
-    fileLocation = createTempDir().getAbsolutePath();
+    fileLocation = createTempDir().toFile().getAbsolutePath();
     fileName = "the.properties";
   }
- 
+
+  @SuppressForbidden(reason = "Needs currentTimeMillis to construct date stamps")
   @Test
   public void testSimplePropertiesWriter() throws Exception { 
     

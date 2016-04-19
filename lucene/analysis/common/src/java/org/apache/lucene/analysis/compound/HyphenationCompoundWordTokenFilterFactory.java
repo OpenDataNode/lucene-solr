@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.compound;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.compound;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.compound;
+
 
 import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
@@ -48,7 +48,7 @@ import org.xml.sax.InputSource;
  *  <li><code>onlyLongestMatch</code> (optional): if true, adds only the longest matching subword 
  *    to the stream. defaults to false.
  * </ul>
- * <p>
+ * <br>
  * <pre class="prettyprint">
  * &lt;fieldType name="text_hyphncomp" class="solr.TextField" positionIncrementGap="100"&gt;
  *   &lt;analyzer&gt;
@@ -74,7 +74,6 @@ public class HyphenationCompoundWordTokenFilterFactory extends TokenFilterFactor
   /** Creates a new HyphenationCompoundWordTokenFilterFactory */
   public HyphenationCompoundWordTokenFilterFactory(Map<String, String> args) {
     super(args);
-    assureMatchVersion();
     dictFile = get(args, "dictionary");
     encoding = get(args, "encoding");
     hypFile = require(args, "hyphenator");
@@ -115,6 +114,5 @@ public class HyphenationCompoundWordTokenFilterFactory extends TokenFilterFactor
       return new HyphenationCompoundWordTokenFilter(input, hyphenator, dictionary, minWordSize, minSubwordSize, maxSubwordSize, onlyLongestMatch);
     }
     return new Lucene43HyphenationCompoundWordTokenFilter(input, hyphenator, dictionary, minWordSize, minSubwordSize, maxSubwordSize, onlyLongestMatch);
-
   }
 }

@@ -1,5 +1,3 @@
-package org.apache.lucene.index;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.index;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.index;
+
 
 import static org.apache.lucene.util.ByteBlockPool.BYTE_BLOCK_SIZE;
 
@@ -92,7 +92,7 @@ class SortedSetDocValuesWriter extends DocValuesWriter {
     int count = 0;
     for (int i = 0; i < currentUpto; i++) {
       int termID = currentValues[i];
-      // if its not a duplicate
+      // if it's not a duplicate
       if (termID != lastValue) {
         pending.add(termID); // record the term id
         count++;
@@ -147,7 +147,7 @@ class SortedSetDocValuesWriter extends DocValuesWriter {
 
   @Override
   public void flush(SegmentWriteState state, DocValuesConsumer dvConsumer) throws IOException {
-    final int maxDoc = state.segmentInfo.getDocCount();
+    final int maxDoc = state.segmentInfo.maxDoc();
     final int maxCountPerDoc = maxCount;
     assert pendingCounts.size() == maxDoc;
     final int valueCount = hash.size();

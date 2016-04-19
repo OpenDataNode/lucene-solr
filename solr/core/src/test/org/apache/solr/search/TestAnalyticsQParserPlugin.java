@@ -14,9 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.search;
 
+import org.apache.lucene.search.LeafCollector;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.solr.common.params.SolrParams;
@@ -33,10 +33,6 @@ import java.io.IOException;
 @Ignore
 public class TestAnalyticsQParserPlugin extends QParserPlugin {
 
-
-  public void init(NamedList params) {
-
-  }
 
   public QParser createParser(String query, SolrParams localParams, SolrParams params, SolrQueryRequest req) {
     return new TestAnalyticsQueryParser(query, localParams, params, req);
@@ -74,7 +70,7 @@ public class TestAnalyticsQParserPlugin extends QParserPlugin {
 
     public void collect(int doc) throws IOException {
       ++count;
-      delegate.collect(doc);
+      leafDelegate.collect(doc);
     }
 
     public void finish() throws IOException {

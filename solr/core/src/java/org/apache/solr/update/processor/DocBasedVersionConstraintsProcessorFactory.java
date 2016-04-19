@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.update.processor;
 
 import org.apache.lucene.queries.function.FunctionValues;
@@ -41,6 +40,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.Map;
 
 import static org.apache.solr.common.SolrException.ErrorCode.BAD_REQUEST;
@@ -91,7 +91,7 @@ import static org.apache.solr.update.processor.DistributingUpdateProcessorFactor
  * </ul>
  */
 public class DocBasedVersionConstraintsProcessorFactory extends UpdateRequestProcessorFactory implements SolrCoreAware, UpdateRequestProcessorFactory.RunAlways {
-  public final static Logger log = LoggerFactory.getLogger(DocBasedVersionConstraintsProcessorFactory.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private boolean ignoreOldUpdates = false;
   private String versionField = null;
@@ -231,9 +231,9 @@ public class DocBasedVersionConstraintsProcessorFactory extends UpdateRequestPro
         // in theory, the FieldType might still be CharSequence based,
         // but in that case trust it to do an identiy conversion...
         FieldType fieldType = userVersionField.getType();
-        BytesRef term = new BytesRef();
+        BytesRefBuilder term = new BytesRefBuilder();
         fieldType.readableToIndexed((CharSequence)rawValue, term);
-        return fieldType.toObject(userVersionField, term);
+        return fieldType.toObject(userVersionField, term.get());
       }
       // else...
       return rawValue;

@@ -1,5 +1,3 @@
-package org.apache.solr.update;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,21 +14,23 @@ package org.apache.solr.update;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import java.io.IOException;
-import java.util.Arrays;
+package org.apache.solr.update;
 
 import org.apache.solr.BaseDistributedSearchTestCase;
 import org.apache.solr.SolrTestCaseJ4.SuppressSSL;
-import org.apache.solr.client.solrj.SolrServer;
+import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.common.params.ModifiableSolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.StrUtils;
+import org.junit.Test;
 
-import static org.apache.solr.update.processor.DistributingUpdateProcessorFactory.DISTRIB_UPDATE_PARAM;
+import java.io.IOException;
+import java.util.Arrays;
+
 import static org.apache.solr.update.processor.DistributedUpdateProcessor.DistribPhase;
+import static org.apache.solr.update.processor.DistributingUpdateProcessorFactory.DISTRIB_UPDATE_PARAM;
 
 @SuppressSSL(bugUrl = "https://issues.apache.org/jira/browse/SOLR-5776")
 public class PeerSyncTest extends BaseDistributedSearchTestCase {
@@ -41,31 +41,29 @@ public class PeerSyncTest extends BaseDistributedSearchTestCase {
     params(DISTRIB_UPDATE_PARAM, FROM_LEADER);
   
   public PeerSyncTest() {
-    fixShardCount = true;
-    shardCount = 3;
     stress = 0;
 
     // TODO: a better way to do this?
     configString = "solrconfig-tlog.xml";
     schemaString = "schema.xml";
   }
-  
-  
-  @Override
-  public void doTest() throws Exception {
+
+  @Test
+  @ShardsFixed(num = 3)
+  public void test() throws Exception {
     handle.clear();
     handle.put("timestamp", SKIPVAL);
     handle.put("score", SKIPVAL);
     handle.put("maxScore", SKIPVAL);
 
-    SolrServer client0 = clients.get(0);
-    SolrServer client1 = clients.get(1);
-    SolrServer client2 = clients.get(2);
+    SolrClient client0 = clients.get(0);
+    SolrClient client1 = clients.get(1);
+    SolrClient client2 = clients.get(2);
 
     long v = 0;
     add(client0, seenLeader, sdoc("id","1","_version_",++v));
 
-    // this fails because client0 has no context (i.e. no updates of it's own to judge if applying the updates
+    // this fails because client0 has no context (i.e. no updates of its own to judge if applying the updates
     // from client1 will bring it into sync with client1)
     assertSync(client1, numVersions, false, shardsArr[0]);
 
@@ -128,7 +126,7 @@ public class PeerSyncTest extends BaseDistributedSearchTestCase {
 
     // test that delete by query is returned even if not requested, and that it doesn't delete newer stuff than it should
     v=2000;
-    SolrServer client = client0;
+    SolrClient client = client0;
     add(client, seenLeader, sdoc("id","2000","_version_",++v));
     add(client, seenLeader, sdoc("id","2001","_version_",++v));
     delQ(client, params(DISTRIB_UPDATE_PARAM,FROM_LEADER,"_version_",Long.toString(-++v)), "id:2001 OR id:2002");
@@ -170,12 +168,35 @@ public class PeerSyncTest extends BaseDistributedSearchTestCase {
 
     assertSync(client1, numVersions, true, shardsArr[0]);
     client0.commit(); client1.commit(); queryAndCompare(params("q", "*:*", "sort","_version_ desc"), client0, client1);
+
+    // now lets check fingerprinting causes appropriate fails
+    v = 4000;
+    add(client0, seenLeader, sdoc("id",Integer.toString((int)v),"_version_",v));
+    toAdd = numVersions+10;
+    for (int i=0; i<toAdd; i++) {
+      add(client0, seenLeader, sdoc("id",Integer.toString((int)v+i+1),"_version_",v+i+1));
+      add(client1, seenLeader, sdoc("id",Integer.toString((int)v+i+1),"_version_",v+i+1));
+    }
+
+    // client0 now has an additional add beyond our window and the fingerprint should cause this to fail
+    assertSync(client1, numVersions, false, shardsArr[0]);
+
+    // lets add the missing document and verify that order doesn't matter
+    add(client1, seenLeader, sdoc("id",Integer.toString((int)v),"_version_",v));
+    assertSync(client1, numVersions, true, shardsArr[0]);
+
+    // lets do some overwrites to ensure that repeated updates and maxDoc don't matter
+    for (int i=0; i<10; i++) {
+      add(client0, seenLeader, sdoc("id", Integer.toString((int) v + i + 1), "_version_", v + i + 1));
+    }
+    assertSync(client1, numVersions, true, shardsArr[0]);
+
   }
 
 
-  void assertSync(SolrServer server, int numVersions, boolean expectedResult, String... syncWith) throws IOException, SolrServerException {
+  void assertSync(SolrClient client, int numVersions, boolean expectedResult, String... syncWith) throws IOException, SolrServerException {
     QueryRequest qr = new QueryRequest(params("qt","/get", "getVersions",Integer.toString(numVersions), "sync", StrUtils.join(Arrays.asList(syncWith), ',')));
-    NamedList rsp = server.request(qr);
+    NamedList rsp = client.request(qr);
     assertEquals(expectedResult, (Boolean) rsp.get("sync"));
   }
 

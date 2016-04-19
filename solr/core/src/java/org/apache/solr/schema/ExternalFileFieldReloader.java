@@ -14,7 +14,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.solr.schema;
 
 import org.apache.lucene.index.IndexReader;
@@ -26,6 +25,7 @@ import org.apache.solr.search.function.FileFloatSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -41,8 +41,8 @@ import java.util.List;
  * listeners in your solrconfig.xml:
  *
  * <pre>
- *   &lt;listener event="newSearcher" class="org.apache.solr.schema.ExternalFileFieldReloader"/>
- *   &lt;listener event="firstSearcher" class="org.apache.solr.schema.ExternalFileFieldReloader"/>
+ *   &lt;listener event="newSearcher" class="org.apache.solr.schema.ExternalFileFieldReloader"/&gt;
+ *   &lt;listener event="firstSearcher" class="org.apache.solr.schema.ExternalFileFieldReloader"/&gt;
  * </pre>
  *
  * The caches will be reloaded for all ExternalFileFields in your schema after
@@ -53,7 +53,7 @@ public class ExternalFileFieldReloader extends AbstractSolrEventListener {
   private String datadir;
   private List<FileFloatSource> fieldSources = new ArrayList<>();
 
-  private static final Logger log = LoggerFactory.getLogger(ExternalFileFieldReloader.class);
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   public ExternalFileFieldReloader(SolrCore core) {
     super(core);

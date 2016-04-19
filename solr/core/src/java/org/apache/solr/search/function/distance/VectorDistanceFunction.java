@@ -1,4 +1,3 @@
-package org.apache.solr.search.function.distance;
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -15,8 +14,8 @@ package org.apache.solr.search.function.distance;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-import org.apache.lucene.index.AtomicReaderContext;
+package org.apache.solr.search.function.distance;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.queries.function.FunctionValues;
 import org.apache.lucene.queries.function.ValueSource;
 import org.apache.lucene.queries.function.docvalues.DoubleDocValues;
@@ -30,7 +29,7 @@ import java.util.Map;
 
 /**
  * Calculate the p-norm for a Vector.  See http://en.wikipedia.org/wiki/Lp_space
- * <p/>
+ * <p>
  * Common cases:
  * <ul>
  * <li>0 = Sparseness calculation</li>
@@ -79,7 +78,7 @@ public class VectorDistanceFunction extends ValueSource {
 
   /**
    * Calculate the p-norm (i.e. length) between two vectors.
-   * <p/>
+   * <p>
    * See <a href="http://en.wikipedia.org/wiki/Lp_space">Lp space</a>
    *
    * @param vec1  The first vector
@@ -150,7 +149,7 @@ public class VectorDistanceFunction extends ValueSource {
   }
 
   @Override
-  public FunctionValues getValues(Map context, AtomicReaderContext readerContext) throws IOException {
+  public FunctionValues getValues(Map context, LeafReaderContext readerContext) throws IOException {
 
     final FunctionValues vals1 = source1.getValues(context, readerContext);
 

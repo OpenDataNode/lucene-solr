@@ -1,5 +1,3 @@
-package org.apache.lucene.codecs.simpletext;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,8 +14,11 @@ package org.apache.lucene.codecs.simpletext;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.codecs.simpletext;
+
 
 import org.apache.lucene.codecs.Codec;
+import org.apache.lucene.codecs.CompoundFormat;
 import org.apache.lucene.codecs.FieldInfosFormat;
 import org.apache.lucene.codecs.LiveDocsFormat;
 import org.apache.lucene.codecs.PostingsFormat;
@@ -30,7 +31,7 @@ import org.apache.lucene.codecs.TermVectorsFormat;
 /**
  * plain text index format.
  * <p>
- * <b><font color="red">FOR RECREATIONAL USE ONLY</font></B>
+ * <b>FOR RECREATIONAL USE ONLY</b>
  * @lucene.experimental
  */
 public final class SimpleTextCodec extends Codec {
@@ -42,6 +43,7 @@ public final class SimpleTextCodec extends Codec {
   private final NormsFormat normsFormat = new SimpleTextNormsFormat();
   private final LiveDocsFormat liveDocs = new SimpleTextLiveDocsFormat();
   private final DocValuesFormat dvFormat = new SimpleTextDocValuesFormat();
+  private final CompoundFormat compoundFormat = new SimpleTextCompoundFormat();
   
   public SimpleTextCodec() {
     super("SimpleText");
@@ -85,5 +87,10 @@ public final class SimpleTextCodec extends Codec {
   @Override
   public DocValuesFormat docValuesFormat() {
     return dvFormat;
+  }
+  
+  @Override
+  public CompoundFormat compoundFormat() {
+    return compoundFormat;
   }
 }

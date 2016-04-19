@@ -1,5 +1,3 @@
-package org.apache.lucene.sandbox.queries;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,12 +14,14 @@ package org.apache.lucene.sandbox.queries;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.sandbox.queries;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 
+import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.MockAnalyzer;
 import org.apache.lucene.analysis.MockTokenizer;
 import org.apache.lucene.document.Document;
@@ -34,6 +34,7 @@ import org.apache.lucene.search.MultiTermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.store.Directory;
+import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.LuceneTestCase;
 
 /** 
@@ -90,7 +91,8 @@ public class TestSlowFuzzyQuery2 extends LuceneTestCase {
     int terms = (int) Math.pow(2, bits);
     
     Directory dir = newDirectory();
-    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, newIndexWriterConfig(new MockAnalyzer(random(), MockTokenizer.KEYWORD, false)).setMergePolicy(newLogMergePolicy()));
+    Analyzer analyzer = new MockAnalyzer(random(), MockTokenizer.KEYWORD, false);
+    RandomIndexWriter writer = new RandomIndexWriter(random(), dir, newIndexWriterConfig(analyzer).setMergePolicy(newLogMergePolicy()));
 
     Document doc = new Document();
     Field field = newTextField("field", "", Field.Store.NO);
@@ -129,8 +131,7 @@ public class TestSlowFuzzyQuery2 extends LuceneTestCase {
         assertEquals(Float.parseFloat(scoreDoc[1]), docs.scoreDocs[i].score, epsilon);
       }
     }
-    r.close();
-    dir.close();
+    IOUtils.close(r, dir, analyzer);
   }
   
   /* map bits to unicode codepoints */

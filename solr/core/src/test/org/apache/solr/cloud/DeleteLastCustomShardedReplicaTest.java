@@ -1,5 +1,3 @@
-package org.apache.solr.cloud;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,109 +14,92 @@ package org.apache.solr.cloud;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.solr.cloud;
 
 import org.apache.solr.client.solrj.SolrRequest;
 import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.impl.CloudSolrServer;
+import org.apache.solr.client.solrj.impl.CloudSolrClient;
 import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.common.cloud.DocCollection;
 import org.apache.solr.common.cloud.ImplicitDocRouter;
 import org.apache.solr.common.cloud.Replica;
 import org.apache.solr.common.cloud.ZkNodeProps;
+import org.apache.solr.common.cloud.ZkStateReader;
 import org.apache.solr.common.params.MapSolrParams;
 import org.apache.solr.common.params.SolrParams;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.BeforeClass;
+import org.apache.solr.common.util.Utils;
+import org.apache.solr.util.TimeOut;
+import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
-import static org.apache.solr.cloud.OverseerCollectionProcessor.DELETEREPLICA;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.MAX_SHARDS_PER_NODE;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.NUM_SLICES;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.REPLICATION_FACTOR;
-import static org.apache.solr.cloud.OverseerCollectionProcessor.SHARDS_PROP;
-import static org.apache.solr.common.cloud.ZkNodeProps.makeMap;
+import static org.apache.solr.cloud.OverseerCollectionMessageHandler.NUM_SLICES;
+import static org.apache.solr.cloud.OverseerCollectionMessageHandler.SHARDS_PROP;
+import static org.apache.solr.common.util.Utils.makeMap;
+import static org.apache.solr.common.params.CollectionParams.CollectionAction.DELETEREPLICA;
 
 public class DeleteLastCustomShardedReplicaTest extends AbstractFullDistribZkTestBase {
-  private CloudSolrServer client;
 
-  @BeforeClass
-  public static void beforeThisClass2() throws Exception {
-
-  }
-
-  @Before
-  @Override
-  public void setUp() throws Exception {
-    super.setUp();
-    System.setProperty("numShards", Integer.toString(sliceCount));
-    System.setProperty("solr.xml.persist", "true");
-    client = createCloudClient(null);
-  }
-
-  @After
-  public void tearDown() throws Exception {
-    super.tearDown();
-    client.shutdown();
-  }
+  private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   protected String getSolrXml() {
     return "solr-no-core.xml";
   }
 
   public DeleteLastCustomShardedReplicaTest() {
-    fixShardCount = true;
-
     sliceCount = 2;
-    shardCount = 2;
-
-    checkCreatedVsState = false;
   }
 
-  @Override
-  public void doTest() throws Exception {
-    int replicationFactor = 1;
-    int maxShardsPerNode = 5;
+  @Test
+  @ShardsFixed(num = 2)
+  public void test() throws Exception {
+    try (CloudSolrClient client = createCloudClient(null))  {
+      int replicationFactor = 1;
+      int maxShardsPerNode = 5;
 
-    Map<String, Object> props = ZkNodeProps.makeMap(
-        "router.name", ImplicitDocRouter.NAME,
-        REPLICATION_FACTOR, replicationFactor,
-        MAX_SHARDS_PER_NODE, maxShardsPerNode,
-        NUM_SLICES, 1,
-        SHARDS_PROP,"a,b");
+      Map<String, Object> props = Utils.makeMap(
+          "router.name", ImplicitDocRouter.NAME,
+          ZkStateReader.REPLICATION_FACTOR, replicationFactor,
+          ZkStateReader.MAX_SHARDS_PER_NODE, maxShardsPerNode,
+          NUM_SLICES, 1,
+          SHARDS_PROP, "a,b");
 
-    Map<String,List<Integer>> collectionInfos = new HashMap<>();
+      Map<String,List<Integer>> collectionInfos = new HashMap<>();
 
-    String collectionName = "customcollreplicadeletion";
+      String collectionName = "customcollreplicadeletion";
 
-    createCollection(collectionInfos, collectionName, props, client);
+      createCollection(collectionInfos, collectionName, props, client);
 
-    waitForRecoveriesToFinish(collectionName, false);
+      waitForRecoveriesToFinish(collectionName, false);
 
-    DocCollection testcoll = getCommonCloudSolrServer().getZkStateReader()
-        .getClusterState().getCollection(collectionName);
-    Replica replica = testcoll.getSlice("a").getReplicas().iterator().next();
+      DocCollection testcoll = getCommonCloudSolrClient().getZkStateReader()
+              .getClusterState().getCollection(collectionName);
+      Replica replica = testcoll.getSlice("a").getReplicas().iterator().next();
 
-    removeAndWaitForLastReplicaGone(collectionName, replica, "a");
+      removeAndWaitForLastReplicaGone(client, collectionName, replica, "a");
+    }
   }
 
-  protected void removeAndWaitForLastReplicaGone(String COLL_NAME, Replica replica, String shard)
+  protected void removeAndWaitForLastReplicaGone(CloudSolrClient client, String COLL_NAME, Replica replica, String shard)
       throws SolrServerException, IOException, InterruptedException {
-    Map m = makeMap("collection", COLL_NAME, "action", DELETEREPLICA, "shard",
+    Map m = makeMap("collection", COLL_NAME, "action", DELETEREPLICA.toLower(), "shard",
         shard, "replica", replica.getName());
     SolrParams params = new MapSolrParams(m);
     SolrRequest request = new QueryRequest(params);
     request.setPath("/admin/collections");
-    this.client.request(request);
-    long endAt = System.currentTimeMillis() + 3000;
+    client.request(request);
+    TimeOut timeout = new TimeOut(3, TimeUnit.SECONDS);
     boolean success = false;
     DocCollection testcoll = null;
-    while (System.currentTimeMillis() < endAt) {
-      testcoll = getCommonCloudSolrServer().getZkStateReader()
+    while (! timeout.hasTimedOut()) {
+      testcoll = getCommonCloudSolrClient().getZkStateReader()
           .getClusterState().getCollection(COLL_NAME);
       // In case of a custom sharded collection, the last replica deletion would also lead to
       // the deletion of the slice.

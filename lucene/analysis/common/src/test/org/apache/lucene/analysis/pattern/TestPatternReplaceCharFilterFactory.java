@@ -1,5 +1,3 @@
-package org.apache.lucene.analysis.pattern;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.analysis.pattern;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.analysis.pattern;
+
 
 import java.io.Reader;
 import java.io.StringReader;
@@ -37,7 +37,7 @@ public class TestPatternReplaceCharFilterFactory extends BaseTokenStreamFactoryT
     reader = charFilterFactory("PatternReplace",
         "pattern", "(aa)\\s+(bb)\\s+(cc)",
         "replacement", "$1$2$3").create(reader);
-    TokenStream ts = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream ts = whitespaceMockTokenizer(reader);
     assertTokenStreamContents(ts,
         new String[] { "this", "is", "test." },
         new int[] { 0, 5, 8 },
@@ -50,7 +50,7 @@ public class TestPatternReplaceCharFilterFactory extends BaseTokenStreamFactoryT
     Reader reader = new StringReader("aa bb cc");
     reader = charFilterFactory("PatternReplace",
         "pattern", "(aa)\\s+(bb)\\s+(cc)").create(reader);
-    TokenStream ts = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream ts = whitespaceMockTokenizer(reader);
     assertTokenStreamContents(ts, new String[] {});
   }
   
@@ -62,7 +62,7 @@ public class TestPatternReplaceCharFilterFactory extends BaseTokenStreamFactoryT
     reader = charFilterFactory("PatternReplace",
         "pattern", "(aa)\\s+(bb)\\s+(cc)",
         "replacement", "$1#$2#$3").create(reader);
-    TokenStream ts = new MockTokenizer(reader, MockTokenizer.WHITESPACE, false);
+    TokenStream ts = whitespaceMockTokenizer(reader);
     assertTokenStreamContents(ts,
         new String[] { "aa#bb#cc" },
         new int[] { 0 },

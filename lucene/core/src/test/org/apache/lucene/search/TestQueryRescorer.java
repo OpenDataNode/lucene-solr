@@ -1,5 +1,3 @@
-package org.apache.lucene.search;
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -16,6 +14,8 @@ package org.apache.lucene.search;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
+
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -25,8 +25,8 @@ import java.util.Set;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.NumericDocValuesField;
-import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause.Occur;
@@ -35,12 +35,9 @@ import org.apache.lucene.search.spans.SpanNearQuery;
 import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.search.spans.SpanTermQuery;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.LuceneTestCase;
-import org.apache.lucene.util.LuceneTestCase.SuppressCodecs;
 import org.apache.lucene.util.TestUtil;
 
-@SuppressCodecs("Lucene3x")
 public class TestQueryRescorer extends LuceneTestCase {
 
   private IndexSearcher getSearcher(IndexReader r) {
@@ -69,22 +66,19 @@ public class TestQueryRescorer extends LuceneTestCase {
     w.close();
 
     // Do ordinary BooleanQuery:
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
     bq.add(new TermQuery(new Term("field", "wizard")), Occur.SHOULD);
     bq.add(new TermQuery(new Term("field", "oz")), Occur.SHOULD);
     IndexSearcher searcher = getSearcher(r);
     searcher.setSimilarity(new DefaultSimilarity());
 
-    TopDocs hits = searcher.search(bq, 10);
+    TopDocs hits = searcher.search(bq.build(), 10);
     assertEquals(2, hits.totalHits);
     assertEquals("0", searcher.doc(hits.scoreDocs[0].doc).get("id"));
     assertEquals("1", searcher.doc(hits.scoreDocs[1].doc).get("id"));
 
     // Now, resort using PhraseQuery:
-    PhraseQuery pq = new PhraseQuery();
-    pq.setSlop(5);
-    pq.add(new Term("field", "wizard"));
-    pq.add(new Term("field", "oz"));
+    PhraseQuery pq = new PhraseQuery(5, "field", "wizard", "oz");
 
     TopDocs hits2 = QueryRescorer.rescore(searcher, hits, pq, 2.0, 10);
 
@@ -127,13 +121,13 @@ public class TestQueryRescorer extends LuceneTestCase {
     w.close();
 
     // Do ordinary BooleanQuery:
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
     bq.add(new TermQuery(new Term("field", "wizard")), Occur.SHOULD);
     bq.add(new TermQuery(new Term("field", "oz")), Occur.SHOULD);
     IndexSearcher searcher = getSearcher(r);
     searcher.setSimilarity(new DefaultSimilarity());
 
-    TopDocs hits = searcher.search(bq, 10);
+    TopDocs hits = searcher.search(bq.build(), 10);
     assertEquals(2, hits.totalHits);
     assertEquals("0", searcher.doc(hits.scoreDocs[0].doc).get("id"));
     assertEquals("1", searcher.doc(hits.scoreDocs[1].doc).get("id"));
@@ -166,22 +160,19 @@ public class TestQueryRescorer extends LuceneTestCase {
     w.close();
 
     // Do ordinary BooleanQuery:
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
     bq.add(new TermQuery(new Term("field", "wizard")), Occur.SHOULD);
     bq.add(new TermQuery(new Term("field", "oz")), Occur.SHOULD);
     IndexSearcher searcher = getSearcher(r);
 
-    TopDocs hits = searcher.search(bq, 10);
+    TopDocs hits = searcher.search(bq.build(), 10);
     assertEquals(2, hits.totalHits);
     assertEquals("0", searcher.doc(hits.scoreDocs[0].doc).get("id"));
     assertEquals("1", searcher.doc(hits.scoreDocs[1].doc).get("id"));
 
     // Now, resort using PhraseQuery, but with an
     // opposite-world combine:
-    PhraseQuery pq = new PhraseQuery();
-    pq.setSlop(5);
-    pq.add(new Term("field", "wizard"));
-    pq.add(new Term("field", "oz"));
+    PhraseQuery pq = new PhraseQuery(5, "field", "wizard", "oz");
     
     TopDocs hits2 = new QueryRescorer(pq) {
         @Override
@@ -220,20 +211,18 @@ public class TestQueryRescorer extends LuceneTestCase {
     w.close();
 
     // Do ordinary BooleanQuery:
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
     bq.add(new TermQuery(new Term("field", "wizard")), Occur.SHOULD);
     bq.add(new TermQuery(new Term("field", "oz")), Occur.SHOULD);
     IndexSearcher searcher = getSearcher(r);
 
-    TopDocs hits = searcher.search(bq, 10);
+    TopDocs hits = searcher.search(bq.build(), 10);
     assertEquals(2, hits.totalHits);
     assertEquals("0", searcher.doc(hits.scoreDocs[0].doc).get("id"));
     assertEquals("1", searcher.doc(hits.scoreDocs[1].doc).get("id"));
 
     // Now, resort using PhraseQuery:
-    PhraseQuery pq = new PhraseQuery();
-    pq.add(new Term("field", "wizard"));
-    pq.add(new Term("field", "oz"));
+    PhraseQuery pq = new PhraseQuery("field", "wizard", "oz");
 
     Rescorer rescorer = new QueryRescorer(pq) {
         @Override
@@ -255,7 +244,7 @@ public class TestQueryRescorer extends LuceneTestCase {
 
     int docID = hits2.scoreDocs[0].doc;
     Explanation explain = rescorer.explain(searcher,
-                                           searcher.explain(bq, docID),
+                                           searcher.explain(bq.build(), docID),
                                            docID);
     String s = explain.toString();
     assertTrue(s.contains("TestQueryRescorer$"));
@@ -266,7 +255,7 @@ public class TestQueryRescorer extends LuceneTestCase {
 
     docID = hits2.scoreDocs[1].doc;
     explain = rescorer.explain(searcher,
-                               searcher.explain(bq, docID),
+                               searcher.explain(bq.build(), docID),
                                docID);
     s = explain.toString();
     assertTrue(s.contains("TestQueryRescorer$"));
@@ -274,7 +263,6 @@ public class TestQueryRescorer extends LuceneTestCase {
     assertTrue(s.contains("first pass score"));
     assertTrue(s.contains("no second pass score"));
     assertFalse(s.contains("= second pass score"));
-    assertTrue(s.contains("NON-MATCH"));
     assertEquals(hits2.scoreDocs[1].score, explain.getValue(), 0.0f);
 
     r.close();
@@ -298,20 +286,18 @@ public class TestQueryRescorer extends LuceneTestCase {
     w.close();
 
     // Do ordinary BooleanQuery:
-    BooleanQuery bq = new BooleanQuery();
+    BooleanQuery.Builder bq = new BooleanQuery.Builder();
     bq.add(new TermQuery(new Term("field", "wizard")), Occur.SHOULD);
     bq.add(new TermQuery(new Term("field", "oz")), Occur.SHOULD);
     IndexSearcher searcher = getSearcher(r);
 
-    TopDocs hits = searcher.search(bq, 10);
+    TopDocs hits = searcher.search(bq.build(), 10);
     assertEquals(2, hits.totalHits);
     assertEquals("0", searcher.doc(hits.scoreDocs[0].doc).get("id"));
     assertEquals("1", searcher.doc(hits.scoreDocs[1].doc).get("id"));
 
     // Now, resort using PhraseQuery, no slop:
-    PhraseQuery pq = new PhraseQuery();
-    pq.add(new Term("field", "wizard"));
-    pq.add(new Term("field", "oz"));
+    PhraseQuery pq = new PhraseQuery("field", "wizard", "oz");
 
     TopDocs hits2 = QueryRescorer.rescore(searcher, hits, pq, 2.0, 10);
 
@@ -426,13 +412,12 @@ public class TestQueryRescorer extends LuceneTestCase {
     }
 
     @Override
-    public Weight createWeight(IndexSearcher searcher) throws IOException {
+    public Weight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
 
-      return new Weight() {
+      return new Weight(FixedScoreQuery.this) {
 
         @Override
-        public Query getQuery() {
-          return FixedScoreQuery.this;
+        public void extractTerms(Set<Term> terms) {
         }
 
         @Override
@@ -445,7 +430,7 @@ public class TestQueryRescorer extends LuceneTestCase {
         }
 
         @Override
-        public Scorer scorer(final AtomicReaderContext context, Bits acceptDocs) throws IOException {
+        public Scorer scorer(final LeafReaderContext context) throws IOException {
 
           return new Scorer(null) {
             int docID = -1;
@@ -461,23 +446,34 @@ public class TestQueryRescorer extends LuceneTestCase {
             }
 
             @Override
-            public long cost() {
-              return 1;
-            }
+            public DocIdSetIterator iterator() {
+              return new DocIdSetIterator() {
 
-            @Override
-            public int nextDoc() {
-              docID++;
-              if (docID >= context.reader().maxDoc()) {
-                return NO_MORE_DOCS;
-              }
-              return docID;
-            }
+                @Override
+                public int docID() {
+                  return docID;
+                }
 
-            @Override
-            public int advance(int target) {
-              docID = target;
-              return docID;
+                @Override
+                public long cost() {
+                  return 1;
+                }
+
+                @Override
+                public int nextDoc() {
+                  docID++;
+                  if (docID >= context.reader().maxDoc()) {
+                    return NO_MORE_DOCS;
+                  }
+                  return docID;
+                }
+
+                @Override
+                public int advance(int target) {
+                  docID = target;
+                  return docID;
+                }
+              };
             }
 
             @Override
@@ -495,14 +491,10 @@ public class TestQueryRescorer extends LuceneTestCase {
         }
 
         @Override
-        public Explanation explain(AtomicReaderContext context, int doc) throws IOException {
+        public Explanation explain(LeafReaderContext context, int doc) throws IOException {
           return null;
         }
       };
-    }
-
-    @Override
-    public void extractTerms(Set<Term> terms) {
     }
 
     @Override
@@ -516,7 +508,7 @@ public class TestQueryRescorer extends LuceneTestCase {
         return false;
       }
       FixedScoreQuery other = (FixedScoreQuery) o;
-      return Float.floatToIntBits(getBoost()) == Float.floatToIntBits(other.getBoost()) &&
+      return super.equals(o) &&
         reverse == other.reverse &&
         Arrays.equals(idToNum, other.idToNum);
     }
