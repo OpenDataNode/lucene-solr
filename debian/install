@@ -2,3 +2,4 @@ debian/solr/solr.xml etc/odn-solr/solr/
 debian/tomcat7/* etc/odn-solr/tomcat7/
 debian/tomcat7/log4j.properties usr/share/odn-solr/solr/WEB-INF/classes/
 solr/example/lib/ext/*.jar usr/share/odn-solr/lib/
+debian/logrotate/odn-solr etc/logrotate.d/
