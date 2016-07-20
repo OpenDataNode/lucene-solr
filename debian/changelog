@@ -1,12 +1,7 @@
-odn-solr (4.10.2-odn1.5.0) stable; urgency=low
-  * log rotate
-  
-  -- Jan Marcek <jmc@eea.sk>  Wed, 20 July 2015 14:20:00 +0100
-
 odn-solr (4.10.2-odn1.1.4) stable; urgency=low
   * log rotate
   
-  -- Jan Marcek <jmc@eea.sk>  Mon, 21 Feb 2015 15:44:00 +0100
+  -- Jan Marcek <jmc@eea.sk>  Wed, 20 July 2015 14:20:00 +0100
 
 odn-solr (4.10.2-odn1.1.3) stable; urgency=low
   * minor clean up
