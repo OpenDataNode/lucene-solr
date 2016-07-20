@@ -1,4 +1,4 @@
-odn-solr (4.10.2-odn1.4.0) stable; urgency=low
+odn-solr (4.10.2-odn1.5.0) stable; urgency=low
   * log rotate
   
   -- Jan Marcek <jmc@eea.sk>  Wed, 20 July 2015 14:20:00 +0100
