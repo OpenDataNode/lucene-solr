@@ -1,3 +1,9 @@
+odn-solr (4.10.4-odn1.1.5) stable; urgency=low
+  * merged updates from upstream 4.10.4
+  * use logrotate only for catalina.out, others are rotated by slf4j
+
+  -- Peter Hanecak <peter.hanecak@eea.sk>  Mon, 20 February 2017 17:28:00 +0100
+
 odn-solr (4.10.2-odn1.1.4) stable; urgency=low
   * log rotate
   
